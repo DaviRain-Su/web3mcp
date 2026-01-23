@@ -14,6 +14,59 @@ const InstructionInput = solana_client.transaction.InstructionInput;
 /// Lamports per SOL
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
+/// Get default keypair path
+/// Priority: SOLANA_KEYPAIR env > ~/.config/solana/id.json
+fn getDefaultKeypairPath(allocator: std.mem.Allocator) ![]const u8 {
+    // First check SOLANA_KEYPAIR environment variable
+    if (std.posix.getenv("SOLANA_KEYPAIR")) |env_path| {
+        return allocator.dupe(u8, env_path);
+    }
+
+    // Fall back to ~/.config/solana/id.json
+    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    return std.fmt.allocPrint(allocator, "{s}/.config/solana/id.json", .{home});
+}
+
+/// Load keypair from JSON file (Solana CLI format: [u8; 64] array)
+fn loadKeypairFromFile(allocator: std.mem.Allocator, path: []const u8) !Keypair {
+    const file = std.fs.openFileAbsolute(path, .{}) catch {
+        return error.KeypairFileNotFound;
+    };
+    defer file.close();
+
+    const content = file.readToEndAlloc(allocator, 1024) catch {
+        return error.KeypairReadFailed;
+    };
+    defer allocator.free(content);
+
+    // Parse JSON array of bytes
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, content, .{}) catch {
+        return error.KeypairParseError;
+    };
+    defer parsed.deinit();
+
+    if (parsed.value != .array) {
+        return error.KeypairInvalidFormat;
+    }
+
+    const arr = parsed.value.array;
+    if (arr.items.len != 64) {
+        return error.KeypairInvalidLength;
+    }
+
+    var keypair_bytes: [64]u8 = undefined;
+    for (arr.items, 0..) |item, i| {
+        if (item != .integer) {
+            return error.KeypairInvalidFormat;
+        }
+        keypair_bytes[i] = @intCast(item.integer);
+    }
+
+    return Keypair.fromBytes(&keypair_bytes) catch {
+        return error.KeypairInvalid;
+    };
+}
+
 /// System Program ID (all zeros)
 const SYSTEM_PROGRAM_ID: [32]u8 = [_]u8{0} ** 32;
 
@@ -69,19 +122,30 @@ fn createTransferInstruction(
 /// Transfers native SOL from one account to another on Solana
 ///
 /// Parameters:
-/// - secret_key: Base58 encoded secret key (64 bytes) of the sender (required)
 /// - to_address: Base58 encoded recipient address (required)
 /// - amount: Amount to transfer in lamports (required)
-/// - network: "devnet" | "mainnet" | "testnet" (optional, default: devnet)
+/// - network: "devnet" | "mainnet" | "testnet" | "localhost" (optional, default: devnet)
+/// - keypair_path: Path to keypair JSON file (optional, default: ~/.config/solana/id.json)
 ///
 /// Returns JSON with transaction signature
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    // Extract parameters
-    const secret_key_str = mcp.tools.getString(args, "secret_key") orelse {
-        return mcp.tools.errorResult(allocator, "Missing required parameter: secret_key") catch {
-            return mcp.tools.ToolError.InvalidArguments;
+    // Get keypair path (from arg, env var, or default)
+    const keypair_path_override = mcp.tools.getString(args, "keypair_path");
+    const keypair_path = if (keypair_path_override) |p| blk: {
+        break :blk allocator.dupe(u8, p) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    } else blk: {
+        break :blk getDefaultKeypairPath(allocator) catch |err| {
+            const msg = std.fmt.allocPrint(allocator, "Failed to get default keypair path: {s}", .{@errorName(err)}) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+            return mcp.tools.errorResult(allocator, msg) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
         };
     };
+    defer allocator.free(keypair_path);
 
     const to_address_str = mcp.tools.getString(args, "to_address") orelse {
         return mcp.tools.errorResult(allocator, "Missing required parameter: to_address") catch {
@@ -113,10 +177,13 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     else
         "https://api.devnet.solana.com";
 
-    // Parse sender keypair
-    const sender_keypair = Keypair.fromBase58(secret_key_str) catch {
-        return mcp.tools.errorResult(allocator, "Invalid sender secret key (must be base58 encoded 64-byte keypair)") catch {
-            return mcp.tools.ToolError.InvalidArguments;
+    // Load sender keypair from file
+    const sender_keypair = loadKeypairFromFile(allocator, keypair_path) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to load keypair from '{s}': {s}", .{ keypair_path, @errorName(err) }) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
         };
     };
 

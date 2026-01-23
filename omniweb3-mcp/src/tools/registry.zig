@@ -23,7 +23,7 @@ pub fn registerAll(server: *mcp.Server) !void {
     // transfer tool - Solana SOL transfer
     try server.addTool(.{
         .name = "transfer",
-        .description = "Transfer SOL on Solana. Parameters: secret_key (base58 64-byte keypair), to_address (base58), amount (lamports), network='devnet'|'mainnet'|'testnet'",
+        .description = "Transfer SOL on Solana. Parameters: to_address (base58), amount (lamports), network (optional), keypair_path (optional, uses $SOLANA_KEYPAIR or ~/.config/solana/id.json)",
         .handler = transfer.handle,
     });
 }
