@@ -1,0 +1,21 @@
+.{
+    .name = .omniweb3_mcp,
+    .version = "0.1.0",
+    .fingerprint = 0x94af740674427913,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{
+        .mcp = .{ .path = "deps/mcp.zig" },
+        .solana_client = .{
+            .url = "https://github.com/DaviRain-Su/solana-client-zig/archive/refs/heads/main.tar.gz",
+            .hash = "solana_client-0.1.0-6ohnAZp_BQDnmPu8qMJr3X1X1TUIY-x1vMMaDILDJepa",
+        },
+        .solana_sdk = .{
+            .url = "https://github.com/DaviRain-Su/solana-sdk-zig/archive/18974325397deef61bc07992b69d7cab18180354.tar.gz",
+            .hash = "solana_sdk-0.1.0-J3orTwlVCABxLotFVjrcviI7x5qYwq6Y0IIskmMsmh8e",
+        },
+    },
+}

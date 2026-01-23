@@ -1,14 +1,14 @@
 # ROADMAP
 
 ## v0.1.0 - MCP Skeleton (Zig 0.15, mcp.zig)
-- Status: ⏳ In Progress
+- Status: ✅ Completed (2026-01-23)
 - Scope:
   - 初始化 Zig 工程与构建系统
   - 接入 mcp.zig，跑通最小 Server（ping / list tools）
   - 定义统一 Chain/Protocol 抽象与工具注册入口
 
 ## v0.2.0 - Solana 基础
-- Status: ⏳ Pending
+- Status: 🔨 In Progress
 - Scope:
   - Solana RPC 适配：余额查询、转账（devnet）
   - 工具：get_balance, transfer（SPL/Native）
