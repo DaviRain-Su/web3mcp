@@ -8,11 +8,11 @@
   - 定义统一 Chain/Protocol 抽象与工具注册入口
 
 ## v0.2.0 - Solana 基础
-- Status: 🔨 In Progress
+- Status: ✅ Completed (2026-01-23)
 - Scope:
-  - Solana RPC 适配：余额查询、转账（devnet）
-  - 工具：get_balance, transfer（SPL/Native）
-  - 配置与密钥管理
+  - Solana RPC 适配：余额查询、转账（devnet/testnet/mainnet/localhost）
+  - 工具：get_balance, transfer（Native SOL）
+  - 配置与密钥管理（SOLANA_KEYPAIR 环境变量 + 配置文件）
 
 ## v0.3.0 - EVM 基础（Avalanche/BNB）
 - Status: ⏳ Pending
