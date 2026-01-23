@@ -1,0 +1,72 @@
+feat: Migrate to Zig 0.16 with full API adaptation
+
+## Summary
+
+Successfully migrated the omniweb3-mcp project to Zig 0.16, including all
+dependencies and code adaptations for the new API.
+
+## Changes
+
+### Dependencies (build.zig.zon)
+- Updated solana-client-zig to zig-0.16 branch
+- Updated solana-sdk-zig to zig-0.16 branch
+- Updated zabi to explicit commit hash
+- All dependencies now use proper hash values
+
+### Code Adaptations
+
+1. **File I/O (deps/mcp.zig/src/transport/transport.zig)**
+   - Replaced std.fs.File methods with Linux syscalls
+   - Added writeToFd() and readFromFd() helper functions
+   - Updated send(), receive(), and writeStderr() methods
+
+2. **Environment Variables (src/tools/transfer.zig)**
+   - Replaced std.posix.getenv() with C getenv()
+   - Added C interop using @cImport
+   - Updated getDefaultKeypairPath() function
+
+3. **File System (src/tools/transfer.zig)**
+   - Replaced std.fs.openFileAbsolute() with Linux open() syscall
+   - Updated loadKeypairFromFile() to use direct syscalls
+
+4. **Build System (build.zig)**
+   - Changed from exe.linkLibC() to link_libc = true in module options
+
+## Testing
+
+- ✅ Clean build successful
+- ✅ Binary executable generated (30MB with debug info)
+- ✅ Program runs without errors
+- ✅ All dependencies resolve correctly
+
+## Platform Support
+
+- Linux: ✅ Fully supported
+- Windows: ⚠️  Not yet implemented (compile error)
+- macOS: ⚠️  Not yet implemented (compile error)
+
+## Documentation
+
+Added comprehensive documentation:
+- ZIG_0.16_MIGRATION.md - Detailed migration guide
+- README.zig-0.16.md - User guide for Zig 0.16 version
+- test_build.sh - Automated build verification script
+
+## Breaking Changes
+
+- Now requires Zig 0.16.0-dev.2261+d6b3dd25a or later
+- Linux-only support (for now)
+- Requires libc (dynamically linked)
+
+## Future Work
+
+- [ ] Add Windows support
+- [ ] Add macOS support
+- [ ] Remove libc dependency (pure Zig implementation)
+- [ ] Submit mcp.zig changes upstream
+- [ ] Add integration tests
+
+## Related
+
+- Solana SDK: https://github.com/DaviRain-Su/solana-sdk-zig/tree/zig-0.16
+- Solana Client: https://github.com/DaviRain-Su/solana-client-zig/tree/zig-0.16

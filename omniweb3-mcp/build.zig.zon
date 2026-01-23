@@ -10,12 +10,16 @@
     .dependencies = .{
         .mcp = .{ .path = "deps/mcp.zig" },
         .solana_client = .{
-            .url = "https://github.com/DaviRain-Su/solana-client-zig/archive/refs/heads/main.tar.gz",
-            .hash = "solana_client-0.1.0-6ohnAZp_BQDnmPu8qMJr3X1X1TUIY-x1vMMaDILDJepa",
+            .url = "git+https://github.com/DaviRain-Su/solana-client-zig.git#zig-0.16",
+            .hash = "1220657db2fce280d699403a3f0dba427d8767ed21dd05487bc2409d3ad480438eab",
         },
         .solana_sdk = .{
-            .url = "https://github.com/DaviRain-Su/solana-sdk-zig/archive/18974325397deef61bc07992b69d7cab18180354.tar.gz",
-            .hash = "solana_sdk-0.1.0-J3orTwlVCABxLotFVjrcviI7x5qYwq6Y0IIskmMsmh8e",
+            .url = "git+https://github.com/DaviRain-Su/solana-sdk-zig.git#zig-0.16",
+            .hash = "solana_sdk-0.1.0-J3orT3VWCACNq3Kziv3YTb7KE85t8-xDjawoxj6DHmPt",
+        },
+        .zabi = .{
+            .url = "git+https://github.com/DaviRain-Su/zabi.git#4bf0d593937105e60160f7c91fc81be85cc5bd3a",
+            .hash = "1220fb5fdd6d3327dcfbedf629f30331d5aaa215f3ecae27b61dd74166c0988a9991",
         },
     },
 }

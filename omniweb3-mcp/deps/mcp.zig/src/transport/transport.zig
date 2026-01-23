@@ -7,6 +7,35 @@
 const std = @import("std");
 const jsonrpc = @import("../protocol/jsonrpc.zig");
 const types = @import("../protocol/types.zig");
+const builtin = @import("builtin");
+
+// Helper functions for Zig 0.16 File I/O
+fn writeToFd(fd: std.posix.fd_t, bytes: []const u8) !void {
+    if (builtin.os.tag == .linux) {
+        var index: usize = 0;
+        while (index < bytes.len) {
+            const written = std.os.linux.write(fd, bytes[index..].ptr, bytes[index..].len);
+            if (written == 0) return error.WriteError;
+            index += written;
+        }
+    } else if (builtin.os.tag == .windows) {
+        @compileError("Windows not yet supported in Zig 0.16 transport");
+    } else {
+        @compileError("Unsupported OS");
+    }
+}
+
+fn readFromFd(fd: std.posix.fd_t, buffer: []u8) !usize {
+    if (builtin.os.tag == .linux) {
+        const result = std.os.linux.read(fd, buffer.ptr, buffer.len);
+        if (result < 0) return error.ReadError;
+        return @intCast(result);
+    } else if (builtin.os.tag == .windows) {
+        @compileError("Windows not yet supported in Zig 0.16 transport");
+    } else {
+        @compileError("Unsupported OS");
+    }
+}
 
 /// Generic transport interface for MCP communication.
 /// Implementations must provide send, receive, and close operations.
@@ -77,9 +106,9 @@ pub const StdioTransport = struct {
     pub fn send(self: *Self, message: []const u8) Transport.SendError!void {
         if (self.is_closed) return Transport.SendError.ConnectionClosed;
 
-        const stdout = std.fs.File.stdout();
-        stdout.writeAll(message) catch return Transport.SendError.WriteError;
-        stdout.writeAll("\n") catch return Transport.SendError.WriteError;
+        const stdout_fd = std.posix.STDOUT_FILENO;
+        writeToFd(stdout_fd, message) catch return Transport.SendError.WriteError;
+        writeToFd(stdout_fd, "\n") catch return Transport.SendError.WriteError;
     }
 
     /// Sends a JSON-RPC message object.
@@ -95,11 +124,11 @@ pub const StdioTransport = struct {
 
         self.read_buffer.clearRetainingCapacity();
 
-        const stdin = std.fs.File.stdin();
+        const stdin_fd = std.posix.STDIN_FILENO;
 
         while (true) {
             var buf: [1]u8 = undefined;
-            const bytes_read = stdin.read(&buf) catch return Transport.ReceiveError.ReadError;
+            const bytes_read = readFromFd(stdin_fd, &buf) catch return Transport.ReceiveError.ReadError;
 
             if (bytes_read == 0) {
                 if (self.read_buffer.items.len == 0) {
@@ -138,9 +167,9 @@ pub const StdioTransport = struct {
     /// Writes a message to stderr for logging.
     pub fn writeStderr(self: *Self, message: []const u8) void {
         _ = self;
-        const stderr = std.fs.File.stderr();
-        stderr.writeAll(message) catch {};
-        stderr.writeAll("\n") catch {};
+        const stderr_fd = std.posix.STDERR_FILENO;
+        writeToFd(stderr_fd, message) catch {};
+        writeToFd(stderr_fd, "\n") catch {};
     }
 
     /// Returns a Transport interface for this STDIO transport.

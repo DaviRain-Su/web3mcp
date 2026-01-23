@@ -14,29 +14,44 @@ const InstructionInput = solana_client.transaction.InstructionInput;
 /// Lamports per SOL
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
+// C interop for getenv
+const c = @cImport({
+    @cInclude("stdlib.h");
+});
+
 /// Get default keypair path
 /// Priority: SOLANA_KEYPAIR env > ~/.config/solana/id.json
 fn getDefaultKeypairPath(allocator: std.mem.Allocator) ![]const u8 {
     // First check SOLANA_KEYPAIR environment variable
-    if (std.posix.getenv("SOLANA_KEYPAIR")) |env_path| {
+    if (c.getenv("SOLANA_KEYPAIR")) |env_path_c| {
+        const env_path = std.mem.span(env_path_c);
         return allocator.dupe(u8, env_path);
     }
 
     // Fall back to ~/.config/solana/id.json
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_c = c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_c);
     return std.fmt.allocPrint(allocator, "{s}/.config/solana/id.json", .{home});
 }
 
 /// Load keypair from JSON file (Solana CLI format: [u8; 64] array)
 fn loadKeypairFromFile(allocator: std.mem.Allocator, path: []const u8) !Keypair {
-    const file = std.fs.openFileAbsolute(path, .{}) catch {
-        return error.KeypairFileNotFound;
-    };
-    defer file.close();
-
-    const content = file.readToEndAlloc(allocator, 1024) catch {
-        return error.KeypairReadFailed;
-    };
+    // Add null terminator for C path
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    
+    // Open file using Linux syscall
+    const flags: std.os.linux.O = .{ .ACCMODE = .RDONLY };
+    const fd = std.os.linux.open(path_z.ptr, flags, 0);
+    if (fd < 0) return error.KeypairFileNotFound;
+    defer _ = std.os.linux.close(@intCast(fd));
+    
+    // Read file content
+    var buffer: [1024]u8 = undefined;
+    const bytes_read = std.os.linux.read(@intCast(fd), buffer[0..].ptr, buffer.len);
+    if (bytes_read < 0) return error.KeypairReadFailed;
+    
+    const content = try allocator.dupe(u8, buffer[0..@intCast(bytes_read)]);
     defer allocator.free(content);
 
     // Parse JSON array of bytes
