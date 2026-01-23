@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Test Results
 - Build: `zig build` (pass)
-- EVM RPC: Not yet validated on live network
+- EVM RPC: Verified on local Anvil (get_evm_balance, evm_transfer)
 
 #### Files Modified
 - `omniweb3-mcp/src/core/evm_runtime.zig` - EVM Io runtime

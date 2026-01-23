@@ -30,7 +30,17 @@ zig build
 ./test_build.sh
 ```
 
-### 4. 运行程序
+### 4. 本地 Anvil EVM 测试
+
+```bash
+# 另一个终端启动 Anvil
+anvil --chain-id 1
+
+# 运行 EVM 测试脚本（会执行余额查询和转账）
+./scripts/evm_anvil_test.py
+```
+
+### 5. 运行程序
 
 ```bash
 ./zig-out/bin/omniweb3-mcp
