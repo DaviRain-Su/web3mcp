@@ -1,17 +1,20 @@
 const std = @import("std");
 const mcp = @import("mcp");
 const tools = @import("tools/registry.zig");
+const evm_runtime = @import("core/evm_runtime.zig");
 
-pub fn main() void {
-    run() catch |err| {
+pub fn main(init: std.process.Init) !void {
+    run(init) catch |err| {
         mcp.reportError(err);
+        return err;
     };
 }
 
-fn run() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+fn run(init: std.process.Init) !void {
+    const allocator = init.gpa;
+
+    try evm_runtime.init(allocator, init.minimal.environ);
+    defer evm_runtime.deinit();
 
     var server = mcp.Server.init(.{
         .name = "omniweb3-mcp",

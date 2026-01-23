@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Session 2026-01-23-003
+
+**Date**: 2026-01-23
+**Goal**: Start v0.3.0 EVM Basics - zabi integration and EVM tools
+
+#### Completed Work
+1. Added EVM runtime initialization using std.Io.Threaded
+2. Implemented EVM network config + private key resolution helpers
+3. Implemented get_evm_balance tool using zabi HttpProvider
+4. Implemented evm_transfer tool with EIP-1559 + legacy support
+5. Registered EVM tools in MCP registry
+6. Updated documentation and v0.3.0 story progress
+
+#### Test Results
+- Build: `zig build` (pass)
+- EVM RPC: Not yet validated on live network
+
+#### Files Modified
+- `omniweb3-mcp/src/core/evm_runtime.zig` - EVM Io runtime
+- `omniweb3-mcp/src/core/evm_helpers.zig` - EVM config/key helpers
+- `omniweb3-mcp/src/tools/evm_balance.zig` - EVM balance tool
+- `omniweb3-mcp/src/tools/evm_transfer.zig` - EVM transfer tool
+- `omniweb3-mcp/src/tools/registry.zig` - Tool registration
+- `omniweb3-mcp/src/main.zig` - Init Io runtime
+- `omniweb3-mcp/README.zig-0.16.md` - Tool list update
+- `stories/v0.3.0-evm-basics.md` - Progress checklist
+
+#### Next Steps
+- [ ] Validate get_evm_balance on Sepolia
+- [ ] Validate evm_transfer on Sepolia
+- [ ] Multi-chain tests (Avalanche/BNB)
+
 ## [v0.2.0] - 2026-01-23
 
 ### Added

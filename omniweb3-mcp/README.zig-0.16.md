@@ -46,8 +46,13 @@ omniweb3-mcp/
 │   ├── main.zig          # 主入口
 │   ├── server.zig        # MCP 服务器
 │   ├── core/             # 核心功能
+│   │   ├── evm_helpers.zig   # EVM 配置与密钥
+│   │   └── evm_runtime.zig   # EVM I/O runtime
 │   └── tools/            # 工具模块
-│       └── transfer.zig  # Solana 转账工具
+│       ├── balance.zig       # Solana 余额查询
+│       ├── transfer.zig      # Solana 转账工具
+│       ├── evm_balance.zig   # EVM 余额查询
+│       └── evm_transfer.zig  # EVM 转账工具
 ├── deps/
 │   └── mcp.zig/          # MCP 协议实现 (已适配 Zig 0.16)
 ├── ZIG_0.16_MIGRATION.md # Zig 0.16 迁移文档
@@ -62,6 +67,16 @@ omniweb3-mcp/
 - **solana-client-zig**: Solana RPC 客户端 (zig-0.16 分支)
 - **solana-sdk-zig**: Solana SDK (zig-0.16 分支)
 - **zabi**: Ethereum ABI 编解码
+
+## 已支持工具
+
+### Solana
+- `get_balance`: 查询 SOL 余额
+- `transfer`: 转账 SOL（支持 devnet/testnet/mainnet/localhost）
+
+### EVM (Ethereum/Avalanche/BNB)
+- `get_evm_balance`: 查询原生代币余额
+- `evm_transfer`: 转账原生代币（支持 EIP-1559/Legacy）
 
 ## Zig 0.16 API 变更
 
