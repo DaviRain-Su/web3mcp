@@ -14,12 +14,13 @@
   - 工具：get_balance, transfer（Native SOL）
   - 配置与密钥管理（SOLANA_KEYPAIR 环境变量 + 配置文件）
 
-## v0.3.0 - EVM 基础（Avalanche/BNB）
-- Status: ⏳ Pending
+## v0.3.0 - EVM 基础（Ethereum/Avalanche/BNB）
+- Status: 🔨 In Progress
 - Scope:
-  - 通用 EVM 适配（RPC, EIP-1559, secp256k1 签名）
-  - Avalanche C-Chain / BNB Chain 配置
-  - 工具复用：get_balance, transfer
+  - 集成 zabi 库（EVM RPC, ABI, 签名）
+  - 支持多链：Ethereum, Avalanche C-Chain, BNB Chain
+  - 工具：get_evm_balance, evm_transfer（原生代币）
+  - EIP-1559 + Legacy 交易支持
 
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
