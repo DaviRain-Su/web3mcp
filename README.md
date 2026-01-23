@@ -1,17 +1,33 @@
-# DeFi Anywhere - Cross-Chain AI Agent MCP Server
+# Web3 Anywhere - Cross-Chain AI Agent MCP Server
 
-> 跨链 DeFi 操作的 MCP 中间层 - 让 AI Agent 用自然语言操作三条主流公链
+> 跨链 Web3 操作的 MCP 中间层 - 让 AI Agent 用自然语言操作全链 Web3（当前主力三链，架构面向所有链，DeFi-first, Web3-ready）
 
 ## 🎯 项目概述
 
 这是一个关于构建 **跨链 DeFi AI Agent 中间层**的完整调研和技术方案。
 
-**核心理念**: 通过 MCP (Model Context Protocol) 协议，让 Claude Code、Cursor 等 AI 工具能用自然语言直接操作 **Solana、Avalanche、BNB Chain** 上的 DeFi 协议。
+**核心理念**: 通过 MCP (Model Context Protocol) 协议，让 Claude Code、Cursor 等 AI 工具能用自然语言直接操作 **全链 Web3**，从 DeFi 起步，扩展到 NFT、治理、数据、存储、身份、消息等服务。
 
-**支持的区块链**:
+**近期优先支持的区块链（可扩展至所有链）**:
 - 🟣 **Solana** - 超高性能（65k TPS）
 - 🔴 **Avalanche** - 子网生态（4.5k TPS）
 - 🟡 **BNB Chain** - 最大用户群（300k DAU）
+
+**远景（架构预留）**:
+- 其他 EVM 公链与 L2（Ethereum, Arbitrum, Optimism, Base, Polygon 等）
+- 模块化 / Rollup / Appchain（OP Stack, ZK Stack, Cosmos SDK, Polkadot parachains）
+- 非 EVM 链（SVM 生态、Aptos/Sui Move 生态、BTC L2、NEAR、TON 等）
+
+**超越 DeFi 的 Web3 能力（规划中）**:
+- NFT：Mint/Transfer/Marketplace（OpenSea/Blur/MagicEden 等）
+- 数据/Index：Subgraph/Goldsky/Hypersync/Helius 等查询接口
+- 存储：IPFS/Arweave/Filecoin（pin、检索、付费）
+- 身份/DID/Name：ENS/SpaceID/Unstoppable，钱包画像
+- 消息/通知：XMTP/Push
+- 支付/法币出入金：On/Off-ramp 聚合
+- 治理：投票、委托
+- 监控/风控：风险评分、链上地址画像
+
 
 ---
 

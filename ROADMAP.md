@@ -34,3 +34,22 @@
   - 桥路由：Wormhole / LayerZero（接口规划）
   - 套利发现、收益优化、风险监控
   - Portfolio 聚合与 PnL 跟踪
+
+## v0.6.0 - 全链扩展（ALL WEB3 CHAINS）
+- Status: ⏳ Pending
+- Scope:
+  - ChainAdapter 扩展：EVM 全家桶（ETH/L2/Alt-EVM）、Cosmos/IBC、Polkadot parachain、BTC L2、Move 生态等
+  - 通用地址/签名/交易建模，支持多签/模块化 Rollup 特性
+  - 资源/工具接口保持 MCP 统一，新增链仅需适配器与协议插件
+
+## v0.7.0 - Web3 全面能力（超越 DeFi）
+- Status: ⏳ Pending
+- Scope:
+  - NFT：Mint/Transfer/Marketplace 适配器
+  - 数据/Index：Subgraph/Goldsky/Hypersync/Helius 查询工具
+  - 存储：IPFS/Arweave/Filecoin 上传/检索/付费
+  - 身份/DID/Name：ENS/SpaceID/Unstoppable 接口
+  - 消息/通知：XMTP/Push
+  - 支付/法币出入金：On/Off-ramp 聚合接口
+  - 治理：投票、委托操作
+  - 风控/监控：地址画像、风险评分
