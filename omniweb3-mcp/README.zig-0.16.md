@@ -56,8 +56,9 @@ omniweb3-mcp/
 │   ├── main.zig          # 主入口
 │   ├── server.zig        # MCP 服务器
 │   ├── core/             # 核心功能
-│   │   ├── evm_helpers.zig   # EVM 配置与密钥
-│   │   └── evm_runtime.zig   # EVM I/O runtime
+│   │   ├── evm_helpers.zig      # EVM 配置与密钥
+│   │   ├── evm_runtime.zig      # EVM I/O runtime
+│   │   └── solana_helpers.zig   # Solana 公共工具
 │   └── tools/            # 工具模块
 │       ├── balance.zig       # Solana 余额查询
 │       ├── transfer.zig      # Solana 转账工具
@@ -83,6 +84,11 @@ omniweb3-mcp/
 ### Solana
 - `get_balance`: 查询 SOL 余额
 - `transfer`: 转账 SOL（支持 devnet/testnet/mainnet/localhost）
+- `solana_account_info`: 查询账户信息
+- `solana_signature_status`: 查询交易状态
+- `solana_transaction`: 查询交易详情
+- `solana_token_balance`: SPL Token 账户余额
+- `solana_token_accounts`: 列出 Token 账户
 
 ### EVM (Ethereum/Avalanche/BNB)
 - `get_evm_balance`: 查询原生代币余额

@@ -37,6 +37,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ ] Validate evm_transfer on Sepolia
 - [ ] Multi-chain tests (Avalanche/BNB)
 
+### Session 2026-01-23-004
+
+**Date**: 2026-01-23
+**Goal**: v0.3.1 Base Enhancements - Solana read-only tools
+
+#### Completed Work
+1. Added Solana account info tool (solana_account_info)
+2. Added signature status tool (solana_signature_status)
+3. Added transaction lookup tool (solana_transaction)
+4. Added SPL token balance tool (solana_token_balance)
+5. Added SPL token accounts tool (solana_token_accounts)
+6. Added Solana helper utilities and tool registration
+7. Updated README and v0.3.1 story progress
+
+#### Test Results
+- Build: `zig build` (pass)
+- Solana RPC: Not yet validated on devnet/testnet
+
+#### Files Modified
+- `omniweb3-mcp/src/core/solana_helpers.zig` - Solana helper utilities
+- `omniweb3-mcp/src/tools/solana_account_info.zig` - Account info tool
+- `omniweb3-mcp/src/tools/solana_signature_status.zig` - Signature status tool
+- `omniweb3-mcp/src/tools/solana_transaction.zig` - Transaction lookup tool
+- `omniweb3-mcp/src/tools/solana_token_balance.zig` - Token balance tool
+- `omniweb3-mcp/src/tools/solana_token_accounts.zig` - Token accounts tool
+- `omniweb3-mcp/src/tools/registry.zig` - Tool registration
+- `omniweb3-mcp/README.zig-0.16.md` - Tool list update
+- `stories/v0.3.1-base-enhancements.md` - Story checklist
+
+#### Next Steps
+- [ ] Validate Solana tools on devnet
+
 ## [v0.2.0] - 2026-01-23
 
 ### Added

@@ -22,6 +22,13 @@
   - 工具：get_evm_balance, evm_transfer（原生代币）
   - EIP-1559 + Legacy 交易支持
 
+## v0.3.1 - 基础能力增强（Solana + EVM）
+- Status: ⏳ Pending
+- Scope:
+  - Solana 基础补全：账户信息、交易状态、SPL Token 基础
+  - EVM 基础补全：交易/区块查询、nonce/fee/estimate、ERC20 余额
+  - 只读 RPC 能力优先（eth_call/账户信息）
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:
