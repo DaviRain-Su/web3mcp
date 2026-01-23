@@ -43,6 +43,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         "https://api.mainnet-beta.solana.com"
     else if (std.mem.eql(u8, network_str, "testnet"))
         "https://api.testnet.solana.com"
+    else if (std.mem.eql(u8, network_str, "localhost"))
+        "http://localhost:8899"
     else
         "https://api.devnet.solana.com";
 

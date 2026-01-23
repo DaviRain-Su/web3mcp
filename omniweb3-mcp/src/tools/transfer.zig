@@ -35,31 +35,33 @@ const SystemInstruction = enum(u32) {
 };
 
 /// Create a System Program transfer instruction
+/// Caller must free the returned data and accounts slices
 fn createTransferInstruction(
+    allocator: std.mem.Allocator,
     from_pubkey: PublicKey,
     to_pubkey: PublicKey,
     lamports: u64,
-) InstructionInput {
-    // Build instruction data: 4 bytes discriminator + 8 bytes lamports (little endian)
-    const data = comptime blk: {
-        var d: [12]u8 = undefined;
-        const discriminator = @intFromEnum(SystemInstruction.Transfer);
-        std.mem.writeInt(u32, d[0..4], discriminator, .little);
-        // lamports will be written at runtime
-        break :blk d;
-    };
+) !InstructionInput {
+    // Allocate instruction data: 4 bytes discriminator + 8 bytes lamports (little endian)
+    const instruction_data = try allocator.alloc(u8, 12);
+    errdefer allocator.free(instruction_data);
 
-    // We need to write lamports at runtime, so create a mutable copy
-    var instruction_data: [12]u8 = data;
+    // Write discriminator (Transfer = 2)
+    std.mem.writeInt(u32, instruction_data[0..4], @intFromEnum(SystemInstruction.Transfer), .little);
+    // Write lamports
     std.mem.writeInt(u64, instruction_data[4..12], lamports, .little);
+
+    // Allocate accounts
+    const accounts = try allocator.alloc(AccountMeta, 2);
+    errdefer allocator.free(accounts);
+
+    accounts[0] = AccountMeta.newWritableSigner(from_pubkey);
+    accounts[1] = AccountMeta.newWritable(to_pubkey);
 
     return .{
         .program_id = PublicKey.from(SYSTEM_PROGRAM_ID),
-        .accounts = &[_]AccountMeta{
-            AccountMeta.newWritableSigner(from_pubkey),
-            AccountMeta.newWritable(to_pubkey),
-        },
-        .data = &instruction_data,
+        .accounts = accounts,
+        .data = instruction_data,
     };
 }
 
@@ -106,6 +108,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         "https://api.mainnet-beta.solana.com"
     else if (std.mem.eql(u8, network_str, "testnet"))
         "https://api.testnet.solana.com"
+    else if (std.mem.eql(u8, network_str, "localhost"))
+        "http://localhost:8899"
     else
         "https://api.devnet.solana.com";
 
@@ -147,7 +151,14 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     _ = builder.setFeePayer(from_pubkey);
     _ = builder.setRecentBlockhash(blockhash_result.blockhash);
 
-    const transfer_ix = createTransferInstruction(from_pubkey, to_pubkey, lamports);
+    const transfer_ix = createTransferInstruction(allocator, from_pubkey, to_pubkey, lamports) catch {
+        return mcp.tools.errorResult(allocator, "Failed to create transfer instruction") catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    };
+    defer allocator.free(transfer_ix.data);
+    defer allocator.free(transfer_ix.accounts);
+
     _ = builder.addInstruction(transfer_ix) catch {
         return mcp.tools.errorResult(allocator, "Failed to add transfer instruction") catch {
             return mcp.tools.ToolError.OutOfMemory;
@@ -176,8 +187,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer allocator.free(serialized);
 
-    // Send transaction
-    const signature = client.sendTransaction(serialized) catch |err| {
+    // Send transaction with skip_preflight for better error messages
+    const signature = client.sendTransactionWithConfig(serialized, .{ .skip_preflight = true }) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to send transaction: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
