@@ -126,6 +126,8 @@ omniweb3-mcp/
 - `get_fee_for_message`: 获取消息费用
 - `get_program_accounts`: 获取 program accounts
 - `get_vote_accounts`: 获取 vote accounts
+- `get_jupiter_quote`: 获取 Jupiter swap 报价（支持 endpoint/api_key/insecure 覆盖）
+- `get_jupiter_price`: 获取 Jupiter token 价格（支持 endpoint/api_key/insecure 覆盖）
 
 ## Zig 0.16 API 变更
 
