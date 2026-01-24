@@ -103,7 +103,34 @@
     - Search & Live Data
   - Total: 23 dFlow tools (11 Swap + 12 Prediction Market)
 
-## v0.4.2 - Lending 协议集成
+## v0.4.2 - Meteora Protocol 完整集成
+- Status: ✅ Completed (2026-01-24)
+- Scope:
+  - DLMM (Dynamic Liquidity Market Maker): 10 tools
+    - Pool info, active bin, bins range, positions
+    - Swap quote, swap execution
+    - Add/remove liquidity, claim fees/rewards
+  - DAMM v2 (CP-AMM): 8 tools
+    - Pool info, position info
+    - Swap quote, swap execution
+    - Add/remove liquidity, claim fees
+    - Create pool
+  - DAMM v1 (Legacy): 5 tools
+    - Pool info, swap quote, swap
+    - Deposit, withdraw
+  - Dynamic Bonding Curve: 7 tools
+    - Pool info, quote, buy, sell
+    - Create pool, check graduation, migrate
+  - Dynamic Vault: 4 tools
+    - Vault info, deposit, withdraw, user balance
+  - Alpha Vault: 4 tools
+    - Vault info, deposit, withdraw, claim
+  - Stake-for-Fee (M3M3): 5 tools
+    - Pool info, stake, unstake
+    - Claim fees, user balance
+  - Total: 43 Meteora tools
+
+## v0.4.3 - Lending 协议集成
 - Status: ⏳ Pending
 - Scope:
   - Lending：Marginfi / AAVE / Venus（deposit/withdraw/borrow/repay）

@@ -142,6 +142,68 @@ const dflow_pm_get_series = @import("defi/dflow/prediction/get_series.zig");
 const dflow_pm_search_events = @import("defi/dflow/prediction/search_events.zig");
 const dflow_pm_get_live_data = @import("defi/dflow/prediction/get_live_data.zig");
 
+// =============================================================================
+// DeFi integrations - Meteora Protocol
+// Docs: https://docs.meteora.ag
+// =============================================================================
+
+// Meteora DLMM (Concentrated Liquidity)
+const meteora_dlmm_get_pool = @import("defi/meteora/dlmm/get_pool.zig");
+const meteora_dlmm_get_active_bin = @import("defi/meteora/dlmm/get_active_bin.zig");
+const meteora_dlmm_get_bins = @import("defi/meteora/dlmm/get_bins.zig");
+const meteora_dlmm_get_positions = @import("defi/meteora/dlmm/get_positions.zig");
+const meteora_dlmm_swap_quote = @import("defi/meteora/dlmm/swap_quote.zig");
+const meteora_dlmm_swap = @import("defi/meteora/dlmm/swap.zig");
+const meteora_dlmm_add_liquidity = @import("defi/meteora/dlmm/add_liquidity.zig");
+const meteora_dlmm_remove_liquidity = @import("defi/meteora/dlmm/remove_liquidity.zig");
+const meteora_dlmm_claim_fees = @import("defi/meteora/dlmm/claim_fees.zig");
+const meteora_dlmm_claim_rewards = @import("defi/meteora/dlmm/claim_rewards.zig");
+
+// Meteora DAMM v2 (CP-AMM)
+const meteora_damm_v2_get_pool = @import("defi/meteora/damm_v2/get_pool.zig");
+const meteora_damm_v2_get_position = @import("defi/meteora/damm_v2/get_position.zig");
+const meteora_damm_v2_swap_quote = @import("defi/meteora/damm_v2/swap_quote.zig");
+const meteora_damm_v2_swap = @import("defi/meteora/damm_v2/swap.zig");
+const meteora_damm_v2_add_liquidity = @import("defi/meteora/damm_v2/add_liquidity.zig");
+const meteora_damm_v2_remove_liquidity = @import("defi/meteora/damm_v2/remove_liquidity.zig");
+const meteora_damm_v2_claim_fee = @import("defi/meteora/damm_v2/claim_fee.zig");
+const meteora_damm_v2_create_pool = @import("defi/meteora/damm_v2/create_pool.zig");
+
+// Meteora DAMM v1 (Legacy AMM)
+const meteora_damm_v1_get_pool = @import("defi/meteora/damm_v1/get_pool.zig");
+const meteora_damm_v1_swap_quote = @import("defi/meteora/damm_v1/swap_quote.zig");
+const meteora_damm_v1_swap = @import("defi/meteora/damm_v1/swap.zig");
+const meteora_damm_v1_deposit = @import("defi/meteora/damm_v1/deposit.zig");
+const meteora_damm_v1_withdraw = @import("defi/meteora/damm_v1/withdraw.zig");
+
+// Meteora Dynamic Bonding Curve (Token Launches)
+const meteora_dbc_get_pool = @import("defi/meteora/bonding_curve/get_pool.zig");
+const meteora_dbc_get_quote = @import("defi/meteora/bonding_curve/get_quote.zig");
+const meteora_dbc_buy = @import("defi/meteora/bonding_curve/buy.zig");
+const meteora_dbc_sell = @import("defi/meteora/bonding_curve/sell.zig");
+const meteora_dbc_create_pool = @import("defi/meteora/bonding_curve/create_pool.zig");
+const meteora_dbc_check_graduation = @import("defi/meteora/bonding_curve/check_graduation.zig");
+const meteora_dbc_migrate = @import("defi/meteora/bonding_curve/migrate.zig");
+
+// Meteora Vault (Yield Optimization)
+const meteora_vault_get_info = @import("defi/meteora/vault/get_info.zig");
+const meteora_vault_deposit = @import("defi/meteora/vault/deposit.zig");
+const meteora_vault_withdraw = @import("defi/meteora/vault/withdraw.zig");
+const meteora_vault_get_user_balance = @import("defi/meteora/vault/get_user_balance.zig");
+
+// Meteora Alpha Vault (Anti-Bot Protection)
+const meteora_alpha_vault_get_info = @import("defi/meteora/alpha_vault/get_info.zig");
+const meteora_alpha_vault_deposit = @import("defi/meteora/alpha_vault/deposit.zig");
+const meteora_alpha_vault_withdraw = @import("defi/meteora/alpha_vault/withdraw.zig");
+const meteora_alpha_vault_claim = @import("defi/meteora/alpha_vault/claim.zig");
+
+// Meteora Stake-for-Fee (M3M3)
+const meteora_m3m3_get_pool = @import("defi/meteora/stake_for_fee/get_pool.zig");
+const meteora_m3m3_stake = @import("defi/meteora/stake_for_fee/stake.zig");
+const meteora_m3m3_unstake = @import("defi/meteora/stake_for_fee/unstake.zig");
+const meteora_m3m3_claim_fee = @import("defi/meteora/stake_for_fee/claim_fee.zig");
+const meteora_m3m3_get_user_balance = @import("defi/meteora/stake_for_fee/get_user_balance.zig");
+
 /// Tool definitions for Solana-specific operations.
 pub const tools = [_]mcp.tools.Tool{
     // Token operations
@@ -682,6 +744,249 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "dflow_pm_get_live_data",
         .description = "Get live data for prediction market milestones. Parameters: milestones (comma-separated). API key from DFLOW_API_KEY env var.",
         .handler = dflow_pm_get_live_data.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora DLMM (Concentrated Liquidity)
+    // =========================================================================
+    .{
+        .name = "meteora_dlmm_get_pool",
+        .description = "Get Meteora DLMM pool info. Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_get_pool.handle,
+    },
+    .{
+        .name = "meteora_dlmm_get_active_bin",
+        .description = "Get DLMM active bin (current price). Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_get_active_bin.handle,
+    },
+    .{
+        .name = "meteora_dlmm_get_bins",
+        .description = "Get DLMM bins in range. Parameters: pool_address, min_bin_id (optional), max_bin_id (optional), network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_get_bins.handle,
+    },
+    .{
+        .name = "meteora_dlmm_get_positions",
+        .description = "Get user DLMM positions. Parameters: pool_address, owner, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_get_positions.handle,
+    },
+    .{
+        .name = "meteora_dlmm_swap_quote",
+        .description = "Get DLMM swap quote. Parameters: pool_address, amount, swap_for_y (true=X->Y), slippage_bps (optional), network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_swap_quote.handle,
+    },
+    .{
+        .name = "meteora_dlmm_swap",
+        .description = "Create DLMM swap transaction. Parameters: pool_address, user, amount, swap_for_y, min_out_amount, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_swap.handle,
+    },
+    .{
+        .name = "meteora_dlmm_add_liquidity",
+        .description = "Add liquidity to DLMM pool. Parameters: pool_address, user, amount_x, amount_y, strategy (SpotBalanced, etc), min_bin_id, max_bin_id, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_add_liquidity.handle,
+    },
+    .{
+        .name = "meteora_dlmm_remove_liquidity",
+        .description = "Remove liquidity from DLMM position. Parameters: pool_address, user, position, bps (10000=100%), network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_remove_liquidity.handle,
+    },
+    .{
+        .name = "meteora_dlmm_claim_fees",
+        .description = "Claim DLMM swap fees. Parameters: pool_address, user, position, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_claim_fees.handle,
+    },
+    .{
+        .name = "meteora_dlmm_claim_rewards",
+        .description = "Claim DLMM LM rewards. Parameters: pool_address, user, position, network (optional), endpoint (optional)",
+        .handler = meteora_dlmm_claim_rewards.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora DAMM v2 (CP-AMM)
+    // =========================================================================
+    .{
+        .name = "meteora_damm_v2_get_pool",
+        .description = "Get Meteora DAMM v2 pool info. Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_get_pool.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_get_position",
+        .description = "Get user DAMM v2 position. Parameters: pool_address, owner, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_get_position.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_swap_quote",
+        .description = "Get DAMM v2 swap quote. Parameters: pool_address, input_mint, amount, slippage_bps (optional), network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_swap_quote.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_swap",
+        .description = "Create DAMM v2 swap transaction. Parameters: pool_address, user, input_mint, amount, min_out_amount, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_swap.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_add_liquidity",
+        .description = "Add liquidity to DAMM v2. Parameters: pool_address, user, amount_a, amount_b, min_lp_amount, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_add_liquidity.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_remove_liquidity",
+        .description = "Remove liquidity from DAMM v2. Parameters: pool_address, user, position, lp_amount, min_a, min_b, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_remove_liquidity.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_claim_fee",
+        .description = "Claim DAMM v2 position fees. Parameters: pool_address, user, position, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_claim_fee.handle,
+    },
+    .{
+        .name = "meteora_damm_v2_create_pool",
+        .description = "Create DAMM v2 pool. Parameters: user, token_a_mint, token_b_mint, token_a_amount, token_b_amount, config (optional), network (optional), endpoint (optional)",
+        .handler = meteora_damm_v2_create_pool.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora DAMM v1 (Legacy AMM)
+    // =========================================================================
+    .{
+        .name = "meteora_damm_v1_get_pool",
+        .description = "Get Meteora DAMM v1 pool info. Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v1_get_pool.handle,
+    },
+    .{
+        .name = "meteora_damm_v1_swap_quote",
+        .description = "Get DAMM v1 swap quote. Parameters: pool_address, input_mint, amount, slippage_bps (optional), network (optional), endpoint (optional)",
+        .handler = meteora_damm_v1_swap_quote.handle,
+    },
+    .{
+        .name = "meteora_damm_v1_swap",
+        .description = "Create DAMM v1 swap transaction. Parameters: pool_address, user, input_mint, amount, min_out_amount, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v1_swap.handle,
+    },
+    .{
+        .name = "meteora_damm_v1_deposit",
+        .description = "Deposit liquidity to DAMM v1. Parameters: pool_address, user, amount_a, amount_b, min_lp_amount, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v1_deposit.handle,
+    },
+    .{
+        .name = "meteora_damm_v1_withdraw",
+        .description = "Withdraw liquidity from DAMM v1. Parameters: pool_address, user, lp_amount, min_a, min_b, network (optional), endpoint (optional)",
+        .handler = meteora_damm_v1_withdraw.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora Dynamic Bonding Curve (Token Launches)
+    // =========================================================================
+    .{
+        .name = "meteora_dbc_get_pool",
+        .description = "Get Dynamic Bonding Curve pool info. Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_dbc_get_pool.handle,
+    },
+    .{
+        .name = "meteora_dbc_get_quote",
+        .description = "Get DBC buy/sell quote. Parameters: pool_address, is_buy, amount (quote for buy, base for sell), network (optional), endpoint (optional)",
+        .handler = meteora_dbc_get_quote.handle,
+    },
+    .{
+        .name = "meteora_dbc_buy",
+        .description = "Buy tokens on bonding curve. Parameters: pool_address, user, quote_amount, min_base_amount, network (optional), endpoint (optional)",
+        .handler = meteora_dbc_buy.handle,
+    },
+    .{
+        .name = "meteora_dbc_sell",
+        .description = "Sell tokens on bonding curve. Parameters: pool_address, user, base_amount, min_quote_amount, network (optional), endpoint (optional)",
+        .handler = meteora_dbc_sell.handle,
+    },
+    .{
+        .name = "meteora_dbc_create_pool",
+        .description = "Create DBC pool for token launch. Parameters: user, name, symbol, uri, base_amount, config (optional), network (optional), endpoint (optional)",
+        .handler = meteora_dbc_create_pool.handle,
+    },
+    .{
+        .name = "meteora_dbc_check_graduation",
+        .description = "Check if DBC pool can graduate to AMM. Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_dbc_check_graduation.handle,
+    },
+    .{
+        .name = "meteora_dbc_migrate",
+        .description = "Migrate graduated DBC pool to DAMM. Parameters: pool_address, user, target (damm_v1 or damm_v2), network (optional), endpoint (optional)",
+        .handler = meteora_dbc_migrate.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora Vault (Yield Optimization)
+    // =========================================================================
+    .{
+        .name = "meteora_vault_get_info",
+        .description = "Get Meteora Vault info. Parameters: token_mint, network (optional), endpoint (optional)",
+        .handler = meteora_vault_get_info.handle,
+    },
+    .{
+        .name = "meteora_vault_deposit",
+        .description = "Deposit to Meteora Vault. Parameters: token_mint, user, amount, network (optional), endpoint (optional)",
+        .handler = meteora_vault_deposit.handle,
+    },
+    .{
+        .name = "meteora_vault_withdraw",
+        .description = "Withdraw from Meteora Vault. Parameters: token_mint, user, lp_amount, network (optional), endpoint (optional)",
+        .handler = meteora_vault_withdraw.handle,
+    },
+    .{
+        .name = "meteora_vault_get_user_balance",
+        .description = "Get user balance in Meteora Vault. Parameters: token_mint, user, network (optional), endpoint (optional)",
+        .handler = meteora_vault_get_user_balance.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora Alpha Vault (Anti-Bot Protection)
+    // =========================================================================
+    .{
+        .name = "meteora_alpha_vault_get_info",
+        .description = "Get Alpha Vault info. Parameters: vault_address, network (optional), endpoint (optional)",
+        .handler = meteora_alpha_vault_get_info.handle,
+    },
+    .{
+        .name = "meteora_alpha_vault_deposit",
+        .description = "Deposit to Alpha Vault. Parameters: vault_address, user, amount, network (optional), endpoint (optional)",
+        .handler = meteora_alpha_vault_deposit.handle,
+    },
+    .{
+        .name = "meteora_alpha_vault_withdraw",
+        .description = "Withdraw from Alpha Vault. Parameters: vault_address, user, amount, network (optional), endpoint (optional)",
+        .handler = meteora_alpha_vault_withdraw.handle,
+    },
+    .{
+        .name = "meteora_alpha_vault_claim",
+        .description = "Claim tokens from Alpha Vault. Parameters: vault_address, user, network (optional), endpoint (optional)",
+        .handler = meteora_alpha_vault_claim.handle,
+    },
+
+    // =========================================================================
+    // DeFi - Meteora Stake-for-Fee (M3M3)
+    // =========================================================================
+    .{
+        .name = "meteora_m3m3_get_pool",
+        .description = "Get M3M3 Stake-for-Fee pool info. Parameters: pool_address, network (optional), endpoint (optional)",
+        .handler = meteora_m3m3_get_pool.handle,
+    },
+    .{
+        .name = "meteora_m3m3_stake",
+        .description = "Stake tokens in M3M3. Parameters: pool_address, user, amount, network (optional), endpoint (optional)",
+        .handler = meteora_m3m3_stake.handle,
+    },
+    .{
+        .name = "meteora_m3m3_unstake",
+        .description = "Initiate unstake from M3M3. Parameters: pool_address, user, amount, network (optional), endpoint (optional)",
+        .handler = meteora_m3m3_unstake.handle,
+    },
+    .{
+        .name = "meteora_m3m3_claim_fee",
+        .description = "Claim fees from M3M3 staking. Parameters: pool_address, user, network (optional), endpoint (optional)",
+        .handler = meteora_m3m3_claim_fee.handle,
+    },
+    .{
+        .name = "meteora_m3m3_get_user_balance",
+        .description = "Get user M3M3 staked balance and claimable fees. Parameters: pool_address, user, network (optional), endpoint (optional)",
+        .handler = meteora_m3m3_get_user_balance.handle,
     },
 };
 
