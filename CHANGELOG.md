@@ -136,7 +136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 4. Renamed Solana tools to unified names (account_info/signature_status/token_accounts)
 5. Added Solana-only tool docs (account_info/signature_status/token_accounts)
 6. Updated tool registry and README to unified names
-7. Updated v0.3.1 story tool list for unified naming
+7. Added Solana token_balance support for owner+mint
+8. Updated v0.3.1 story tool list for unified naming
 
 #### Test Results
 - Build: `zig build` (pass)

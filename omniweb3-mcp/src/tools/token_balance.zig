@@ -1,6 +1,7 @@
 const std = @import("std");
 const mcp = @import("mcp");
 const zabi = @import("zabi");
+const solana_sdk = @import("solana_sdk");
 const solana_helpers = @import("../core/solana_helpers.zig");
 const evm_helpers = @import("../core/evm_helpers.zig");
 const evm_runtime = @import("../core/evm_runtime.zig");
@@ -16,7 +17,9 @@ const utils = zabi.utils.utils;
 /// - chain: "solana" | "ethereum" | "avalanche" | "bnb" (optional, default: solana)
 /// - network: Solana: devnet/testnet/mainnet/localhost; EVM: mainnet/sepolia/goerli/fuji/testnet
 /// - endpoint: Override RPC endpoint (optional)
-/// - token_account: Solana token account (required for solana)
+/// - token_account: Solana token account (optional)
+/// - owner: Solana owner address (optional, requires mint)
+/// - mint: Solana mint address (optional, requires owner)
 /// - token_address: EVM ERC20 contract address (required for evm)
 /// - owner: EVM owner address (required for evm)
 ///
@@ -26,18 +29,16 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     if (std.ascii.eqlIgnoreCase(chain_name, "solana")) {
-        const token_account_str = mcp.tools.getString(args, "token_account") orelse {
-            return mcp.tools.errorResult(allocator, "Missing required parameter: token_account") catch {
-                return mcp.tools.ToolError.InvalidArguments;
-            };
-        };
+        const token_account_str = mcp.tools.getString(args, "token_account");
+        const owner_str = mcp.tools.getString(args, "owner");
+        const mint_str = mcp.tools.getString(args, "mint");
         const network = mcp.tools.getString(args, "network") orelse "devnet";
 
-        const token_account = solana_helpers.parsePublicKey(token_account_str) catch {
-            return mcp.tools.errorResult(allocator, "Invalid token account address") catch {
+        if (token_account_str == null and (owner_str == null or mint_str == null)) {
+            return mcp.tools.errorResult(allocator, "Missing required parameter: token_account or owner+mint") catch {
                 return mcp.tools.ToolError.InvalidArguments;
             };
-        };
+        }
 
         var adapter = chain.initSolanaAdapter(allocator, network, endpoint_override) catch |err| {
             const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
@@ -49,7 +50,57 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
         defer adapter.deinit();
 
-        const balance = adapter.getTokenAccountBalance(token_account) catch |err| {
+        var token_account_pubkey: solana_sdk.PublicKey = undefined;
+        var token_account_owned: ?[]u8 = null;
+        defer if (token_account_owned) |value| allocator.free(value);
+
+        if (token_account_str) |value| {
+            token_account_pubkey = solana_helpers.parsePublicKey(value) catch {
+                return mcp.tools.errorResult(allocator, "Invalid token account address") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            };
+            token_account_owned = try allocator.dupe(u8, value);
+        } else {
+            const owner = solana_helpers.parsePublicKey(owner_str.?) catch {
+                return mcp.tools.errorResult(allocator, "Invalid owner address") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            };
+            const mint = solana_helpers.parsePublicKey(mint_str.?) catch {
+                return mcp.tools.errorResult(allocator, "Invalid mint address") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            };
+
+            const accounts = adapter.getTokenAccountsByOwner(owner, mint) catch |err| {
+                const msg = std.fmt.allocPrint(allocator, "Failed to get token accounts: {s}", .{@errorName(err)}) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                };
+                return mcp.tools.errorResult(allocator, msg) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                };
+            };
+            defer allocator.free(accounts);
+
+            if (accounts.len == 0) {
+                return mcp.tools.errorResult(allocator, "No token accounts found for owner+mint") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            }
+            if (accounts.len > 1) {
+                return mcp.tools.errorResult(allocator, "Multiple token accounts found; specify token_account") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            }
+
+            token_account_pubkey = accounts[0].pubkey;
+            var pubkey_buf: [solana_sdk.PublicKey.max_base58_len]u8 = undefined;
+            const pubkey_str = token_account_pubkey.toBase58(&pubkey_buf);
+            token_account_owned = try allocator.dupe(u8, pubkey_str);
+        }
+
+        const balance = adapter.getTokenAccountBalance(token_account_pubkey) catch |err| {
             const msg = std.fmt.allocPrint(allocator, "Failed to get token balance: {s}", .{@errorName(err)}) catch {
                 return mcp.tools.ToolError.OutOfMemory;
             };
@@ -71,7 +122,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
         const response_value: BalanceResponse = .{
             .chain = "solana",
-            .token_account = token_account_str,
+            .token_account = token_account_owned.?,
             .amount = balance.amount,
             .decimals = balance.decimals,
             .ui_amount = balance.ui_amount,

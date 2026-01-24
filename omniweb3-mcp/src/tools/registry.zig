@@ -98,7 +98,7 @@ pub fn registerAll(server: *mcp.Server) !void {
     // token balance (Solana/EVM)
     try server.addTool(.{
         .name = "token_balance",
-        .description = "Token balance. Parameters: chain, token_account (solana) or token_address+owner (evm), network (optional), endpoint (optional)",
+        .description = "Token balance. Parameters: chain, token_account (solana) or owner+mint (solana) or token_address+owner (evm), network (optional), endpoint (optional)",
         .handler = token_balance.handle,
     });
 

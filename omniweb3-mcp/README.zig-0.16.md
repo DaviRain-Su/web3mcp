@@ -91,7 +91,7 @@ omniweb3-mcp/
 - `get_block_number`: 统一区块高度/编号
 - `get_block`: 统一区块查询（Solana slot / EVM block）
 - `get_transaction`: 统一交易查询（Solana signature / EVM tx_hash）
-- `token_balance`: 统一 Token 余额（Solana token_account / EVM token_address+owner）
+- `token_balance`: 统一 Token 余额（Solana token_account 或 owner+mint / EVM token_address+owner）
 
 ### EVM-only
 - `get_receipt`: 交易回执
