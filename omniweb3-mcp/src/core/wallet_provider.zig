@@ -91,7 +91,8 @@ pub fn getWalletAddress(
                     var hex_buf: [42]u8 = undefined;
                     hex_buf[0] = '0';
                     hex_buf[1] = 'x';
-                    _ = std.fmt.bufPrint(hex_buf[2..], "{x}", .{std.fmt.fmtSliceHexLower(&address)}) catch unreachable;
+                    const hex_part = std.fmt.bytesToHex(address, .lower);
+                    @memcpy(hex_buf[2..], &hex_part);
                     return allocator.dupe(u8, &hex_buf);
                 },
             }
