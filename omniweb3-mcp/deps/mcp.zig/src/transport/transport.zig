@@ -206,7 +206,7 @@ pub const HttpTransport = struct {
     allocator: std.mem.Allocator,
     endpoint: []const u8,
     session_id: ?[]const u8 = null,
-    protocol_version: []const u8 = "2025-11-25",
+    protocol_version: []const u8 = "2024-11-05",
     is_closed: bool = false,
     pending_responses: std.ArrayList([]const u8),
 

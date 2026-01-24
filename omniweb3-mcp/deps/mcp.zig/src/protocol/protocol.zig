@@ -12,7 +12,8 @@ pub const JsonRpc = jsonrpc;
 pub const Types = types;
 
 /// Current MCP protocol version supported by this library.
-pub const PROTOCOL_VERSION = "2025-11-25";
+/// Note: Using 2024-11-05 for compatibility with mcp-remote client
+pub const PROTOCOL_VERSION = "2024-11-05";
 
 /// Legacy alias for compatibility.
 pub const VERSION = PROTOCOL_VERSION;
