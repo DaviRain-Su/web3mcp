@@ -15,10 +15,14 @@
 
 const std = @import("std");
 const solana_sdk = @import("solana_sdk");
+const chain_mod = @import("chain.zig");
 const wallet = @import("wallet.zig");
 const privy_client = @import("../tools/auth/privy/client.zig");
 
 const Keypair = solana_sdk.Keypair;
+const Signature = solana_sdk.Signature;
+const PublicKey = solana_sdk.PublicKey;
+const short_vec = solana_sdk.short_vec;
 
 /// Wallet provider type
 pub const WalletType = enum {
@@ -56,7 +60,7 @@ pub const WalletConfig = struct {
 
     // Privy wallet options
     wallet_id: ?[]const u8 = null, // Privy wallet ID
-    network: []const u8 = "devnet", // Network for Privy signing
+    network: []const u8 = "mainnet", // Network for Privy signing
     sponsor: bool = false, // Enable gas sponsorship (Privy)
 };
 
@@ -134,26 +138,23 @@ pub fn signSolanaTransaction(
 
     switch (config.wallet_type) {
         .local => {
-            // Load keypair and sign locally
             const keypair = try wallet.loadSolanaKeypair(allocator, config.keypair_path);
+            const signed = try signLocalSolanaTransactionBytes(allocator, keypair, unsigned_transaction_b64);
+            defer allocator.free(signed.signed_bytes);
 
-            // Decode base64 transaction
-            const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(unsigned_transaction_b64) catch {
-                return error.InvalidBase64;
+            const encoded_len = std.base64.standard.Encoder.calcSize(signed.signed_bytes.len);
+            const signed_b64 = try allocator.alloc(u8, encoded_len);
+            errdefer allocator.free(signed_b64);
+            _ = std.base64.standard.Encoder.encode(signed_b64, signed.signed_bytes);
+
+            var sig_buf: [solana_sdk.signature.MAX_BASE58_LEN]u8 = undefined;
+            const sig_str = signed.signature.toBase58(&sig_buf);
+
+            return SignResult{
+                .signed_transaction = signed_b64,
+                .signature = try allocator.dupe(u8, sig_str),
+                .sent = false,
             };
-            const tx_bytes = try allocator.alloc(u8, decoded_len);
-            defer allocator.free(tx_bytes);
-
-            std.base64.standard.Decoder.decode(tx_bytes, unsigned_transaction_b64) catch {
-                return error.InvalidBase64;
-            };
-
-            // Parse and sign the transaction
-            // Note: This is simplified - real implementation needs proper transaction parsing
-            _ = keypair;
-
-            // For now, return error indicating local signing needs more implementation
-            return error.LocalSigningNotImplemented;
         },
         .privy => {
             // Sign via Privy API
@@ -209,11 +210,28 @@ pub fn signAndSendSolanaTransaction(
 
     switch (config.wallet_type) {
         .local => {
-            // For local signing, we need to:
-            // 1. Sign the transaction
-            // 2. Send it via RPC
-            // This requires more infrastructure - for now, suggest using Privy
-            return error.LocalSignAndSendNotImplemented;
+            const keypair = try wallet.loadSolanaKeypair(allocator, config.keypair_path);
+            const signed = try signLocalSolanaTransactionBytes(allocator, keypair, unsigned_transaction_b64);
+            defer allocator.free(signed.signed_bytes);
+
+            var adapter = try chain_mod.initSolanaAdapter(allocator, config.network, null);
+            defer adapter.deinit();
+
+            const rpc_signature = try adapter.sendTransaction(signed.signed_bytes);
+
+            var sig_buf: [solana_sdk.signature.MAX_BASE58_LEN]u8 = undefined;
+            const sig_str = rpc_signature.toBase58(&sig_buf);
+
+            const encoded_len = std.base64.standard.Encoder.calcSize(signed.signed_bytes.len);
+            const signed_b64 = try allocator.alloc(u8, encoded_len);
+            errdefer allocator.free(signed_b64);
+            _ = std.base64.standard.Encoder.encode(signed_b64, signed.signed_bytes);
+
+            return SignResult{
+                .signed_transaction = signed_b64,
+                .signature = try allocator.dupe(u8, sig_str),
+                .sent = true,
+            };
         },
         .privy => {
             // Sign and send via Privy API
@@ -259,6 +277,65 @@ pub fn signAndSendSolanaTransaction(
             return error.SendFailed;
         },
     }
+}
+
+fn signLocalSolanaTransactionBytes(
+    allocator: std.mem.Allocator,
+    keypair: Keypair,
+    unsigned_transaction_b64: []const u8,
+) !struct { signed_bytes: []u8, signature: Signature } {
+    const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(unsigned_transaction_b64) catch {
+        return error.InvalidBase64;
+    };
+    const tx_bytes = try allocator.alloc(u8, decoded_len);
+    errdefer allocator.free(tx_bytes);
+
+    std.base64.standard.Decoder.decode(tx_bytes, unsigned_transaction_b64) catch {
+        return error.InvalidBase64;
+    };
+
+    const sig_len_info = short_vec.decodeU16Len(tx_bytes) catch return error.InvalidShortVec;
+    if (sig_len_info.value == 0) return error.InvalidTransaction;
+
+    const signature_count: usize = sig_len_info.value;
+    const signatures_offset = sig_len_info.bytes_read;
+    const signatures_len = signature_count * solana_sdk.SIGNATURE_BYTES;
+    if (tx_bytes.len < signatures_offset + signatures_len + 3) {
+        return error.InvalidTransaction;
+    }
+
+    const message_bytes = tx_bytes[signatures_offset + signatures_len ..];
+    if (message_bytes.len < 3) return error.InvalidTransaction;
+
+    const num_required: usize = message_bytes[0];
+    const account_len_info = short_vec.decodeU16Len(message_bytes[3..]) catch return error.InvalidShortVec;
+    const account_count: usize = account_len_info.value;
+    const account_keys_offset = 3 + account_len_info.bytes_read;
+    const account_keys_len = account_count * PublicKey.length;
+    if (message_bytes.len < account_keys_offset + account_keys_len) {
+        return error.InvalidTransaction;
+    }
+
+    const account_keys_bytes = message_bytes[account_keys_offset .. account_keys_offset + account_keys_len];
+    const required = if (num_required > account_count) account_count else num_required;
+    var signer_index: ?usize = null;
+    const signer_bytes = keypair.pubkey().bytes;
+    for (0..required) |i| {
+        const start = i * PublicKey.length;
+        const end = start + PublicKey.length;
+        if (std.mem.eql(u8, account_keys_bytes[start..end], &signer_bytes)) {
+            signer_index = i;
+            break;
+        }
+    }
+    if (signer_index == null) return error.MissingSigner;
+    if (signer_index.? >= signature_count) return error.InvalidTransaction;
+
+    const signature = keypair.sign(message_bytes) catch return error.SigningFailed;
+    const sig_offset = signatures_offset + signer_index.? * solana_sdk.SIGNATURE_BYTES;
+    @memcpy(tx_bytes[sig_offset .. sig_offset + solana_sdk.SIGNATURE_BYTES], &signature.bytes);
+
+    return .{ .signed_bytes = tx_bytes, .signature = signature };
 }
 
 /// Check if Privy wallet is configured

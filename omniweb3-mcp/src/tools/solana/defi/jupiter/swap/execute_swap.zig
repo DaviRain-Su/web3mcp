@@ -71,7 +71,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     defer if (amount_str == null) allocator.free(amount_value);
 
     // Wallet configuration
-    const wallet_type_str = mcp.tools.getString(args, "wallet_type") orelse {
+    const wallet_id = mcp.tools.getString(args, "wallet_id");
+    const wallet_type_str = mcp.tools.getString(args, "wallet_type") orelse if (wallet_id != null) "privy" else {
         return mcp.tools.errorResult(allocator, "Missing required parameter: wallet_type ('local' or 'privy')") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
@@ -82,8 +83,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
-
-    const wallet_id = mcp.tools.getString(args, "wallet_id");
     const keypair_path = mcp.tools.getString(args, "keypair_path");
     const slippage_bps = mcp.tools.getInteger(args, "slippage_bps") orelse 50;
     const network = mcp.tools.getString(args, "network") orelse "mainnet";
@@ -257,7 +256,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const sign_result = wallet_provider.signAndSendSolanaTransaction(allocator, wallet_config, swap_transaction) catch |err| {
         const error_msg = switch (err) {
-            error.LocalSignAndSendNotImplemented => "Local wallet sign+send not yet implemented. Use wallet_type='privy' or sign manually with privy_sign_and_send_transaction.",
             error.MissingWalletId => "wallet_id is required for Privy signing",
             error.ParseError => "Failed to parse Privy API response",
             error.SendFailed => "Transaction send failed",
