@@ -80,13 +80,42 @@ omniweb3-mcp/
 - **solana-sdk-zig**: Solana SDK (zig-0.16 分支)
 - **zabi**: Ethereum ABI 编解码
 
+## 钱包配置
+
+OmniWeb3 MCP 支持两种钱包类型：
+
+### Privy 钱包（默认，当提供 wallet_id 时）
+- **自动检测**: 当您提供 `wallet_id` 参数时，自动使用 Privy 钱包
+- **无需显式指定**: `wallet_id` 隐含 `wallet_type=privy`
+- **环境变量**: 需要设置 `PRIVY_APP_ID` 和 `PRIVY_APP_SECRET`
+
+```json
+{
+  "wallet_id": "your-privy-wallet-id"
+}
+```
+
+### 本地钱包（显式指定）
+- **Solana**: 使用 `wallet_type=local` + `keypair_path`
+- **EVM**: 使用 `wallet_type=local` + `private_key`
+
+```json
+{
+  "wallet_type": "local",
+  "keypair_path": "~/.config/solana/id.json"
+}
+```
+
+**详细文档**: 参见 [WALLET_CONFIGURATION.md](./WALLET_CONFIGURATION.md)
+
 ## 已支持工具
 
 ### Unified Chain Tools
 - `get_balance`: 统一余额查询（Solana + EVM）
 - `transfer`: 统一转账（Solana + EVM，支持 EIP-1559/Legacy）
-  - Solana: amount=lamports, keypair_path 可选
-  - EVM: amount=wei, private_key/keypair_path 可选
+  - **钱包配置**: `wallet_id` (Privy) 或 `wallet_type=local` + `keypair_path`/`private_key`
+  - Solana: amount=lamports
+  - EVM: amount=wei
 - `get_block_number`: 统一区块高度/编号
 - `get_block`: 统一区块查询（Solana slot / EVM block）
 - `get_transaction`: 统一交易查询（Solana signature / EVM tx_hash）
@@ -128,6 +157,40 @@ omniweb3-mcp/
 - `get_vote_accounts`: 获取 vote accounts
 - `get_jupiter_quote`: 获取 Jupiter swap 报价（支持 endpoint/api_key/insecure 覆盖）
 - `get_jupiter_price`: 获取 Jupiter token 价格（支持 endpoint/api_key/insecure 覆盖）
+
+### Solana DeFi 工具（支持钱包配置）
+
+以下 DeFi 工具支持统一的钱包配置：当提供 `wallet_id` 时，自动使用 Privy 钱包；否则可显式指定 `wallet_type=local`。
+
+#### Jupiter 协议
+- `jupiter_execute_swap`: 完整 swap 流程（报价 + 构建 + 签名 + 发送）
+  - **钱包配置**: `wallet_id` (默认 Privy) 或 `wallet_type=local` + `keypair_path`
+- `jupiter_swap`: 构建 swap 交易
+- `jupiter_ultra_order`: 创建 Ultra 订单
+- `jupiter_create_trigger_order`: 创建限价订单
+- `jupiter_cancel_trigger_order`: 取消限价订单
+- `jupiter_cancel_trigger_orders`: 批量取消限价订单
+- `jupiter_create_recurring_order`: 创建 DCA 定投订单
+- `jupiter_cancel_recurring_order`: 取消 DCA 订单
+- `jupiter_lend_deposit`: Jupiter Lend 存款
+- `jupiter_lend_withdraw`: Jupiter Lend 提款
+- `jupiter_lend_mint`: Jupiter Lend 铸造份额
+- `jupiter_lend_redeem`: Jupiter Lend 赎回份额
+- `jupiter_craft_send`: Jupiter Send 转账
+- `jupiter_craft_clawback`: Jupiter Send 退款
+- `jupiter_claim_dbc_fee`: 领取 DBC 池费用
+- `jupiter_create_dbc_pool`: 创建 DBC 池
+
+#### Meteora 协议
+- 所有 Meteora DeFi 操作支持相同的钱包配置模式
+
+#### dFlow 协议
+- 所有 dFlow 交易操作支持相同的钱包配置模式
+
+**注意**: 所有 DeFi 工具的钱包参数：
+- `wallet_id` → 自动使用 Privy（默认行为）
+- `wallet_type=local` + `keypair_path` → 使用本地密钥对
+- 详细配置请参见 [WALLET_CONFIGURATION.md](./WALLET_CONFIGURATION.md)
 
 ## Zig 0.16 API 变更
 
