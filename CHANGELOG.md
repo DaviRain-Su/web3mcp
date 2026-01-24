@@ -97,6 +97,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Validate Solana tools on devnet
 
+### Session 2026-01-23-006
+
+**Date**: 2026-01-23
+**Goal**: v0.3.3 Unified Chain Tools - consolidate balance/transfer
+
+#### Completed Work
+1. Unified `get_balance` across Solana/EVM
+2. Unified `transfer` across Solana/EVM
+3. Removed evm_balance/evm_transfer tool registrations
+4. Updated README and v0.3.3 story progress
+
+#### Test Results
+- Build: `zig build` (pass)
+
+#### Files Modified
+- `omniweb3-mcp/src/tools/balance.zig` - unified balance
+- `omniweb3-mcp/src/tools/transfer.zig` - unified transfer
+- `omniweb3-mcp/src/tools/registry.zig` - removed EVM tool entries
+- `omniweb3-mcp/README.zig-0.16.md` - tool list update
+- `stories/v0.3.3-unified-tools.md` - progress checklist
+
+#### Next Steps
+- [ ] Validate unified transfer on Solana devnet
+- [ ] Validate unified transfer on local Anvil
+
 ## [v0.2.0] - 2026-01-23
 
 ### Added

@@ -81,18 +81,18 @@ omniweb3-mcp/
 
 ## 已支持工具
 
+### Unified Chain Tools
+- `get_balance`: 统一余额查询（Solana + EVM）
+- `transfer`: 统一转账（Solana + EVM，支持 EIP-1559/Legacy）
+  - Solana: amount=lamports, keypair_path 可选
+  - EVM: amount=wei, private_key/keypair_path 可选
+
 ### Solana
-- `get_balance`: 查询 SOL 余额
-- `transfer`: 转账 SOL（支持 devnet/testnet/mainnet/localhost）
 - `solana_account_info`: 查询账户信息
 - `solana_signature_status`: 查询交易状态
 - `solana_transaction`: 查询交易详情
 - `solana_token_balance`: SPL Token 账户余额
 - `solana_token_accounts`: 列出 Token 账户
-
-### EVM (Ethereum/Avalanche/BNB)
-- `get_evm_balance`: 查询原生代币余额
-- `evm_transfer`: 转账原生代币（支持 EIP-1559/Legacy）
 
 ## Zig 0.16 API 变更
 

@@ -36,6 +36,13 @@
   - core/wallet 抽象签名/密钥加载
   - tools 全部调用 core
 
+## v0.3.3 - Unified Chain Tools
+- Status: ✅ Completed (2026-01-23)
+- Scope:
+  - get_balance / transfer 统一接口
+  - 移除链特定工具
+  - 文档同步
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:

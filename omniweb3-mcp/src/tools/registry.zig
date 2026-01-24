@@ -3,8 +3,6 @@ const mcp = @import("mcp");
 const ping = @import("ping.zig");
 const balance = @import("balance.zig");
 const transfer = @import("transfer.zig");
-const evm_balance = @import("evm_balance.zig");
-const evm_transfer = @import("evm_transfer.zig");
 const solana_account_info = @import("solana_account_info.zig");
 const solana_signature_status = @import("solana_signature_status.zig");
 const solana_transaction = @import("solana_transaction.zig");
@@ -20,17 +18,17 @@ pub fn registerAll(server: *mcp.Server) !void {
         .handler = ping.handle,
     });
 
-    // get_balance tool - Solana balance query
+    // get_balance tool - unified balance query
     try server.addTool(.{
         .name = "get_balance",
-        .description = "Get SOL balance for a Solana address. Parameters: chain='solana', address (base58), network='devnet'|'mainnet'|'testnet'",
+        .description = "Get balance across Solana/EVM. Parameters: chain='solana'|'ethereum'|'avalanche'|'bnb', address, network (optional), endpoint (optional)",
         .handler = balance.handle,
     });
 
-    // transfer tool - Solana SOL transfer
+    // transfer tool - unified transfer
     try server.addTool(.{
         .name = "transfer",
-        .description = "Transfer SOL on Solana. Parameters: to_address (base58), amount (lamports), network (optional), keypair_path (optional, uses $SOLANA_KEYPAIR or ~/.config/solana/id.json)",
+        .description = "Transfer native tokens across Solana/EVM. Parameters: chain, to_address, amount, network (optional), endpoint (optional), keypair_path (Solana), private_key (EVM), tx_type (EVM), confirmations (EVM)",
         .handler = transfer.handle,
     });
 
@@ -69,17 +67,5 @@ pub fn registerAll(server: *mcp.Server) !void {
         .handler = solana_token_accounts.handle,
     });
 
-    // get_evm_balance tool - EVM native balance query
-    try server.addTool(.{
-        .name = "get_evm_balance",
-        .description = "Get native token balance for an EVM address. Parameters: chain='ethereum'|'avalanche'|'bnb', address (hex), network (optional), endpoint (optional)",
-        .handler = evm_balance.handle,
-    });
 
-    // evm_transfer tool - EVM native token transfer
-    try server.addTool(.{
-        .name = "evm_transfer",
-        .description = "Transfer native tokens on EVM chains. Parameters: to_address (hex), amount (wei), chain (optional), network (optional), endpoint (optional), private_key (optional), keypair_path (optional), tx_type (optional), confirmations (optional)",
-        .handler = evm_transfer.handle,
-    });
 }
