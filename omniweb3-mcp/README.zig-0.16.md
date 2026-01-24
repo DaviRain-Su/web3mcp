@@ -43,7 +43,58 @@ anvil --chain-id 1
 ### 5. 运行程序
 
 ```bash
-./zig-out/bin/omniweb3-mcp
+HOST=0.0.0.0 PORT=8765 MCP_WORKERS=4 ./zig-out/bin/omniweb3-mcp
+```
+
+### 6. Docker 部署（推荐）
+
+```bash
+cp .env.example .env
+# 填入 PRIVY_APP_ID/PRIVY_APP_SECRET 等
+docker compose up -d --build
+```
+
+服务默认只在本机监听：`127.0.0.1:8765`，便于与 Cloudflare Tunnel 配合。
+
+## HTTP MCP 服务
+
+该服务通过 HTTP POST 接收 MCP JSON-RPC 请求，所有已注册工具都可通过此入口调用。
+
+- **健康检查**: `GET /health` -> `ok`
+- **请求入口**: `POST /` (JSON-RPC 请求体)
+
+示例请求:
+
+```bash
+curl -s http://localhost:8765/ \
+  -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"get_balance","params":{"chain":"solana","address":"<pubkey>"}}'
+```
+
+## Cloudflare Tunnel（推荐）
+
+```bash
+curl -fsSL https://pkg.cloudflare.com/install.sh | sudo bash
+sudo apt install cloudflared
+cloudflared tunnel login
+cloudflared tunnel create omniweb3-mcp
+```
+
+`/etc/cloudflared/config.yml`:
+
+```yaml
+tunnel: <tunnel-id>
+credentials-file: /etc/cloudflared/<tunnel-id>.json
+ingress:
+  - hostname: api.your-domain.com
+    service: http://localhost:8765
+  - service: http_status:404
+```
+
+```bash
+cloudflared tunnel route dns omniweb3-mcp api.your-domain.com
+sudo cloudflared service install
+sudo systemctl start cloudflared
 ```
 
 ## 项目结构

@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  omniweb3-mcp:
+    build: .
+    container_name: omniweb3-mcp
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8765
+      MCP_WORKERS: 4
+      PRIVY_APP_ID: ${PRIVY_APP_ID}
+      PRIVY_APP_SECRET: ${PRIVY_APP_SECRET}
+      JUPITER_API_KEY: ${JUPITER_API_KEY}
+      DFLOW_API_KEY: ${DFLOW_API_KEY}
+    ports:
+      - "127.0.0.1:8765:8765"

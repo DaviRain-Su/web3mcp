@@ -227,19 +227,30 @@ fn handleConnection(
             else => return err,
         };
 
+        const method_name = @tagName(request.head.method);
+        const target_copy = try allocator.dupe(u8, request.head.target);
+        defer allocator.free(target_copy);
+        var timer = try std.time.Timer.start();
+
         if (request.head.method == .GET and std.mem.eql(u8, request.head.target, "/health")) {
-            try request.respond("ok", .{ .status = .ok });
+            const status: std.http.Status = .ok;
+            try request.respond("ok", .{ .status = status });
+            logRequest(method_name, target_copy, status, timer.read());
             continue;
         }
 
         if (request.head.method != .POST) {
-            try request.respond("Method Not Allowed", .{ .status = .method_not_allowed });
+            const status: std.http.Status = .method_not_allowed;
+            try request.respond("Method Not Allowed", .{ .status = status });
+            logRequest(method_name, target_copy, status, timer.read());
             continue;
         }
 
         var body_reader_buf: [4096]u8 = undefined;
         var body_reader = request.readerExpectContinue(&body_reader_buf) catch {
-            try request.respond("Expectation Failed", .{ .status = .expectation_failed });
+            const status: std.http.Status = .expectation_failed;
+            try request.respond("Expectation Failed", .{ .status = status });
+            logRequest(method_name, target_copy, status, timer.read());
             continue;
         };
 
@@ -250,7 +261,9 @@ fn handleConnection(
 
         const request_body = try allocating.toOwnedSlice();
         const response_body = worker.transport.submit(request_body) catch {
-            try request.respond("Internal Server Error", .{ .status = .internal_server_error });
+            const status: std.http.Status = .internal_server_error;
+            try request.respond("Internal Server Error", .{ .status = status });
+            logRequest(method_name, target_copy, status, timer.read());
             continue;
         };
         defer allocator.free(response_body);
@@ -259,8 +272,15 @@ fn handleConnection(
             .name = "content-type",
             .value = "application/json",
         }};
-        try request.respond(response_body, .{ .status = .ok, .extra_headers = &headers });
+        const status: std.http.Status = .ok;
+        try request.respond(response_body, .{ .status = status, .extra_headers = &headers });
+        logRequest(method_name, target_copy, status, timer.read());
     }
+}
+
+fn logRequest(method: []const u8, target: []const u8, status: std.http.Status, elapsed_ns: u64) void {
+    const elapsed_ms = elapsed_ns / std.time.ns_per_ms;
+    std.log.info("{s} {s} -> {d} in {d}ms", .{ method, target, @intFromEnum(status), elapsed_ms });
 }
 
 fn connectionLoop(allocator: std.mem.Allocator, io: Io, worker: *Worker, stream: net.Stream) void {
