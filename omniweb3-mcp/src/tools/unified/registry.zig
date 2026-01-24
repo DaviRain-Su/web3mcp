@@ -21,7 +21,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "transfer",
-        .description = "Transfer native tokens across Solana/EVM. Parameters: chain, to_address, amount, network (optional), endpoint (optional), keypair_path (Solana), private_key (EVM), tx_type (EVM), confirmations (EVM)",
+        .description = "Transfer native tokens across Solana/EVM. Parameters: chain, to_address, amount, wallet_type (local/privy), wallet_id (required for privy), network (optional), endpoint (optional), keypair_path (for local Solana), private_key (for local EVM), tx_type (EVM), confirmations (EVM), sponsor (Privy gas sponsorship)",
         .handler = transfer.handle,
     },
     .{

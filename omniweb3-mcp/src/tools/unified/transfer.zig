@@ -8,6 +8,7 @@ const evm_helpers = @import("../../core/evm_helpers.zig");
 const evm_runtime = @import("../../core/evm_runtime.zig");
 const chain = @import("../../core/chain.zig");
 const wallet = @import("../../core/wallet.zig");
+const wallet_provider = @import("../../core/wallet_provider.zig");
 
 const PublicKey = solana_sdk.PublicKey;
 const Keypair = solana_sdk.Keypair;
@@ -21,7 +22,6 @@ const TransactionReceipt = zabi.types.transactions.TransactionReceipt;
 
 /// Lamports per SOL
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
-
 
 /// System Program ID (all zeros)
 const SYSTEM_PROGRAM_ID: [32]u8 = [_]u8{0} ** 32;
@@ -82,10 +82,13 @@ fn createTransferInstruction(
 /// - amount: Amount (lamports for Solana, wei for EVM)
 /// - network: Solana: devnet/testnet/mainnet/localhost, EVM: mainnet/sepolia/goerli/fuji/testnet
 /// - endpoint: Override RPC endpoint (optional)
-/// - keypair_path: Solana keypair path (optional)
-/// - private_key: EVM private key (optional)
+/// - wallet_type: "local" | "privy" (optional, default: local)
+/// - wallet_id: Privy wallet ID (required if wallet_type=privy)
+/// - keypair_path: Solana keypair path (optional, for local wallet)
+/// - private_key: EVM private key (optional, for local wallet)
 /// - tx_type: EVM tx type (eip1559/legacy)
 /// - confirmations: EVM confirmations (optional)
+/// - sponsor: Enable Privy gas sponsorship (optional, default: false)
 ///
 /// Returns JSON with transaction signature/hash
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
@@ -109,6 +112,10 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     if (std.ascii.eqlIgnoreCase(chain_name, "solana")) {
         const keypair_path_override = mcp.tools.getString(args, "keypair_path");
+        const wallet_type_str = mcp.tools.getString(args, "wallet_type") orelse "local";
+        const wallet_id = mcp.tools.getString(args, "wallet_id");
+        const sponsor = mcp.tools.getBoolean(args, "sponsor") orelse false;
+
         const amount = amount_int orelse {
             return mcp.tools.errorResult(allocator, "Missing required parameter: amount (lamports)") catch {
                 return mcp.tools.ToolError.InvalidArguments;
@@ -120,14 +127,25 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             };
         }
 
-        const sender_keypair = wallet.loadSolanaKeypair(allocator, keypair_path_override) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to load keypair: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
+        const wallet_type = wallet_provider.WalletType.fromString(wallet_type_str) orelse {
+            return mcp.tools.errorResult(allocator, "Invalid wallet_type. Use 'local' or 'privy'") catch {
+                return mcp.tools.ToolError.InvalidArguments;
             };
         };
+
+        // Validate Privy configuration
+        if (wallet_type == .privy) {
+            if (wallet_id == null) {
+                return mcp.tools.errorResult(allocator, "wallet_id is required when wallet_type='privy'") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            }
+            if (!wallet_provider.isPrivyConfigured()) {
+                return mcp.tools.errorResult(allocator, "Privy not configured. Set PRIVY_APP_ID and PRIVY_APP_SECRET env vars.") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            }
+        }
 
         const to_pubkey = solana_helpers.parsePublicKey(to_address_str) catch {
             return mcp.tools.errorResult(allocator, "Invalid recipient address") catch {
@@ -135,9 +153,9 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             };
         };
 
-        const from_pubkey = sender_keypair.pubkey();
         const lamports: u64 = @intCast(amount);
 
+        // Initialize Solana adapter for RPC calls
         var adapter = chain.initSolanaAdapter(allocator, network, endpoint_override) catch |err| {
             const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
                 return mcp.tools.ToolError.OutOfMemory;
@@ -157,6 +175,33 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             };
         };
 
+        // Get sender public key based on wallet type
+        const wallet_config = wallet_provider.WalletConfig{
+            .wallet_type = wallet_type,
+            .chain = .solana,
+            .keypair_path = keypair_path_override,
+            .wallet_id = wallet_id,
+            .network = network,
+            .sponsor = sponsor,
+        };
+
+        const from_str = wallet_provider.getWalletAddress(allocator, wallet_config) catch |err| {
+            const msg = std.fmt.allocPrint(allocator, "Failed to get wallet address: {s}", .{@errorName(err)}) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+            return mcp.tools.errorResult(allocator, msg) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+        };
+        defer allocator.free(from_str);
+
+        const from_pubkey = solana_helpers.parsePublicKey(from_str) catch {
+            return mcp.tools.errorResult(allocator, "Invalid sender address from wallet") catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
+        };
+
+        // Build transaction
         var builder = TransactionBuilder.init(allocator);
         defer builder.deinit();
 
@@ -177,47 +222,110 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             };
         };
 
-        var tx = builder.buildSigned(&[_]*const Keypair{&sender_keypair}) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to build/sign transaction: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
+        // Handle signing based on wallet type
+        const sig_str: []const u8 = switch (wallet_type) {
+            .local => blk: {
+                // Local signing
+                const sender_keypair = wallet.loadSolanaKeypair(allocator, keypair_path_override) catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Failed to load keypair: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+
+                var tx = builder.buildSigned(&[_]*const Keypair{&sender_keypair}) catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Failed to build/sign transaction: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+                defer tx.deinit();
+
+                const serialized = tx.serialize() catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Failed to serialize transaction: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+                defer allocator.free(serialized);
+
+                const signature = adapter.sendTransaction(serialized) catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Failed to send transaction: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+
+                var sig_buf: [88]u8 = undefined;
+                break :blk allocator.dupe(u8, signature.toBase58(&sig_buf)) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                };
+            },
+            .privy => blk: {
+                // Privy signing: build unsigned tx, encode as base64, send to Privy
+                var tx = builder.build() catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Failed to build unsigned transaction: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+                defer tx.deinit();
+
+                const serialized = tx.serialize() catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Failed to serialize transaction: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+                defer allocator.free(serialized);
+
+                // Encode to base64 for Privy API
+                const base64_len = std.base64.standard.Encoder.calcSize(serialized.len);
+                const tx_b64 = allocator.alloc(u8, base64_len) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                };
+                defer allocator.free(tx_b64);
+                _ = std.base64.standard.Encoder.encode(tx_b64, serialized);
+
+                // Sign and send via Privy
+                const sign_result = wallet_provider.signAndSendSolanaTransaction(allocator, wallet_config, tx_b64) catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "Privy sign and send failed: {s}", .{@errorName(err)}) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                    return mcp.tools.errorResult(allocator, msg) catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                };
+
+                if (sign_result.signature) |sig| {
+                    break :blk sig;
+                } else {
+                    return mcp.tools.errorResult(allocator, "Privy did not return transaction signature") catch {
+                        return mcp.tools.ToolError.OutOfMemory;
+                    };
+                }
+            },
         };
-        defer tx.deinit();
-
-        const serialized = tx.serialize() catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to serialize transaction: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-        };
-        defer allocator.free(serialized);
-
-        const signature = adapter.sendTransaction(serialized) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to send transaction: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-        };
-
-        var sig_buf: [88]u8 = undefined;
-        const sig_str = signature.toBase58(&sig_buf);
-
-        var from_buf: [PublicKey.max_base58_len]u8 = undefined;
-        const from_str = from_pubkey.toBase58(&from_buf);
+        defer allocator.free(sig_str);
 
         const sol_amount = @as(f64, @floatFromInt(lamports)) / @as(f64, @floatFromInt(LAMPORTS_PER_SOL));
 
         const response = std.fmt.allocPrint(
             allocator,
-            "{{\"chain\":\"solana\",\"signature\":\"{s}\",\"from\":\"{s}\",\"to\":\"{s}\",\"lamports\":{d},\"sol\":{d:.9},\"network\":\"{s}\",\"endpoint\":\"{s}\"}}",
-            .{ sig_str, from_str, to_address_str, lamports, sol_amount, network, adapter.endpoint },
+            "{{\"chain\":\"solana\",\"signature\":\"{s}\",\"from\":\"{s}\",\"to\":\"{s}\",\"lamports\":{d},\"sol\":{d:.9},\"network\":\"{s}\",\"endpoint\":\"{s}\",\"wallet_type\":\"{s}\"}}",
+            .{ sig_str, from_str, to_address_str, lamports, sol_amount, network, adapter.endpoint, wallet_type_str },
         ) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -376,4 +484,3 @@ fn receiptBlockNumber(receipt: TransactionReceipt) ?u64 {
         .deposit_receipt => |value| value.blockNumber,
     };
 }
-
