@@ -72,11 +72,6 @@ pub const HttpBridgeTransport = struct {
         const response = self.allocator.dupe(u8, message) catch return error.OutOfMemory;
         self.outgoing = response;
 
-        if (self.current_request) |msg| {
-            self.allocator.free(msg);
-            self.current_request = null;
-        }
-
         self.cond.signal();
     }
 
