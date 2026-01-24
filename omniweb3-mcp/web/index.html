@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniWeb3 MCP - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@privy-io/js-sdk-core@latest/dist/umd/index.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .gradient-text {
+            background: linear-gradient(90deg, #00d4ff, #7c3aed, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass rounded-2xl p-8 max-w-md w-full text-center">
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold gradient-text mb-2">OmniWeb3 MCP</h1>
+            <p class="text-gray-400">Cross-chain Web3 MCP for AI Agents</p>
+        </div>
+
+        <!-- Login Section -->
+        <div id="login-section">
+            <p class="text-gray-300 mb-6">Connect your wallet to get started</p>
+            <button id="login-btn" class="w-full bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105">
+                🔐 Connect Wallet
+            </button>
+        </div>
+
+        <!-- Logged In Section -->
+        <div id="logged-section" class="hidden">
+            <div class="mb-6">
+                <div class="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span class="text-3xl">✅</span>
+                </div>
+                <p class="text-green-400 font-semibold">Connected!</p>
+            </div>
+            
+            <div class="text-left mb-6">
+                <p class="text-gray-400 text-sm mb-2">Wallet Address:</p>
+                <p id="wallet-address" class="text-white font-mono text-sm bg-black/30 p-3 rounded-lg break-all"></p>
+            </div>
+
+            <div class="text-left mb-6">
+                <p class="text-gray-400 text-sm mb-2">Your Access Token:</p>
+                <div class="relative">
+                    <textarea id="access-token" readonly class="w-full text-white font-mono text-xs bg-black/30 p-3 rounded-lg h-24 resize-none"></textarea>
+                    <button id="copy-btn" class="absolute top-2 right-2 bg-purple-600 hover:bg-purple-700 text-white text-xs py-1 px-2 rounded">
+                        Copy
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-left mb-6 glass rounded-lg p-4">
+                <p class="text-gray-400 text-sm mb-2">📋 Claude Desktop Config:</p>
+                <pre id="config-example" class="text-xs text-gray-300 overflow-x-auto"></pre>
+                <button id="copy-config-btn" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-2 rounded">
+                    Copy Config
+                </button>
+            </div>
+
+            <button id="logout-btn" class="w-full bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold py-3 px-6 rounded-xl transition-all duration-200">
+                Disconnect
+            </button>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading-section" class="hidden">
+            <div class="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
+            <p class="text-gray-400 mt-4">Connecting...</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 pt-6 border-t border-white/10">
+            <p class="text-gray-500 text-sm">
+                MCP Endpoint: <code class="text-purple-400">https://api.web3mcp.app</code>
+            </p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { PrivyClient } from 'https://esm.sh/@privy-io/server-auth@latest';
+        
+        const PRIVY_APP_ID = 'clt574a4m058ovy6y0glgc48j';
+        
+        // Initialize Privy
+        const privy = new window.Privy.PrivyClient({
+            appId: PRIVY_APP_ID,
+        });
+
+        const loginSection = document.getElementById('login-section');
+        const loggedSection = document.getElementById('logged-section');
+        const loadingSection = document.getElementById('loading-section');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const copyBtn = document.getElementById('copy-btn');
+        const copyConfigBtn = document.getElementById('copy-config-btn');
+        const walletAddress = document.getElementById('wallet-address');
+        const accessToken = document.getElementById('access-token');
+        const configExample = document.getElementById('config-example');
+
+        function showSection(section) {
+            loginSection.classList.add('hidden');
+            loggedSection.classList.add('hidden');
+            loadingSection.classList.add('hidden');
+            section.classList.remove('hidden');
+        }
+
+        function updateUI(user, token) {
+            if (user && token) {
+                const address = user.wallet?.address || user.email?.address || 'Unknown';
+                walletAddress.textContent = address;
+                accessToken.value = token;
+                
+                const config = {
+                    mcpServers: {
+                        omniweb3: {
+                            command: "npx",
+                            args: ["-y", "mcp-remote", "https://api.web3mcp.app/", "--header", `Authorization:Bearer ${token}`]
+                        }
+                    }
+                };
+                configExample.textContent = JSON.stringify(config, null, 2);
+                
+                showSection(loggedSection);
+            } else {
+                showSection(loginSection);
+            }
+        }
+
+        // Check existing session
+        async function checkSession() {
+            try {
+                const { user, token } = await privy.getUser();
+                if (user) {
+                    updateUI(user, token);
+                }
+            } catch (e) {
+                console.log('No existing session');
+            }
+        }
+
+        loginBtn.addEventListener('click', async () => {
+            showSection(loadingSection);
+            try {
+                const { user, token } = await privy.login();
+                updateUI(user, token);
+            } catch (e) {
+                console.error('Login failed:', e);
+                showSection(loginSection);
+                alert('Login failed. Please try again.');
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            await privy.logout();
+            showSection(loginSection);
+        });
+
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(accessToken.value);
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+        });
+
+        copyConfigBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(configExample.textContent);
+            copyConfigBtn.textContent = 'Copied!';
+            setTimeout(() => copyConfigBtn.textContent = 'Copy Config', 2000);
+        });
+
+        checkSession();
+    </script>
+</body>
+</html>

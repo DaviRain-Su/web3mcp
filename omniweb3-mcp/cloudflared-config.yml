@@ -1,0 +1,11 @@
+tunnel: 561fc6c8-f6b5-4d1a-8110-d4a3b826a498
+credentials-file: /root/.cloudflared/561fc6c8-f6b5-4d1a-8110-d4a3b826a498.json
+
+ingress:
+  - hostname: api.web3mcp.app
+    service: http://localhost:8765
+  - hostname: web3mcp.app
+    service: http://localhost:8080
+  - hostname: www.web3mcp.app
+    service: http://localhost:8080
+  - service: http_status:404
