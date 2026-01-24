@@ -38,7 +38,7 @@ pub const HttpBridgeTransport = struct {
     }
 
     pub fn submit(self: *HttpBridgeTransport, message: []u8) ![]u8 {
-        const timeout_ns = 5 * std.time.ns_per_s;
+        const timeout_ns = 60 * std.time.ns_per_s;
         var waited_ns: u64 = 0;
 
         self.mutex.lock();
