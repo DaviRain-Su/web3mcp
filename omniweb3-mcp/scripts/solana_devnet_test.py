@@ -4,11 +4,13 @@ import os
 import subprocess
 import time
 import select
+import urllib.request
 
 RPC_ENDPOINT = os.environ.get("SOLANA_RPC_ENDPOINT", "https://api.devnet.solana.com")
 NETWORK = os.environ.get("SOLANA_NETWORK", "devnet")
 TARGET_ADDRESS = os.environ.get("SOLANA_TO_ADDRESS")
 AUTO_RECIPIENT_PATH = "/tmp/solana-test-recipient.json"
+TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 
 server = subprocess.Popen(
     ["./zig-out/bin/omniweb3-mcp"],
@@ -62,6 +64,27 @@ def extract_tool_payload(line):
         return json.loads(text)
     except json.JSONDecodeError:
         return None
+
+
+def rpc_call(method, params=None):
+    body = {"jsonrpc": "2.0", "id": 1, "method": method}
+    if params is not None:
+        body["params"] = params
+    req = urllib.request.Request(
+        RPC_ENDPOINT,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = resp.read().decode("utf-8")
+        return json.loads(data)
+
+
+def parse_message_from_output(output: str):
+    for line in output.splitlines():
+        if "Transaction Message:" in line:
+            return line.split("Transaction Message:", 1)[-1].strip()
+    return None
 
 
 def parse_token_from_output(output: str):
@@ -377,5 +400,108 @@ try:
             },
         }
         print(send(block_time, timeout_s=8))
+
+    latest_blockhash = {
+        "jsonrpc": "2.0",
+        "id": 15,
+        "method": "tools/call",
+        "params": {
+            "name": "get_latest_blockhash",
+            "arguments": {
+                "chain": "solana",
+                "network": NETWORK,
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(latest_blockhash, timeout_s=8))
+
+    min_rent = {
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "tools/call",
+        "params": {
+            "name": "get_minimum_balance_for_rent_exemption",
+            "arguments": {
+                "chain": "solana",
+                "data_len": 165,
+                "network": NETWORK,
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(min_rent, timeout_s=8))
+
+    program_accounts = {
+        "jsonrpc": "2.0",
+        "id": 17,
+        "method": "tools/call",
+        "params": {
+            "name": "get_program_accounts",
+            "arguments": {
+                "chain": "solana",
+                "program_id": TOKEN_PROGRAM_ID,
+                "network": NETWORK,
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(program_accounts, timeout_s=12))
+
+    vote_accounts = {
+        "jsonrpc": "2.0",
+        "id": 18,
+        "method": "tools/call",
+        "params": {
+            "name": "get_vote_accounts",
+            "arguments": {
+                "chain": "solana",
+                "network": NETWORK,
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(vote_accounts, timeout_s=12))
+
+    try:
+        latest = rpc_call("getLatestBlockhash")
+        blockhash = latest["result"]["value"]["blockhash"]
+        msg_output = subprocess.run(
+            [
+                "solana",
+                "transfer",
+                "--sign-only",
+                "--dump-transaction-message",
+                "--url",
+                RPC_ENDPOINT,
+                "--blockhash",
+                blockhash,
+                recipient,
+                "0.000001",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        message_b64 = parse_message_from_output(msg_output.stdout + "\n" + msg_output.stderr)
+    except Exception:
+        message_b64 = None
+
+    if message_b64:
+        fee_for_message = {
+            "jsonrpc": "2.0",
+            "id": 19,
+            "method": "tools/call",
+            "params": {
+                "name": "get_fee_for_message",
+                "arguments": {
+                    "chain": "solana",
+                    "message": message_b64,
+                    "network": NETWORK,
+                    "endpoint": RPC_ENDPOINT,
+                },
+            },
+        }
+        print(send(fee_for_message, timeout_s=8))
 finally:
     server.terminate()

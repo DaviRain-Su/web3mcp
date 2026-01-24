@@ -50,6 +50,12 @@
   - 关闭空 Token 账户工具
   - 文档与注册同步
 
+## v0.3.5 - Solana Readonly Extras
+- Status: ✅ Completed (2026-01-23)
+- Scope:
+  - get_latest_blockhash / rent / fee / program accounts / vote accounts
+  - 适配器与文档同步
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:

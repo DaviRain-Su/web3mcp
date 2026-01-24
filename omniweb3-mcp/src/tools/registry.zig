@@ -30,6 +30,11 @@ const signatures_for_address = @import("signatures_for_address.zig");
 const block_time = @import("block_time.zig");
 const get_wallet_address = @import("get_wallet_address.zig");
 const close_empty_token_accounts = @import("close_empty_token_accounts.zig");
+const get_latest_blockhash = @import("get_latest_blockhash.zig");
+const get_minimum_balance_for_rent_exemption = @import("get_minimum_balance_for_rent_exemption.zig");
+const get_fee_for_message = @import("get_fee_for_message.zig");
+const get_program_accounts = @import("get_program_accounts.zig");
+const get_vote_accounts = @import("get_vote_accounts.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -241,6 +246,41 @@ pub fn registerAll(server: *mcp.Server) !void {
         .name = "close_empty_token_accounts",
         .description = "Close empty SPL token accounts. Parameters: chain=solana, keypair_path (optional), network (optional), endpoint (optional)",
         .handler = close_empty_token_accounts.handle,
+    });
+
+    // get latest blockhash (Solana only)
+    try server.addTool(.{
+        .name = "get_latest_blockhash",
+        .description = "Get latest Solana blockhash. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = get_latest_blockhash.handle,
+    });
+
+    // get minimum balance for rent exemption (Solana only)
+    try server.addTool(.{
+        .name = "get_minimum_balance_for_rent_exemption",
+        .description = "Get minimum balance for rent exemption. Parameters: chain=solana, data_len, network (optional), endpoint (optional)",
+        .handler = get_minimum_balance_for_rent_exemption.handle,
+    });
+
+    // get fee for message (Solana only)
+    try server.addTool(.{
+        .name = "get_fee_for_message",
+        .description = "Get fee for a base64 transaction message. Parameters: chain=solana, message, network (optional), endpoint (optional)",
+        .handler = get_fee_for_message.handle,
+    });
+
+    // get program accounts (Solana only)
+    try server.addTool(.{
+        .name = "get_program_accounts",
+        .description = "Get program accounts. Parameters: chain=solana, program_id, network (optional), endpoint (optional)",
+        .handler = get_program_accounts.handle,
+    });
+
+    // get vote accounts (Solana only)
+    try server.addTool(.{
+        .name = "get_vote_accounts",
+        .description = "Get vote accounts. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = get_vote_accounts.handle,
     });
 }
 

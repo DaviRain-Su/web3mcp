@@ -119,6 +119,11 @@ omniweb3-mcp/
 - `get_block_time`: 获取 slot 对应区块时间
 - `get_wallet_address`: 获取钱包地址
 - `close_empty_token_accounts`: 关闭空 Token 账户
+- `get_latest_blockhash`: 获取最新 blockhash
+- `get_minimum_balance_for_rent_exemption`: 获取租金豁免最小余额
+- `get_fee_for_message`: 获取消息费用
+- `get_program_accounts`: 获取 program accounts
+- `get_vote_accounts`: 获取 vote accounts
 
 ## Zig 0.16 API 变更
 

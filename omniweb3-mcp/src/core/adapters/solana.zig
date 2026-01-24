@@ -18,6 +18,8 @@ const TokenSupply = solana_client.types.TokenSupply;
 const TokenLargestAccount = solana_client.types.TokenLargestAccount;
 const Supply = solana_client.types.Supply;
 const RpcVersionInfo = solana_client.types.RpcVersionInfo;
+const ProgramAccount = solana_client.types.ProgramAccount;
+const VoteAccounts = solana_client.types.VoteAccounts;
 const TokenAccountFilter = solana_client.RpcClient.TokenAccountFilter;
 const GetBlockConfig = solana_client.RpcClient.GetBlockConfig;
 const TOKEN_PROGRAM_ID = solana_sdk.spl.token.instruction.TOKEN_PROGRAM_ID;
@@ -86,6 +88,22 @@ pub const SolanaAdapter = struct {
 
     pub fn getLatestBlockhash(self: *SolanaAdapter) !solana_client.LatestBlockhash {
         return self.client.getLatestBlockhash();
+    }
+
+    pub fn getMinimumBalanceForRentExemption(self: *SolanaAdapter, data_len: usize) !u64 {
+        return self.client.getMinimumBalanceForRentExemption(data_len);
+    }
+
+    pub fn getFeeForMessage(self: *SolanaAdapter, message: []const u8) !?u64 {
+        return self.client.getFeeForMessage(message);
+    }
+
+    pub fn getProgramAccounts(self: *SolanaAdapter, program_id: PublicKey) ![]ProgramAccount {
+        return self.client.getProgramAccounts(program_id);
+    }
+
+    pub fn getVoteAccounts(self: *SolanaAdapter) !VoteAccounts {
+        return self.client.getVoteAccounts();
     }
 
     pub fn getSlot(self: *SolanaAdapter) !u64 {

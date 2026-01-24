@@ -182,6 +182,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Plan next milestone (v0.4.0 protocols)
 
+### Session 2026-01-23-013
+
+**Date**: 2026-01-23
+**Goal**: Add Solana readonly extra tools
+
+#### Completed Work
+1. Added tools: get_latest_blockhash, get_minimum_balance_for_rent_exemption, get_fee_for_message
+2. Added tools: get_program_accounts, get_vote_accounts
+3. Extended Solana adapter + registry + README
+4. Added v0.3.5 story + roadmap entry
+
+#### Test Results
+- Build: `zig16 build` (pass)
+- Solana: `python3 scripts/solana_devnet_test.py` (localhost/surfpool, pass)
+
+#### Next Steps
+- [ ] Plan next milestone (v0.4.0 protocols)
+
 ### Session 2026-01-23-012
 
 **Date**: 2026-01-23
