@@ -23,7 +23,7 @@
   - EIP-1559 + Legacy 交易支持
 
 ## v0.3.1 - 基础能力增强（Solana + EVM）
-- Status: ⏳ Pending
+- Status: ✅ Completed (2026-01-23)
 - Scope:
   - Solana 基础补全：账户信息、交易状态、SPL Token 基础
   - EVM 基础补全：交易/区块查询、nonce/fee/estimate、ERC20 余额

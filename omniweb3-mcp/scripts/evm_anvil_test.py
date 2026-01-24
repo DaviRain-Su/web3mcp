@@ -7,6 +7,8 @@ import select
 
 TARGET_ADDRESS = "0x082a0acDe14881b38963c732E00604A587083937"
 RPC_ENDPOINT = "http://127.0.0.1:8545"
+TOKEN_ADDRESS = os.environ.get("EVM_TOKEN_ADDRESS")
+TOKEN_OWNER = os.environ.get("EVM_TOKEN_OWNER")
 
 server = subprocess.Popen(
     ["./zig-out/bin/omniweb3-mcp"],
@@ -57,9 +59,55 @@ try:
     server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
     server.stdin.flush()
 
-    balance = {
+    block_number = {
         "jsonrpc": "2.0",
         "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "get_block_number",
+            "arguments": {
+                "chain": "ethereum",
+                "network": "mainnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(block_number, timeout_s=8))
+
+    gas_price = {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "get_gas_price",
+            "arguments": {
+                "chain": "ethereum",
+                "network": "mainnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(gas_price, timeout_s=8))
+
+    nonce = {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+            "name": "get_nonce",
+            "arguments": {
+                "chain": "ethereum",
+                "network": "mainnet",
+                "endpoint": RPC_ENDPOINT,
+                "address": TARGET_ADDRESS,
+            },
+        },
+    }
+    print(send(nonce, timeout_s=8))
+
+    balance = {
+        "jsonrpc": "2.0",
+        "id": 5,
         "method": "tools/call",
         "params": {
             "name": "get_balance",
@@ -73,9 +121,27 @@ try:
     }
     print(send(balance, timeout_s=8))
 
+    if TOKEN_ADDRESS and TOKEN_OWNER:
+        token_balance = {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "token_balance",
+                "arguments": {
+                    "chain": "ethereum",
+                    "network": "mainnet",
+                    "endpoint": RPC_ENDPOINT,
+                    "token_address": TOKEN_ADDRESS,
+                    "owner": TOKEN_OWNER,
+                },
+            },
+        }
+        print(send(token_balance, timeout_s=8))
+
     transfer = {
         "jsonrpc": "2.0",
-        "id": 3,
+        "id": 7,
         "method": "tools/call",
         "params": {
             "name": "transfer",
@@ -94,7 +160,7 @@ try:
 
     balance2 = {
         "jsonrpc": "2.0",
-        "id": 4,
+        "id": 8,
         "method": "tools/call",
         "params": {
             "name": "get_balance",

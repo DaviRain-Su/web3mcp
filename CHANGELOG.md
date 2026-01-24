@@ -180,7 +180,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Solana: `python3 scripts/solana_devnet_test.py` (localhost/surfpool, pass)
 
 #### Next Steps
-- [ ] Verify EVM tools on Anvil
+- [ ] Plan next milestone (v0.4.0 protocols)
+
+### Session 2026-01-23-011
+
+**Date**: 2026-01-23
+**Goal**: Validate EVM base tools on Anvil
+
+#### Completed Work
+1. Extended `scripts/evm_anvil_test.py` with block_number/gas_price/nonce/token_balance checks
+2. Deployed a local ERC20 test token for token_balance verification
+
+#### Test Results
+- EVM: `python3 scripts/evm_anvil_test.py` (Anvil, pass)
+
+#### Next Steps
+- [ ] Plan next milestone (v0.4.0 protocols)
 
 ### Session 2026-01-23-008
 
