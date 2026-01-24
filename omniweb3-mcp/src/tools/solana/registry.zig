@@ -30,42 +30,75 @@ const get_fee_for_message = @import("get_fee_for_message.zig");
 const get_program_accounts = @import("get_program_accounts.zig");
 const get_vote_accounts = @import("get_vote_accounts.zig");
 
-// DeFi integrations - Jupiter
-const get_jupiter_quote = @import("defi/jupiter/get_quote.zig");
-const get_jupiter_price = @import("defi/jupiter/get_price.zig");
-const search_jupiter_tokens = @import("defi/jupiter/search_tokens.zig");
-const get_jupiter_tokens_by_tag = @import("defi/jupiter/get_tokens_by_tag.zig");
-const get_jupiter_recent_tokens = @import("defi/jupiter/get_recent_tokens.zig");
-const get_jupiter_balances = @import("defi/jupiter/get_balances.zig");
-const get_jupiter_holdings = @import("defi/jupiter/get_holdings.zig");
-const get_jupiter_shield = @import("defi/jupiter/get_shield.zig");
-const get_jupiter_positions = @import("defi/jupiter/get_positions.zig");
-const get_jupiter_platforms = @import("defi/jupiter/get_platforms.zig");
-const get_jupiter_trigger_orders = @import("defi/jupiter/get_trigger_orders.zig");
-const get_jupiter_recurring_orders = @import("defi/jupiter/get_recurring_orders.zig");
-const get_jupiter_lend_tokens = @import("defi/jupiter/get_lend_tokens.zig");
-const get_jupiter_lend_positions = @import("defi/jupiter/get_lend_positions.zig");
-const get_jupiter_program_labels = @import("defi/jupiter/get_program_labels.zig");
+// =============================================================================
+// DeFi integrations - Jupiter (organized by API category)
+// =============================================================================
 
-// Jupiter - Additional readonly APIs
-const get_jupiter_tokens_by_category = @import("defi/jupiter/get_tokens_by_category.zig");
-const jupiter_ultra_search = @import("defi/jupiter/ultra_search.zig");
-const get_jupiter_routers = @import("defi/jupiter/get_routers.zig");
-const get_jupiter_staked_jup = @import("defi/jupiter/get_staked_jup.zig");
-const get_jupiter_lend_earnings = @import("defi/jupiter/get_lend_earnings.zig");
+// Jupiter Swap API (Metis)
+const get_jupiter_quote = @import("defi/jupiter/swap/get_quote.zig");
+const jupiter_swap = @import("defi/jupiter/swap/swap.zig");
+const get_jupiter_program_labels = @import("defi/jupiter/swap/get_program_labels.zig");
 
-// Jupiter - Write APIs (transaction builders)
-const jupiter_swap = @import("defi/jupiter/swap.zig");
-const jupiter_ultra_order = @import("defi/jupiter/ultra_order.zig");
-const jupiter_ultra_execute = @import("defi/jupiter/ultra_execute.zig");
-const jupiter_create_trigger_order = @import("defi/jupiter/create_trigger_order.zig");
-const jupiter_cancel_trigger_order = @import("defi/jupiter/cancel_trigger_order.zig");
-const jupiter_execute_trigger = @import("defi/jupiter/execute_trigger.zig");
-const jupiter_create_recurring_order = @import("defi/jupiter/create_recurring_order.zig");
-const jupiter_cancel_recurring_order = @import("defi/jupiter/cancel_recurring_order.zig");
-const jupiter_execute_recurring = @import("defi/jupiter/execute_recurring.zig");
-const jupiter_lend_deposit = @import("defi/jupiter/lend_deposit.zig");
-const jupiter_lend_withdraw = @import("defi/jupiter/lend_withdraw.zig");
+// Jupiter Price API
+const get_jupiter_price = @import("defi/jupiter/price/get_price.zig");
+
+// Jupiter Ultra API
+const jupiter_ultra_order = @import("defi/jupiter/ultra/ultra_order.zig");
+const jupiter_ultra_execute = @import("defi/jupiter/ultra/ultra_execute.zig");
+const get_jupiter_balances = @import("defi/jupiter/ultra/get_balances.zig");
+const get_jupiter_holdings = @import("defi/jupiter/ultra/get_holdings.zig");
+const get_jupiter_shield = @import("defi/jupiter/ultra/get_shield.zig");
+const jupiter_ultra_search = @import("defi/jupiter/ultra/ultra_search.zig");
+const get_jupiter_routers = @import("defi/jupiter/ultra/get_routers.zig");
+
+// Jupiter Trigger API (Limit Orders)
+const jupiter_create_trigger_order = @import("defi/jupiter/trigger/create_trigger_order.zig");
+const jupiter_cancel_trigger_order = @import("defi/jupiter/trigger/cancel_trigger_order.zig");
+const jupiter_cancel_trigger_orders = @import("defi/jupiter/trigger/cancel_trigger_orders.zig");
+const jupiter_execute_trigger = @import("defi/jupiter/trigger/execute_trigger.zig");
+const get_jupiter_trigger_orders = @import("defi/jupiter/trigger/get_trigger_orders.zig");
+
+// Jupiter Recurring API (DCA)
+const jupiter_create_recurring_order = @import("defi/jupiter/recurring/create_recurring_order.zig");
+const jupiter_cancel_recurring_order = @import("defi/jupiter/recurring/cancel_recurring_order.zig");
+const jupiter_execute_recurring = @import("defi/jupiter/recurring/execute_recurring.zig");
+const get_jupiter_recurring_orders = @import("defi/jupiter/recurring/get_recurring_orders.zig");
+
+// Jupiter Lend API (Earn)
+const jupiter_lend_deposit = @import("defi/jupiter/lend/lend_deposit.zig");
+const jupiter_lend_withdraw = @import("defi/jupiter/lend/lend_withdraw.zig");
+const jupiter_lend_mint = @import("defi/jupiter/lend/lend_mint.zig");
+const jupiter_lend_redeem = @import("defi/jupiter/lend/lend_redeem.zig");
+const get_jupiter_lend_tokens = @import("defi/jupiter/lend/get_lend_tokens.zig");
+const get_jupiter_lend_positions = @import("defi/jupiter/lend/get_lend_positions.zig");
+const get_jupiter_lend_earnings = @import("defi/jupiter/lend/get_lend_earnings.zig");
+
+// Jupiter Send API
+const jupiter_craft_send = @import("defi/jupiter/send/craft_send.zig");
+const jupiter_craft_clawback = @import("defi/jupiter/send/craft_clawback.zig");
+const jupiter_pending_invites = @import("defi/jupiter/send/get_pending_invites.zig");
+const jupiter_invite_history = @import("defi/jupiter/send/get_invite_history.zig");
+
+// Jupiter Studio API (Token Creation)
+const jupiter_get_dbc_fee = @import("defi/jupiter/studio/get_dbc_fee.zig");
+const jupiter_claim_dbc_fee = @import("defi/jupiter/studio/claim_dbc_fee.zig");
+const jupiter_get_dbc_pools = @import("defi/jupiter/studio/get_dbc_pools.zig");
+const jupiter_create_dbc_pool = @import("defi/jupiter/studio/create_dbc_pool.zig");
+const jupiter_submit_dbc_pool = @import("defi/jupiter/studio/submit_dbc_pool.zig");
+
+// Jupiter Tokens API V2
+const search_jupiter_tokens = @import("defi/jupiter/tokens/search_tokens.zig");
+const get_jupiter_tokens_by_tag = @import("defi/jupiter/tokens/get_tokens_by_tag.zig");
+const get_jupiter_tokens_by_category = @import("defi/jupiter/tokens/get_tokens_by_category.zig");
+const get_jupiter_recent_tokens = @import("defi/jupiter/tokens/get_recent_tokens.zig");
+const jupiter_get_tokens_content = @import("defi/jupiter/tokens/get_tokens_content.zig");
+const jupiter_get_tokens_cooking = @import("defi/jupiter/tokens/get_tokens_cooking.zig");
+const jupiter_get_tokens_feed = @import("defi/jupiter/tokens/get_tokens_feed.zig");
+
+// Jupiter Portfolio API
+const get_jupiter_positions = @import("defi/jupiter/portfolio/get_positions.zig");
+const get_jupiter_platforms = @import("defi/jupiter/portfolio/get_platforms.zig");
+const get_jupiter_staked_jup = @import("defi/jupiter/portfolio/get_staked_jup.zig");
 
 /// Tool definitions for Solana-specific operations.
 pub const tools = [_]mcp.tools.Tool{
@@ -368,13 +401,96 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Lend (Write)
     .{
         .name = "jupiter_lend_deposit",
-        .description = "Create Jupiter Lend deposit transaction. Parameters: user, mint, amount, endpoint (optional), api_key (optional)",
+        .description = "Create Jupiter Lend deposit transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_lend_deposit.handle,
     },
     .{
         .name = "jupiter_lend_withdraw",
-        .description = "Create Jupiter Lend withdraw transaction. Parameters: user, mint, amount, endpoint (optional), api_key (optional)",
+        .description = "Create Jupiter Lend withdraw transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_lend_withdraw.handle,
+    },
+    .{
+        .name = "jupiter_lend_mint",
+        .description = "Create Jupiter Lend mint shares transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_lend_mint.handle,
+    },
+    .{
+        .name = "jupiter_lend_redeem",
+        .description = "Create Jupiter Lend redeem shares transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_lend_redeem.handle,
+    },
+
+    // DeFi - Jupiter Trigger Batch (Write)
+    .{
+        .name = "jupiter_cancel_trigger_orders",
+        .description = "Batch cancel Jupiter trigger orders. Parameters: maker, orders (array), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_cancel_trigger_orders.handle,
+    },
+
+    // DeFi - Jupiter Send API
+    .{
+        .name = "jupiter_craft_send",
+        .description = "Create Jupiter Send transaction. Parameters: sender, recipient, mint, amount, memo (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_craft_send.handle,
+    },
+    .{
+        .name = "jupiter_craft_clawback",
+        .description = "Create Jupiter Send clawback transaction. Parameters: sender, invite_id, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_craft_clawback.handle,
+    },
+    .{
+        .name = "jupiter_pending_invites",
+        .description = "Get Jupiter Send pending invites. Parameters: address, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_pending_invites.handle,
+    },
+    .{
+        .name = "jupiter_invite_history",
+        .description = "Get Jupiter Send invite history. Parameters: address, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_invite_history.handle,
+    },
+
+    // DeFi - Jupiter Studio API (Token Creation)
+    .{
+        .name = "jupiter_get_dbc_fee",
+        .description = "Get unclaimed DBC pool trading fees. Parameters: pool, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_get_dbc_fee.handle,
+    },
+    .{
+        .name = "jupiter_claim_dbc_fee",
+        .description = "Create transaction to claim DBC pool fees. Parameters: pool, creator, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_claim_dbc_fee.handle,
+    },
+    .{
+        .name = "jupiter_get_dbc_pools",
+        .description = "Get DBC pool addresses for a token mint. Parameters: mint, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_get_dbc_pools.handle,
+    },
+    .{
+        .name = "jupiter_create_dbc_pool",
+        .description = "Create DBC pool transaction. Parameters: creator, name, symbol, uri, decimals (optional), total_supply (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_create_dbc_pool.handle,
+    },
+    .{
+        .name = "jupiter_submit_dbc_pool",
+        .description = "Submit signed DBC pool creation. Parameters: signed_transaction, content_image (optional), header_image (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_submit_dbc_pool.handle,
+    },
+
+    // DeFi - Jupiter Tokens V2 Content API
+    .{
+        .name = "jupiter_get_tokens_content",
+        .description = "Get content for multiple token mints (max 50). Parameters: mints (array), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_get_tokens_content.handle,
+    },
+    .{
+        .name = "jupiter_get_tokens_cooking",
+        .description = "Get content for trending (cooking) tokens. Parameters: endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_get_tokens_cooking.handle,
+    },
+    .{
+        .name = "jupiter_get_tokens_feed",
+        .description = "Get paginated content feed for a token. Parameters: mint, page (optional), limit (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .handler = jupiter_get_tokens_feed.handle,
     },
 };
 

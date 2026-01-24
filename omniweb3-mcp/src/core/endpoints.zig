@@ -134,6 +134,67 @@ pub const jupiter = struct {
 
     /// GET /lend/v1/earn/tokens - Available lending tokens
     pub const lend_tokens = base ++ "/lend/v1/earn/tokens";
+
+    /// POST /lend/v1/earn/mint - Mint lending shares
+    pub const lend_mint = base ++ "/lend/v1/earn/mint";
+
+    /// POST /lend/v1/earn/redeem - Redeem lending shares
+    pub const lend_redeem = base ++ "/lend/v1/earn/redeem";
+
+    // =========================================================================
+    // Send API
+    // =========================================================================
+
+    /// POST /send/v1/craft-send - Create send transaction
+    pub const send_craft = base ++ "/send/v1/craft-send";
+
+    /// POST /send/v1/craft-clawback - Create clawback transaction
+    pub const send_clawback = base ++ "/send/v1/craft-clawback";
+
+    /// GET /send/v1/pending-invites - Get pending invites
+    pub const send_pending = base ++ "/send/v1/pending-invites";
+
+    /// GET /send/v1/invite-history - Get invite history
+    pub const send_history = base ++ "/send/v1/invite-history";
+
+    // =========================================================================
+    // Studio API (Token Creation)
+    // =========================================================================
+
+    /// GET /studio/v1/dbc-fee - Get unclaimed DBC fees
+    pub const studio_dbc_fee = base ++ "/studio/v1/dbc-fee";
+
+    /// POST /studio/v1/dbc-fee-create-tx - Create fee claim transaction
+    pub const studio_dbc_fee_claim = base ++ "/studio/v1/dbc-fee-create-tx";
+
+    /// GET /studio/v1/dbc-pool-addresses-by-mint - Get pool addresses
+    pub const studio_dbc_pools = base ++ "/studio/v1/dbc-pool-addresses-by-mint";
+
+    /// POST /studio/v1/dbc-pool-create-tx - Create pool transaction
+    pub const studio_dbc_create = base ++ "/studio/v1/dbc-pool-create-tx";
+
+    /// POST /studio/v1/dbc-pool-submit - Submit pool creation
+    pub const studio_dbc_submit = base ++ "/studio/v1/dbc-pool-submit";
+
+    // =========================================================================
+    // Tokens V2 Content API
+    // =========================================================================
+
+    /// POST /tokens/v2/content - Get content for mints
+    pub const tokens_content = base ++ "/tokens/v2/content";
+
+    /// GET /tokens/v2/content/cooking - Get trending token content
+    pub const tokens_content_cooking = base ++ "/tokens/v2/content/cooking";
+
+    /// GET /tokens/v2/content/feed/{mint} - Get paginated content feed
+    pub const tokens_content_feed = base ++ "/tokens/v2/content/feed";
+
+    // =========================================================================
+    // Trigger API - Batch Operations
+    // =========================================================================
+
+    /// POST /trigger/v1/cancelOrders - Batch cancel orders
+    pub const trigger_cancel_batch = base ++ "/trigger/v1/cancelOrders";
 };
 
 // =============================================================================
