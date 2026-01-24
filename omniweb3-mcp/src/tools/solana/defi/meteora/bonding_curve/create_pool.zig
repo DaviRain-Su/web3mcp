@@ -8,9 +8,10 @@ const helpers = @import("../helpers.zig");
 const PublicKey = solana_sdk.PublicKey;
 
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    const user_str = mcp.tools.getString(args, "user") orelse {
-        return helpers.errorResult(allocator, "Missing required parameter: user");
+    const user_str = helpers.resolveUserPublicKey(allocator, args) catch |err| {
+        return helpers.errorResult(allocator, helpers.userResolveErrorMessage(err));
     };
+    defer allocator.free(user_str);
 
     const name = mcp.tools.getString(args, "name") orelse {
         return helpers.errorResult(allocator, "Missing required parameter: name");

@@ -3,6 +3,7 @@ const mcp = @import("mcp");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
 const secure_http = @import("../../../../../core/secure_http.zig");
+const jupiter_helpers = @import("../helpers.zig");
 
 /// Create a Jupiter Ultra swap order.
 /// Returns an unsigned transaction for signing.
@@ -41,11 +42,12 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    const taker = mcp.tools.getString(args, "taker") orelse {
-        return mcp.tools.errorResult(allocator, "Missing required parameter: taker") catch {
+    const taker = jupiter_helpers.resolveAddress(allocator, args, "taker") catch |err| {
+        return mcp.tools.errorResult(allocator, jupiter_helpers.userResolveErrorMessage(err)) catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
+    defer allocator.free(taker);
 
     const slippage_bps = mcp.tools.getInteger(args, "slippage_bps");
     const endpoint_override = mcp.tools.getString(args, "endpoint") orelse endpoints.jupiter.ultra_order;
@@ -106,12 +108,22 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer parsed.deinit();
 
+    const signature = if (jupiter_helpers.extractTransactionBase64(parsed.value)) |tx| blk: {
+        break :blk jupiter_helpers.signAndSendIfRequested(allocator, args, tx) catch |err| {
+            return mcp.tools.errorResult(allocator, jupiter_helpers.signErrorMessage(err)) catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
+        };
+    } else null;
+    defer if (signature) |sig| allocator.free(sig);
+
     const Response = struct {
         input_mint: []const u8,
         output_mint: []const u8,
         taker: []const u8,
         order: std.json.Value,
         endpoint: []const u8,
+        signature: ?[]const u8 = null,
     };
 
     const response_value: Response = .{
@@ -120,6 +132,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         .taker = taker,
         .order = parsed.value,
         .endpoint = endpoint_override,
+        .signature = signature,
     };
 
     const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {

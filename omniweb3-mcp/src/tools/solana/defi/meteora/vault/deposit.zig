@@ -12,9 +12,10 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         return helpers.errorResult(allocator, "Missing required parameter: token_mint");
     };
 
-    const user_str = mcp.tools.getString(args, "user") orelse {
-        return helpers.errorResult(allocator, "Missing required parameter: user");
+    const user_str = helpers.resolveUserPublicKey(allocator, args) catch |err| {
+        return helpers.errorResult(allocator, helpers.userResolveErrorMessage(err));
     };
+    defer allocator.free(user_str);
 
     _ = helpers.parsePublicKey(token_mint_str) orelse {
         return helpers.errorResult(allocator, "Invalid token_mint");

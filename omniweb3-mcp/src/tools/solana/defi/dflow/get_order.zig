@@ -3,6 +3,7 @@ const mcp = @import("mcp");
 const secure_http = @import("../../../../core/secure_http.zig");
 const solana_helpers = @import("../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../core/endpoints.zig");
+const dflow_helpers = @import("helpers.zig");
 
 /// Get dFlow order with quote and optional transaction (Solana-only).
 ///
@@ -51,7 +52,12 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     defer if (amount_str == null) allocator.free(amount_value);
 
     const slippage_bps = mcp.tools.getInteger(args, "slippage_bps") orelse 50;
-    const user_public_key = mcp.tools.getString(args, "user_public_key");
+    const user_public_key = dflow_helpers.resolveOptionalUserPublicKey(allocator, args) catch |err| {
+        return mcp.tools.errorResult(allocator, dflow_helpers.userResolveErrorMessage(err)) catch {
+            return mcp.tools.ToolError.InvalidArguments;
+        };
+    };
+    defer if (user_public_key) |value| allocator.free(value);
     const include_tx = mcp.tools.getBoolean(args, "include_tx") orelse false;
 
     // Build URL with query parameters

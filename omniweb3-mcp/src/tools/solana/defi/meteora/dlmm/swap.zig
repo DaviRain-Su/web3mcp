@@ -30,9 +30,10 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         return helpers.errorResult(allocator, "Missing required parameter: pool_address");
     };
 
-    const user_str = mcp.tools.getString(args, "user") orelse {
-        return helpers.errorResult(allocator, "Missing required parameter: user");
+    const user_str = helpers.resolveUserPublicKey(allocator, args) catch |err| {
+        return helpers.errorResult(allocator, helpers.userResolveErrorMessage(err));
     };
+    defer allocator.free(user_str);
 
     const pool_address = helpers.parsePublicKey(pool_address_str) orelse {
         return helpers.errorResult(allocator, "Invalid pool_address: not a valid Base58 public key");

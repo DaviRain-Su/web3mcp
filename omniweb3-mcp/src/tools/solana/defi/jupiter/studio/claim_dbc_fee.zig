@@ -3,6 +3,7 @@ const mcp = @import("mcp");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
 const secure_http = @import("../../../../../core/secure_http.zig");
+const jupiter_helpers = @import("../helpers.zig");
 
 /// Create a transaction to claim creator trading fees from a Jupiter DBC pool.
 ///
@@ -23,11 +24,12 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
 
-    const creator = mcp.tools.getString(args, "creator") orelse {
-        return mcp.tools.errorResult(allocator, "Missing required parameter: creator") catch {
+    const creator = jupiter_helpers.resolveAddress(allocator, args, "creator") catch |err| {
+        return mcp.tools.errorResult(allocator, jupiter_helpers.userResolveErrorMessage(err)) catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
+    defer allocator.free(creator);
 
     const endpoint_base = mcp.tools.getString(args, "endpoint") orelse endpoints.jupiter.studio_dbc_fee_claim;
     const insecure = mcp.tools.getBoolean(args, "insecure") orelse false;
@@ -64,11 +66,21 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer parsed.deinit();
 
+    const signature = if (jupiter_helpers.extractTransactionBase64(parsed.value)) |tx| blk: {
+        break :blk jupiter_helpers.signAndSendIfRequested(allocator, args, tx) catch |err| {
+            return mcp.tools.errorResult(allocator, jupiter_helpers.signErrorMessage(err)) catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
+        };
+    } else null;
+    defer if (signature) |sig| allocator.free(sig);
+
     const Response = struct {
         pool: []const u8,
         creator: []const u8,
         transaction: std.json.Value,
         endpoint: []const u8,
+        signature: ?[]const u8 = null,
     };
 
     const response_value: Response = .{
@@ -76,6 +88,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         .creator = creator,
         .transaction = parsed.value,
         .endpoint = endpoint_base,
+        .signature = signature,
     };
 
     const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {

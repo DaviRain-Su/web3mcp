@@ -3,6 +3,7 @@ const mcp = @import("mcp");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
 const secure_http = @import("../../../../../core/secure_http.zig");
+const jupiter_helpers = @import("../helpers.zig");
 
 /// Batch cancel Jupiter trigger (limit) orders.
 /// Returns unsigned transactions for canceling multiple orders.
@@ -18,11 +19,12 @@ const secure_http = @import("../../../../../core/secure_http.zig");
 ///
 /// Returns JSON with cancel transactions
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    const maker = mcp.tools.getString(args, "maker") orelse {
-        return mcp.tools.errorResult(allocator, "Missing required parameter: maker") catch {
+    const maker = jupiter_helpers.resolveAddress(allocator, args, "maker") catch |err| {
+        return mcp.tools.errorResult(allocator, jupiter_helpers.userResolveErrorMessage(err)) catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
+    defer allocator.free(maker);
 
     // Get orders array
     const orders_value = if (args) |a| switch (a) {

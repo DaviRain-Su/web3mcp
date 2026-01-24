@@ -453,7 +453,7 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Swap (Write)
     .{
         .name = "jupiter_swap",
-        .description = "Build Jupiter swap transaction. Parameters: quote_response (JSON), user_public_key, wrap_unwrap_sol (optional), use_shared_accounts (optional), fee_account (optional), compute_unit_price_micro_lamports (optional), endpoint (optional), api_key (optional)",
+        .description = "Build Jupiter swap transaction. Parameters: quote_response (JSON), user_public_key (or wallet_type+wallet_id), wrap_unwrap_sol (optional), use_shared_accounts (optional), fee_account (optional), compute_unit_price_micro_lamports (optional), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_swap.handle,
     },
     .{
@@ -465,7 +465,7 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Ultra (Write)
     .{
         .name = "jupiter_ultra_order",
-        .description = "Create Jupiter Ultra swap order. Parameters: input_mint, output_mint, amount, taker, slippage_bps (optional), endpoint (optional), api_key (optional)",
+        .description = "Create Jupiter Ultra swap order. Parameters: input_mint, output_mint, amount, taker (or wallet_type+wallet_id), slippage_bps (optional), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_ultra_order.handle,
     },
     .{
@@ -477,12 +477,12 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Trigger (Write)
     .{
         .name = "jupiter_create_trigger_order",
-        .description = "Create Jupiter trigger (limit) order. Parameters: input_mint, output_mint, maker, making_amount, taking_amount, expired_at (optional), endpoint (optional), api_key (optional)",
+        .description = "Create Jupiter trigger (limit) order. Parameters: input_mint, output_mint, maker (or wallet_type+wallet_id), making_amount, taking_amount, expired_at (optional), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_create_trigger_order.handle,
     },
     .{
         .name = "jupiter_cancel_trigger_order",
-        .description = "Cancel Jupiter trigger order. Parameters: maker, order, endpoint (optional), api_key (optional)",
+        .description = "Cancel Jupiter trigger order. Parameters: maker (or wallet_type+wallet_id), order, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_cancel_trigger_order.handle,
     },
     .{
@@ -494,12 +494,12 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Recurring (Write)
     .{
         .name = "jupiter_create_recurring_order",
-        .description = "Create Jupiter recurring (DCA) order. Parameters: user, input_mint, output_mint, in_amount, in_amount_per_cycle, cycle_frequency, min_out_amount_per_cycle (optional), max_out_amount_per_cycle (optional), start_at (optional), endpoint (optional), api_key (optional)",
+        .description = "Create Jupiter recurring (DCA) order. Parameters: user (or wallet_type+wallet_id), input_mint, output_mint, in_amount, in_amount_per_cycle, cycle_frequency, min_out_amount_per_cycle (optional), max_out_amount_per_cycle (optional), start_at (optional), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_create_recurring_order.handle,
     },
     .{
         .name = "jupiter_cancel_recurring_order",
-        .description = "Cancel Jupiter recurring order. Parameters: user, order, endpoint (optional), api_key (optional)",
+        .description = "Cancel Jupiter recurring order. Parameters: user (or wallet_type+wallet_id), order, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_cancel_recurring_order.handle,
     },
     .{
@@ -511,41 +511,41 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Lend (Write)
     .{
         .name = "jupiter_lend_deposit",
-        .description = "Create Jupiter Lend deposit transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create Jupiter Lend deposit transaction. Parameters: user (or wallet_type+wallet_id), mint, amount, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_lend_deposit.handle,
     },
     .{
         .name = "jupiter_lend_withdraw",
-        .description = "Create Jupiter Lend withdraw transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create Jupiter Lend withdraw transaction. Parameters: user (or wallet_type+wallet_id), mint, amount, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_lend_withdraw.handle,
     },
     .{
         .name = "jupiter_lend_mint",
-        .description = "Create Jupiter Lend mint shares transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create Jupiter Lend mint shares transaction. Parameters: user (or wallet_type+wallet_id), mint, amount, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_lend_mint.handle,
     },
     .{
         .name = "jupiter_lend_redeem",
-        .description = "Create Jupiter Lend redeem shares transaction. Parameters: user, mint, amount, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create Jupiter Lend redeem shares transaction. Parameters: user (or wallet_type+wallet_id), mint, amount, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_lend_redeem.handle,
     },
 
     // DeFi - Jupiter Trigger Batch (Write)
     .{
         .name = "jupiter_cancel_trigger_orders",
-        .description = "Batch cancel Jupiter trigger orders. Parameters: maker, orders (array), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Batch cancel Jupiter trigger orders. Parameters: maker (or wallet_type+wallet_id), orders (array), wallet_type (optional), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_cancel_trigger_orders.handle,
     },
 
     // DeFi - Jupiter Send API
     .{
         .name = "jupiter_craft_send",
-        .description = "Create Jupiter Send transaction. Parameters: sender, recipient, mint, amount, memo (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create Jupiter Send transaction. Parameters: sender (or wallet_type+wallet_id), recipient, mint, amount, memo (optional), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_craft_send.handle,
     },
     .{
         .name = "jupiter_craft_clawback",
-        .description = "Create Jupiter Send clawback transaction. Parameters: sender, invite_id, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create Jupiter Send clawback transaction. Parameters: sender (or wallet_type+wallet_id), invite_id, wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_craft_clawback.handle,
     },
     .{
@@ -567,7 +567,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "jupiter_claim_dbc_fee",
-        .description = "Create transaction to claim DBC pool fees. Parameters: pool, creator, endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create transaction to claim DBC pool fees. Parameters: pool, creator (or wallet_type+wallet_id), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_claim_dbc_fee.handle,
     },
     .{
@@ -577,7 +577,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "jupiter_create_dbc_pool",
-        .description = "Create DBC pool transaction. Parameters: creator, name, symbol, uri, decimals (optional), total_supply (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
+        .description = "Create DBC pool transaction. Parameters: creator (or wallet_type+wallet_id), name, symbol, uri, decimals (optional), total_supply (optional), wallet_type (optional, auto sign+send), wallet_id (privy), keypair_path (local), network (optional), sponsor (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_create_dbc_pool.handle,
     },
     .{

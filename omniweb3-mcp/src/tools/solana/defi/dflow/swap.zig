@@ -3,6 +3,7 @@ const mcp = @import("mcp");
 const secure_http = @import("../../../../core/secure_http.zig");
 const solana_helpers = @import("../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../core/endpoints.zig");
+const dflow_helpers = @import("helpers.zig");
 
 /// Create dFlow swap transaction from quote (Solana-only, imperative swap API).
 ///
@@ -12,11 +13,12 @@ const endpoints = @import("../../../../core/endpoints.zig");
 ///
 /// Returns JSON with swap transaction to sign and submit
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    const user_public_key = mcp.tools.getString(args, "user_public_key") orelse {
-        return mcp.tools.errorResult(allocator, "Missing required parameter: user_public_key") catch {
+    const user_public_key = dflow_helpers.resolveUserPublicKey(allocator, args) catch |err| {
+        return mcp.tools.errorResult(allocator, dflow_helpers.userResolveErrorMessage(err)) catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
+    defer allocator.free(user_public_key);
 
     // Get quote object from args
     const quote_value = if (args) |a| blk: {
