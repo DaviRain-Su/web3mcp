@@ -264,12 +264,31 @@ fn handleConnection(
             continue;
         };
 
-        var allocating = std.Io.Writer.Allocating.init(allocator);
-        defer allocating.deinit();
+        const content_len_opt = request.head.content_length;
+        const request_body = blk: {
+            if (content_len_opt) |content_len| {
+                var buf = try allocator.alloc(u8, content_len);
+                var read_total: usize = 0;
+                while (read_total < content_len) {
+                    const n = body_reader.read(buf[read_total..]) catch return error.ReadFailed;
+                    if (n == 0) break;
+                    read_total += n;
+                }
+                if (read_total != content_len) {
+                    buf = try allocator.realloc(buf, read_total);
+                }
+                break :blk buf;
+            }
 
-        _ = body_reader.streamRemaining(&allocating.writer) catch return error.ReadFailed;
+            var allocating = std.Io.Writer.Allocating.init(allocator);
+            defer allocating.deinit();
 
-        const request_body = try allocating.toOwnedSlice();
+            _ = body_reader.streamRemaining(&allocating.writer) catch return error.ReadFailed;
+            break :blk try allocating.toOwnedSlice();
+        };
+
+        defer allocator.free(request_body);
+
         const response_body = worker.transport.submit(request_body) catch {
             const status: std.http.Status = .internal_server_error;
             try request.respond("Internal Server Error", .{ .status = status });
