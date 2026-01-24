@@ -37,6 +37,7 @@ const get_vote_accounts = @import("get_vote_accounts.zig");
 // Jupiter Swap API (Metis)
 const get_jupiter_quote = @import("defi/jupiter/swap/get_quote.zig");
 const jupiter_swap = @import("defi/jupiter/swap/swap.zig");
+const jupiter_execute_swap = @import("defi/jupiter/swap/execute_swap.zig");
 const get_jupiter_program_labels = @import("defi/jupiter/swap/get_program_labels.zig");
 
 // Jupiter Price API
@@ -454,6 +455,11 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "jupiter_swap",
         .description = "Build Jupiter swap transaction. Parameters: quote_response (JSON), user_public_key, wrap_unwrap_sol (optional), use_shared_accounts (optional), fee_account (optional), compute_unit_price_micro_lamports (optional), endpoint (optional), api_key (optional)",
         .handler = jupiter_swap.handle,
+    },
+    .{
+        .name = "jupiter_execute_swap",
+        .description = "Execute complete Jupiter swap (quote + build + sign + send). Parameters: input_mint, output_mint, amount, wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), slippage_bps (optional), network (optional), sponsor (optional, privy only)",
+        .handler = jupiter_execute_swap.handle,
     },
 
     // DeFi - Jupiter Ultra (Write)
