@@ -6,6 +6,7 @@ import time
 import select
 
 RPC_ENDPOINT = os.environ.get("SOLANA_RPC_ENDPOINT", "https://api.devnet.solana.com")
+NETWORK = os.environ.get("SOLANA_NETWORK", "devnet")
 TARGET_ADDRESS = os.environ.get("SOLANA_TO_ADDRESS")
 AUTO_RECIPIENT_PATH = "/tmp/solana-test-recipient.json"
 
@@ -63,6 +64,28 @@ def extract_tool_payload(line):
         return None
 
 
+def parse_token_from_output(output: str):
+    for line in output.splitlines():
+        if "Address:" in line:
+            return line.split("Address:", 1)[-1].strip()
+        if "Creating token" in line:
+            return line.split("Creating token", 1)[-1].split("under program", 1)[0].strip()
+        if "Token:" in line:
+            return line.split("Token:", 1)[-1].strip()
+        if "token:" in line:
+            return line.split("token:", 1)[-1].strip()
+    return None
+
+
+def parse_account_from_output(output: str):
+    for line in output.splitlines():
+        if "Creating account" in line:
+            return line.split("Creating account", 1)[-1].strip()
+        if "Account:" in line:
+            return line.split("Account:", 1)[-1].strip()
+    return None
+
+
 try:
     init = {
         "jsonrpc": "2.0",
@@ -91,7 +114,7 @@ try:
             "name": "get_balance",
             "arguments": {
                 "chain": "solana",
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
                 "address": address,
             },
@@ -109,7 +132,7 @@ try:
                 "arguments": {
                     "chain": "solana",
                     "amount": 10000000,
-                    "network": "devnet",
+                    "network": NETWORK,
                     "endpoint": RPC_ENDPOINT,
                     "address": address,
                 },
@@ -128,7 +151,7 @@ try:
                     "arguments": {
                         "chain": "solana",
                         "signature": airdrop_payload["signature"],
-                        "network": "devnet",
+                        "network": NETWORK,
                         "endpoint": RPC_ENDPOINT,
                     },
                 },
@@ -169,7 +192,7 @@ try:
                 "chain": "solana",
                 "to_address": recipient,
                 "amount": 10000,
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
             },
         },
@@ -187,12 +210,44 @@ try:
                 "arguments": {
                     "chain": "solana",
                     "signature": transfer_payload["signature"],
-                    "network": "devnet",
+                    "network": NETWORK,
                     "endpoint": RPC_ENDPOINT,
                 },
             },
         }
         print(send(parse_tx, timeout_s=12))
+
+    run_mint = os.environ.get("SOLANA_RUN_MINT") == "1"
+    mint = os.environ.get("SOLANA_MINT")
+    if run_mint:
+        create_token = subprocess.run(
+            ["spl-token", "create-token", "--url", RPC_ENDPOINT],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        mint = parse_token_from_output(create_token.stdout + "\n" + create_token.stderr)
+        if not mint:
+            raise SystemExit("Failed to parse mint address from spl-token output")
+        create_account = subprocess.run(
+            ["spl-token", "create-account", mint, "--url", RPC_ENDPOINT],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        token_account = parse_account_from_output(create_account.stdout + "\n" + create_account.stderr)
+        if not token_account:
+            raise SystemExit("Failed to parse token account address from spl-token output")
+        subprocess.run(
+            ["spl-token", "mint", mint, "1", token_account, "--url", RPC_ENDPOINT],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print(f"Created mint: {mint} account: {token_account}")
+
+    if mint:
+        print(f"Using mint: {mint}")
 
     epoch_info = {
         "jsonrpc": "2.0",
@@ -202,7 +257,7 @@ try:
             "name": "get_epoch_info",
             "arguments": {
                 "chain": "solana",
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
             },
         },
@@ -217,7 +272,7 @@ try:
             "name": "get_version",
             "arguments": {
                 "chain": "solana",
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
             },
         },
@@ -232,39 +287,72 @@ try:
             "name": "get_supply",
             "arguments": {
                 "chain": "solana",
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
             },
         },
     }
     print(send(supply, timeout_s=8))
 
+    if mint:
+        token_supply = {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "tools/call",
+            "params": {
+                "name": "get_token_supply",
+                "arguments": {
+                    "chain": "solana",
+                    "mint": mint,
+                    "network": NETWORK,
+                    "endpoint": RPC_ENDPOINT,
+                },
+            },
+        }
+        print(send(token_supply, timeout_s=12))
+
+        token_largest = {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "get_token_largest_accounts",
+                "arguments": {
+                    "chain": "solana",
+                    "mint": mint,
+                    "network": NETWORK,
+                    "endpoint": RPC_ENDPOINT,
+                },
+            },
+        }
+        print(send(token_largest, timeout_s=60))
+
     signatures = {
         "jsonrpc": "2.0",
-        "id": 10,
+        "id": 12,
         "method": "tools/call",
         "params": {
             "name": "get_signatures_for_address",
             "arguments": {
                 "chain": "solana",
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
                 "address": address,
                 "limit": 5,
             },
         },
     }
-    print(send(signatures, timeout_s=8))
+    print(send(signatures, timeout_s=12))
 
     slot_line = send({
         "jsonrpc": "2.0",
-        "id": 11,
+        "id": 13,
         "method": "tools/call",
         "params": {
             "name": "get_slot",
             "arguments": {
                 "chain": "solana",
-                "network": "devnet",
+                "network": NETWORK,
                 "endpoint": RPC_ENDPOINT,
             },
         },
@@ -276,14 +364,14 @@ try:
     if slot_value is not None:
         block_time = {
             "jsonrpc": "2.0",
-            "id": 12,
+            "id": 14,
             "method": "tools/call",
             "params": {
                 "name": "get_block_time",
                 "arguments": {
                     "chain": "solana",
                     "slot": slot_value,
-                    "network": "devnet",
+                    "network": NETWORK,
                     "endpoint": RPC_ENDPOINT,
                 },
             },

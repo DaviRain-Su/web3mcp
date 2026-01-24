@@ -172,11 +172,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Goal**: Extend Solana devnet test coverage for new base tools
 
 #### Completed Work
-1. Added Solana devnet script coverage for epoch/version/supply/signatures/block_time
+1. Added Solana script coverage for epoch/version/supply/token_supply/token_largest_accounts/signatures/block_time
+2. Added localhost/surfpool support with optional mint creation
 
 #### Test Results
 - Build: `zig16 build` (pass)
-- Solana: `python3 scripts/solana_devnet_test.py` (pass)
+- Solana: `python3 scripts/solana_devnet_test.py` (localhost/surfpool, pass)
 
 #### Next Steps
 - [ ] Verify EVM tools on Anvil
