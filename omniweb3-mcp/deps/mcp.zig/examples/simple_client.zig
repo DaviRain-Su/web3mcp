@@ -6,26 +6,29 @@
 const std = @import("std");
 const mcp = @import("mcp");
 
-pub fn main() void {
-    run() catch |err| {
+pub fn main(init: std.process.Init) void {
+    run(init) catch |err| {
         mcp.reportError(err);
     };
 }
 
-fn run() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+fn run(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Get command line args for server path
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var args_it = try std.process.Args.Iterator.initAllocator(init.minimal.args, allocator);
+    defer args_it.deinit();
 
-    if (args.len < 2) {
-        std.debug.print("Usage: {s} <server-command>\n", .{args[0]});
-        std.debug.print("Example: {s} zig-out/bin/example-server\n", .{args[0]});
+    const argv0_z = args_it.next() orelse return;
+    const argv0 = try allocator.dupe(u8, std.mem.sliceTo(argv0_z, 0));
+    defer allocator.free(argv0);
+
+    const server_cmd_z = args_it.next() orelse {
+        std.debug.print("Usage: {s} <server-command>\n", .{argv0});
+        std.debug.print("Example: {s} zig-out/bin/example-server\n", .{argv0});
         return;
-    }
+    };
+    _ = server_cmd_z;
 
     // Create client
     var client = mcp.Client.init(.{

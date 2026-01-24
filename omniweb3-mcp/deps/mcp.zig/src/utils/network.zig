@@ -20,7 +20,10 @@ pub const NetworkError = error{
 /// Fetches a JSON response from a URL.
 /// Returns the parsed JSON value (caller must deinit).
 pub fn fetchJson(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !std.json.Parsed(std.json.Value) {
-    var client = http.Client{ .allocator = allocator };
+    var client = http.Client{
+        .allocator = allocator,
+        .io = std.Io.Threaded.global_single_threaded.io(),
+    };
     defer client.deinit();
 
     var req = try client.request(.GET, try std.Uri.parse(url), .{
@@ -49,18 +52,18 @@ pub fn fetchJson(allocator: std.mem.Allocator, url: []const u8, headers: []const
     var decompress: http.Decompress = undefined;
     var reader = response.readerDecompressing(&transfer_buffer, &decompress, decompress_buffer);
 
-    var body = std.ArrayList(u8).initCapacity(allocator, 4096) catch return NetworkError.ReadError;
-    defer body.deinit(allocator);
+    var body = std.Io.Writer.Allocating.initCapacity(allocator, 4096) catch return NetworkError.ReadError;
+    defer body.deinit();
 
-    const writer = body.writer(allocator);
     var buf: [4096]u8 = undefined;
     while (true) {
         const n = reader.readSliceShort(&buf) catch return NetworkError.ReadError;
         if (n == 0) break;
-        try writer.writeAll(buf[0..n]);
+        try body.writer.writeAll(buf[0..n]);
     }
 
+    const body_slice = body.writer.buffered();
     // Parse JSON from the response body.
     // std.json.parseFromSlice allocates copies of strings by default, so it's safe to free body.
-    return std.json.parseFromSlice(std.json.Value, allocator, body.items, .{});
+    return std.json.parseFromSlice(std.json.Value, allocator, body_slice, .{});
 }
