@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Session 2026-01-24-001
+
+**Date**: 2026-01-24
+**Goal**: v0.4.1 dFlow Complete API Integration (Swap + Prediction Market)
+
+#### Completed Work
+1. Added dFlow Swap API endpoints to `core/endpoints.zig`
+2. Added dFlow Prediction Market Metadata API endpoints
+3. Added dFlow HTTP helpers to `core/secure_http.zig` (dflowGet, dflowPost)
+4. Implemented 23 dFlow tools:
+   - **Swap API (11 tools)**:
+     - Imperative Swap: `get_dflow_quote`, `dflow_swap`, `dflow_swap_instructions`
+     - Declarative Swap: `get_dflow_intent`, `submit_dflow_intent`
+     - Order API: `get_dflow_order`, `get_dflow_order_status`
+     - Token API: `get_dflow_tokens`, `get_dflow_tokens_with_decimals`
+     - Venue API: `get_dflow_venues`
+     - Prediction Swap: `dflow_prediction_market_init`
+   - **Prediction Market Metadata API (12 tools)**:
+     - Events: `dflow_pm_get_events`, `dflow_pm_get_event`
+     - Markets: `dflow_pm_get_markets`, `dflow_pm_get_market`, `dflow_pm_get_market_by_mint`, `dflow_pm_get_outcome_mints`
+     - Orderbook: `dflow_pm_get_orderbook`, `dflow_pm_get_orderbook_by_mint`
+     - Trades: `dflow_pm_get_trades`
+     - Series: `dflow_pm_get_series`
+     - Search & Live: `dflow_pm_search_events`, `dflow_pm_get_live_data`
+5. Created dFlow registry and prediction submodule
+6. Updated ROADMAP.md with v0.4.0 completion and v0.4.1 milestone
+7. Created v0.4.1-dflow-integration.md story file
+
+#### Test Results
+- Build: `zig build` (pass)
+
+#### Files Modified
+- `omniweb3-mcp/src/core/endpoints.zig` - dFlow Swap + Prediction Market endpoints
+- `omniweb3-mcp/src/core/secure_http.zig` - dFlow HTTP helpers + DFLOW_API_KEY env
+- `omniweb3-mcp/src/tools/solana/defi/dflow/*.zig` - 11 Swap API tools
+- `omniweb3-mcp/src/tools/solana/defi/dflow/prediction/*.zig` - 12 Prediction Market tools
+- `omniweb3-mcp/src/tools/solana/registry.zig` - 23 dFlow tool registrations
+- `ROADMAP.md` - v0.4.0 completed, v0.4.1 completed
+- `stories/v0.4.1-dflow-integration.md` - Story file
+
+#### Next Steps
+- [ ] Test dFlow tools with live API
+- [ ] Update README.zig-0.16.md with dFlow tools
+
 ### Session 2026-01-23-003
 
 **Date**: 2026-01-23

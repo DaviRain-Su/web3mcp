@@ -69,10 +69,43 @@
   - 注册与文档同步
   - 回归测试
 
-## v0.4.0 - 协议集成（Swap + Lending）
-- Status: 🔨 In Progress
+## v0.4.0 - Jupiter API 完整集成
+- Status: ✅ Completed (2026-01-24)
 - Scope:
-  - DEX Quote：Jupiter（quote-only）
+  - Jupiter Swap API: quote, swap, program labels
+  - Jupiter Price API: token prices
+  - Jupiter Ultra API: unified order flow
+  - Jupiter Trigger API: limit/DCA orders
+  - Jupiter Recurring API: recurring swaps
+  - Jupiter Lend API: lending operations
+  - Jupiter Send API: gasless transfers
+  - Jupiter Studio API: DBC pool management
+  - Jupiter Tokens API: token metadata
+  - Jupiter Portfolio API: portfolio tracking
+  - Total: 46 Jupiter tools
+
+## v0.4.1 - dFlow Complete API 集成
+- Status: ✅ Completed (2026-01-24)
+- Scope:
+  - dFlow Swap API:
+    - Imperative Swap: quote, swap, swap-instructions
+    - Declarative Swap: intent, submit-intent
+    - Order API: order, order-status
+    - Token API: tokens, tokens-with-decimals
+    - Venue API: venues
+    - Prediction Swap: prediction-market-init
+  - dFlow Prediction Market Metadata API:
+    - Events: events, event by ticker
+    - Markets: markets, market by ticker/mint, outcome-mints
+    - Orderbook: by ticker, by mint
+    - Trades: paginated trades
+    - Series: series templates
+    - Search & Live Data
+  - Total: 23 dFlow tools (11 Swap + 12 Prediction Market)
+
+## v0.4.2 - Lending 协议集成
+- Status: ⏳ Pending
+- Scope:
   - Lending：Marginfi / AAVE / Venus（deposit/withdraw/borrow/repay）
   - 跨链比较工具：compare_swap_rates, find_best_lending_rate
 

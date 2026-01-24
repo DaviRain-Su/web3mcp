@@ -100,6 +100,48 @@ const get_jupiter_positions = @import("defi/jupiter/portfolio/get_positions.zig"
 const get_jupiter_platforms = @import("defi/jupiter/portfolio/get_platforms.zig");
 const get_jupiter_staked_jup = @import("defi/jupiter/portfolio/get_staked_jup.zig");
 
+// =============================================================================
+// DeFi integrations - dFlow Swap API
+// Docs: https://pond.dflow.net/swap-api-reference/introduction
+// =============================================================================
+
+// dFlow Imperative Swap API (precise route control)
+const get_dflow_quote = @import("defi/dflow/get_quote.zig");
+const dflow_swap = @import("defi/dflow/swap.zig");
+const dflow_swap_instructions = @import("defi/dflow/swap_instructions.zig");
+
+// dFlow Declarative Swap API (intent-based, deferred routing)
+const get_dflow_intent = @import("defi/dflow/get_intent.zig");
+const submit_dflow_intent = @import("defi/dflow/submit_intent.zig");
+
+// dFlow Order API
+const get_dflow_order = @import("defi/dflow/get_order.zig");
+const get_dflow_order_status = @import("defi/dflow/get_order_status.zig");
+
+// dFlow Token API
+const get_dflow_tokens = @import("defi/dflow/get_tokens.zig");
+const get_dflow_tokens_with_decimals = @import("defi/dflow/get_tokens_with_decimals.zig");
+
+// dFlow Venue API
+const get_dflow_venues = @import("defi/dflow/get_venues.zig");
+
+// dFlow Prediction Market Swap API
+const dflow_prediction_market_init = @import("defi/dflow/prediction_market_init.zig");
+
+// dFlow Prediction Market Metadata API
+const dflow_pm_get_events = @import("defi/dflow/prediction/get_events.zig");
+const dflow_pm_get_event = @import("defi/dflow/prediction/get_event.zig");
+const dflow_pm_get_markets = @import("defi/dflow/prediction/get_markets.zig");
+const dflow_pm_get_market = @import("defi/dflow/prediction/get_market.zig");
+const dflow_pm_get_market_by_mint = @import("defi/dflow/prediction/get_market_by_mint.zig");
+const dflow_pm_get_outcome_mints = @import("defi/dflow/prediction/get_outcome_mints.zig");
+const dflow_pm_get_orderbook = @import("defi/dflow/prediction/get_orderbook.zig");
+const dflow_pm_get_orderbook_by_mint = @import("defi/dflow/prediction/get_orderbook_by_mint.zig");
+const dflow_pm_get_trades = @import("defi/dflow/prediction/get_trades.zig");
+const dflow_pm_get_series = @import("defi/dflow/prediction/get_series.zig");
+const dflow_pm_search_events = @import("defi/dflow/prediction/search_events.zig");
+const dflow_pm_get_live_data = @import("defi/dflow/prediction/get_live_data.zig");
+
 /// Tool definitions for Solana-specific operations.
 pub const tools = [_]mcp.tools.Tool{
     // Token operations
@@ -491,6 +533,155 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "jupiter_get_tokens_feed",
         .description = "Get paginated content feed for a token. Parameters: mint, page (optional), limit (optional), endpoint (optional). API key from JUPITER_API_KEY env var.",
         .handler = jupiter_get_tokens_feed.handle,
+    },
+
+    // =========================================================================
+    // DeFi - dFlow Swap API
+    // =========================================================================
+
+    // dFlow Imperative Swap (precise route control)
+    .{
+        .name = "get_dflow_quote",
+        .description = "Get dFlow swap quote. Parameters: input_mint, output_mint, amount, slippage_bps (optional), user_public_key (optional). API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_quote.handle,
+    },
+    .{
+        .name = "dflow_swap",
+        .description = "Create dFlow swap transaction from quote. Parameters: quote (from get_dflow_quote), user_public_key. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_swap.handle,
+    },
+
+    // dFlow Declarative Swap (intent-based, deferred routing)
+    .{
+        .name = "get_dflow_intent",
+        .description = "Get dFlow intent quote for declarative swap. Parameters: input_mint, output_mint, amount, slippage_bps (optional), user_public_key. API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_intent.handle,
+    },
+    .{
+        .name = "submit_dflow_intent",
+        .description = "Submit signed dFlow intent transaction. Parameters: signed_transaction. API key from DFLOW_API_KEY env var.",
+        .handler = submit_dflow_intent.handle,
+    },
+
+    // dFlow Order API
+    .{
+        .name = "get_dflow_order",
+        .description = "Get dFlow order with quote and optional transaction. Parameters: input_mint, output_mint, amount, slippage_bps (optional), user_public_key (optional), include_tx (optional). API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_order.handle,
+    },
+    .{
+        .name = "get_dflow_order_status",
+        .description = "Get dFlow order status by signature. Parameters: signature. API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_order_status.handle,
+    },
+
+    // dFlow Token API
+    .{
+        .name = "get_dflow_tokens",
+        .description = "Get list of supported tokens on dFlow. Parameters: none. API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_tokens.handle,
+    },
+    .{
+        .name = "get_dflow_tokens_with_decimals",
+        .description = "Get tokens with decimal precision on dFlow. Parameters: none. API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_tokens_with_decimals.handle,
+    },
+
+    // dFlow Venue API
+    .{
+        .name = "get_dflow_venues",
+        .description = "Get list of supported DEX venues on dFlow. Parameters: none. API key from DFLOW_API_KEY env var.",
+        .handler = get_dflow_venues.handle,
+    },
+
+    // dFlow Additional Swap API
+    .{
+        .name = "dflow_swap_instructions",
+        .description = "Get dFlow swap instructions (not full tx). Parameters: quote, user_public_key. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_swap_instructions.handle,
+    },
+    .{
+        .name = "dflow_prediction_market_init",
+        .description = "Initialize dFlow prediction market position. Parameters: user_public_key, market_ticker, side (yes/no), amount, slippage_bps (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_prediction_market_init.handle,
+    },
+
+    // =========================================================================
+    // DeFi - dFlow Prediction Market Metadata API
+    // =========================================================================
+
+    // Events
+    .{
+        .name = "dflow_pm_get_events",
+        .description = "Get paginated prediction market events. Parameters: limit (optional), cursor (optional), include_markets (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_events.handle,
+    },
+    .{
+        .name = "dflow_pm_get_event",
+        .description = "Get single prediction market event by ticker. Parameters: ticker, include_markets (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_event.handle,
+    },
+
+    // Markets
+    .{
+        .name = "dflow_pm_get_markets",
+        .description = "Get paginated prediction markets. Parameters: limit (optional), cursor (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_markets.handle,
+    },
+    .{
+        .name = "dflow_pm_get_market",
+        .description = "Get single prediction market by ticker. Parameters: ticker. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_market.handle,
+    },
+    .{
+        .name = "dflow_pm_get_market_by_mint",
+        .description = "Get prediction market by mint address. Parameters: mint. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_market_by_mint.handle,
+    },
+    .{
+        .name = "dflow_pm_get_outcome_mints",
+        .description = "Get all outcome mints from prediction markets. Parameters: min_close_ts (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_outcome_mints.handle,
+    },
+
+    // Orderbook
+    .{
+        .name = "dflow_pm_get_orderbook",
+        .description = "Get prediction market orderbook by ticker. Parameters: ticker. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_orderbook.handle,
+    },
+    .{
+        .name = "dflow_pm_get_orderbook_by_mint",
+        .description = "Get prediction market orderbook by mint. Parameters: mint. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_orderbook_by_mint.handle,
+    },
+
+    // Trades
+    .{
+        .name = "dflow_pm_get_trades",
+        .description = "Get prediction market trades. Parameters: ticker (optional), limit (optional), cursor (optional), min_ts (optional), max_ts (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_trades.handle,
+    },
+
+    // Series
+    .{
+        .name = "dflow_pm_get_series",
+        .description = "Get all prediction market series templates. Parameters: none. API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_series.handle,
+    },
+
+    // Search
+    .{
+        .name = "dflow_pm_search_events",
+        .description = "Search prediction market events. Parameters: query, limit (optional). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_search_events.handle,
+    },
+
+    // Live Data
+    .{
+        .name = "dflow_pm_get_live_data",
+        .description = "Get live data for prediction market milestones. Parameters: milestones (comma-separated). API key from DFLOW_API_KEY env var.",
+        .handler = dflow_pm_get_live_data.handle,
     },
 };
 

@@ -15,6 +15,16 @@ pub fn getJupiterApiKey() ?[]const u8 {
     return null;
 }
 
+/// Get dFlow API key from environment variable.
+/// Returns null if not set.
+pub fn getDflowApiKey() ?[]const u8 {
+    const result = std.c.getenv("DFLOW_API_KEY");
+    if (result) |ptr| {
+        return std.mem.span(ptr);
+    }
+    return null;
+}
+
 /// Secure POST request using native Zig HTTP client.
 pub fn securePost(
     allocator: std.mem.Allocator,
@@ -89,6 +99,76 @@ pub fn secureGet(
         .location = .{ .url = url },
         .response_writer = &out.writer,
         .extra_headers = extra_headers,
+    }) catch {
+        return error.FetchFailed;
+    };
+
+    if (fetch_result.status.class() != .success) {
+        return error.FetchFailed;
+    }
+
+    return out.toOwnedSlice();
+}
+
+/// Secure GET request for dFlow API using native Zig HTTP client.
+/// Returns error.ApiKeyRequired if DFLOW_API_KEY environment variable is not set.
+pub fn dflowGet(
+    allocator: std.mem.Allocator,
+    url: []const u8,
+) ![]u8 {
+    const api_key = getDflowApiKey() orelse return error.ApiKeyRequired;
+
+    var client = std.http.Client{ .allocator = allocator, .io = evm_runtime.io() };
+    defer client.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+
+    // Build headers: x-api-key for dFlow (required)
+    var headers: [1]std.http.Header = .{
+        .{ .name = "x-api-key", .value = api_key },
+    };
+
+    const fetch_result = client.fetch(.{
+        .location = .{ .url = url },
+        .response_writer = &out.writer,
+        .extra_headers = &headers,
+    }) catch {
+        return error.FetchFailed;
+    };
+
+    if (fetch_result.status.class() != .success) {
+        return error.FetchFailed;
+    }
+
+    return out.toOwnedSlice();
+}
+
+/// Secure POST request for dFlow API using native Zig HTTP client.
+/// Returns error.ApiKeyRequired if DFLOW_API_KEY environment variable is not set.
+pub fn dflowPost(
+    allocator: std.mem.Allocator,
+    url: []const u8,
+    body: []const u8,
+) ![]u8 {
+    const api_key = getDflowApiKey() orelse return error.ApiKeyRequired;
+
+    var client = std.http.Client{ .allocator = allocator, .io = evm_runtime.io() };
+    defer client.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+
+    // Build headers: Content-Type + x-api-key for dFlow (required)
+    var headers: [2]std.http.Header = .{
+        .{ .name = "Content-Type", .value = "application/json" },
+        .{ .name = "x-api-key", .value = api_key },
+    };
+
+    const fetch_result = client.fetch(.{
+        .location = .{ .url = url },
+        .method = .POST,
+        .payload = body,
+        .response_writer = &out.writer,
+        .extra_headers = &headers,
     }) catch {
         return error.FetchFailed;
     };

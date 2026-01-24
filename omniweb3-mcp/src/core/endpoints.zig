@@ -238,3 +238,176 @@ pub const evm = struct {
         pub const sepolia = "https://sepolia.base.org";
     };
 };
+
+// =============================================================================
+// dFlow Swap API Endpoints
+// Docs: https://pond.dflow.net/swap-api-reference/introduction
+// =============================================================================
+
+pub const dflow = struct {
+    /// Base URL for dFlow Swap API
+    pub const base = "https://quote-api.dflow.net";
+
+    /// Base URL for dFlow Prediction Market Metadata API
+    pub const prediction_base = "https://prediction-market-metadata-api.dflow.net";
+
+    // =========================================================================
+    // Order API
+    // =========================================================================
+
+    /// GET /order - Get order with quote and optional transaction
+    pub const order = base ++ "/order";
+
+    /// GET /order-status - Check order status by signature
+    pub const order_status = base ++ "/order-status";
+
+    // =========================================================================
+    // Imperative Swap API (precise route control)
+    // =========================================================================
+
+    /// GET /quote - Get swap quote
+    pub const quote = base ++ "/quote";
+
+    /// POST /swap - Create swap transaction from quote
+    pub const swap = base ++ "/swap";
+
+    /// POST /swap-instructions - Get swap instructions (not full transaction)
+    pub const swap_instructions = base ++ "/swap-instructions";
+
+    // =========================================================================
+    // Declarative Swap API (intent-based, deferred routing)
+    // =========================================================================
+
+    /// GET /intent - Get intent quote
+    pub const intent = base ++ "/intent";
+
+    /// POST /submit-intent - Submit signed intent transaction
+    pub const submit_intent = base ++ "/submit-intent";
+
+    // =========================================================================
+    // Token APIs
+    // =========================================================================
+
+    /// GET /tokens - List supported tokens
+    pub const tokens = base ++ "/tokens";
+
+    /// GET /tokens-with-decimals - List tokens with decimal precision
+    pub const tokens_with_decimals = base ++ "/tokens-with-decimals";
+
+    // =========================================================================
+    // Venue APIs
+    // =========================================================================
+
+    /// GET /venues - List supported DEX venues
+    pub const venues = base ++ "/venues";
+
+    // =========================================================================
+    // Prediction Market Swap API
+    // =========================================================================
+
+    /// POST /prediction-market-init - Initialize prediction market
+    pub const prediction_market_init = base ++ "/prediction-market-init";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Events
+    // =========================================================================
+
+    /// GET /events - Get paginated list of events
+    pub const pm_events = prediction_base ++ "/events";
+
+    /// GET /events/{ticker} - Get single event by ticker
+    pub const pm_event = prediction_base ++ "/events";
+
+    /// GET /events/{ticker}/candlesticks - Get event candlesticks
+    pub const pm_event_candlesticks = prediction_base ++ "/events";
+
+    /// GET /events/{ticker}/forecast-percentile-history - Get forecast history
+    pub const pm_event_forecast = prediction_base ++ "/events";
+
+    /// GET /events/forecast-percentile-history-by-mint - Get forecast by mint
+    pub const pm_event_forecast_by_mint = prediction_base ++ "/events/forecast-percentile-history-by-mint";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Markets
+    // =========================================================================
+
+    /// GET /markets - Get paginated list of markets
+    pub const pm_markets = prediction_base ++ "/markets";
+
+    /// GET /markets/{ticker} - Get single market by ticker
+    pub const pm_market = prediction_base ++ "/markets";
+
+    /// GET /markets/by-mint/{mint} - Get market by mint address
+    pub const pm_market_by_mint = prediction_base ++ "/markets/by-mint";
+
+    /// GET /markets/{ticker}/candlesticks - Get market candlesticks
+    pub const pm_market_candlesticks = prediction_base ++ "/markets";
+
+    /// GET /markets/candlesticks-by-mint/{mint} - Get candlesticks by mint
+    pub const pm_market_candlesticks_by_mint = prediction_base ++ "/markets/candlesticks-by-mint";
+
+    /// POST /markets/batch - Get multiple markets by tickers/mints
+    pub const pm_markets_batch = prediction_base ++ "/markets/batch";
+
+    /// GET /markets/outcome-mints - Get all outcome mints
+    pub const pm_outcome_mints = prediction_base ++ "/markets/outcome-mints";
+
+    /// POST /markets/filter-outcome-mints - Filter addresses to outcome mints
+    pub const pm_filter_outcome_mints = prediction_base ++ "/markets/filter-outcome-mints";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Orderbook
+    // =========================================================================
+
+    /// GET /orderbook/{ticker} - Get orderbook by ticker
+    pub const pm_orderbook = prediction_base ++ "/orderbook";
+
+    /// GET /orderbook/by-mint/{mint} - Get orderbook by mint
+    pub const pm_orderbook_by_mint = prediction_base ++ "/orderbook/by-mint";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Trades
+    // =========================================================================
+
+    /// GET /trades - Get paginated trades
+    pub const pm_trades = prediction_base ++ "/trades";
+
+    /// GET /trades/by-mint/{mint} - Get trades by mint
+    pub const pm_trades_by_mint = prediction_base ++ "/trades/by-mint";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Live Data
+    // =========================================================================
+
+    /// GET /live-data - Get live data for milestones
+    pub const pm_live_data = prediction_base ++ "/live-data";
+
+    /// GET /live-data/by-event/{ticker} - Get live data by event
+    pub const pm_live_data_by_event = prediction_base ++ "/live-data/by-event";
+
+    /// GET /live-data/by-mint/{mint} - Get live data by mint
+    pub const pm_live_data_by_mint = prediction_base ++ "/live-data/by-mint";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Series
+    // =========================================================================
+
+    /// GET /series - Get all series templates
+    pub const pm_series = prediction_base ++ "/series";
+
+    /// GET /series/{ticker} - Get series by ticker
+    pub const pm_series_by_ticker = prediction_base ++ "/series";
+
+    // =========================================================================
+    // Prediction Market Metadata API - Search, Tags, Sports
+    // =========================================================================
+
+    /// GET /search - Search events with nested markets
+    pub const pm_search = prediction_base ++ "/search";
+
+    /// GET /tags/by-categories - Get tags by categories
+    pub const pm_tags = prediction_base ++ "/tags/by-categories";
+
+    /// GET /sports/filters - Get filters by sports
+    pub const pm_sports_filters = prediction_base ++ "/sports/filters";
+};
