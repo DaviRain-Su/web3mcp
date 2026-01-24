@@ -1,6 +1,10 @@
 # Zig build artifacts
 .zig-cache/
-zig-out/
+
+# 保留 zig-out/bin/ 中的预编译二进制
+zig-out/*
+!zig-out/bin/
+!zig-out/bin/omniweb3-mcp
 
 # OS files
 .DS_Store
