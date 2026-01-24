@@ -6,6 +6,10 @@ RUN curl -L https://ziglang.org/builds/zig-x86_64-linux-0.16.0-dev.2261+d6b3dd25
 ENV PATH="/opt/zig-x86_64-linux-0.16.0-dev.2261+d6b3dd25a:$PATH"
 WORKDIR /app
 COPY . .
+ENV ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
+ENV ZIG_LOCAL_CACHE_DIR=/tmp/zig-cache
+ENV TMPDIR=/tmp
+RUN mkdir -p /tmp/zig-cache
 RUN zig build -Doptimize=ReleaseFast
 
 FROM debian:bookworm-slim
