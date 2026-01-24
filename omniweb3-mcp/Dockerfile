@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 FROM debian:bookworm-slim AS build
 
 # 安装依赖
@@ -8,16 +9,14 @@ WORKDIR /opt
 RUN curl -L https://ziglang.org/builds/zig-x86_64-linux-0.16.0-dev.2261+d6b3dd25a.tar.xz | tar -xJ
 ENV PATH="/opt/zig-x86_64-linux-0.16.0-dev.2261+d6b3dd25a:$PATH"
 
-# 构建项目
+# 构建项目 - 使用 tmpfs 挂载解决 OverlayFS 兼容问题
 WORKDIR /app
 COPY . .
-
-# 解决 Zig 0.16-dev 在 Docker OverlayFS 上的原子文件操作问题
-# 使用 --cache-dir 指向 /dev/shm (tmpfs)
-RUN mkdir -p /dev/shm/zig-cache && \
+RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=tmpfs,target=/root/.cache \
     zig build -Doptimize=ReleaseFast \
-    --cache-dir /dev/shm/zig-cache \
-    --global-cache-dir /dev/shm/zig-cache
+    --cache-dir /tmp/zig-cache \
+    --global-cache-dir /tmp/zig-cache
 
 # 运行时镜像
 FROM debian:bookworm-slim
