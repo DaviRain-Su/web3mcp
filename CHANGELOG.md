@@ -111,6 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Test Results
 - Build: `zig build` (pass)
+- EVM Anvil: `scripts/evm_anvil_test.py` (pass)
+- Solana local: `scripts/solana_devnet_test.py` balance (pass; transfer skipped)
 
 #### Files Modified
 - `omniweb3-mcp/src/tools/balance.zig` - unified balance
@@ -120,8 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stories/v0.3.3-unified-tools.md` - progress checklist
 
 #### Next Steps
-- [ ] Validate unified transfer on Solana devnet
-- [ ] Validate unified transfer on local Anvil
+- [ ] Validate unified transfer on Solana devnet/local validator
 
 ## [v0.2.0] - 2026-01-23
 

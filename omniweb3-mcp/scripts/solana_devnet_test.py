@@ -2,6 +2,8 @@
 import json
 import os
 import subprocess
+import time
+import select
 
 RPC_ENDPOINT = os.environ.get("SOLANA_RPC_ENDPOINT", "https://api.devnet.solana.com")
 TARGET_ADDRESS = os.environ.get("SOLANA_TO_ADDRESS")
@@ -15,10 +17,25 @@ server = subprocess.Popen(
 )
 
 
-def send(msg):
+def send(msg, timeout_s=8):
     server.stdin.write(json.dumps(msg) + "\n")
     server.stdin.flush()
-    return server.stdout.readline().strip()
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        ready, _, _ = select.select([server.stdout], [], [], 0.2)
+        if not ready:
+            continue
+        line = server.stdout.readline()
+        if not line:
+            return ""
+        line = line.strip()
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("jsonrpc") == "2.0":
+            return line
+    return "timeout"
 
 
 try:
@@ -32,7 +49,7 @@ try:
             "clientInfo": {"name": "local-test", "version": "0.0.1"},
         },
     }
-    print(send(init))
+    print(send(init, timeout_s=8))
 
     server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
     server.stdin.flush()
@@ -55,7 +72,7 @@ try:
             },
         },
     }
-    print(send(balance))
+    print(send(balance, timeout_s=8))
 
     if TARGET_ADDRESS:
         transfer = {
@@ -73,7 +90,7 @@ try:
                 },
             },
         }
-        print(send(transfer))
+        print(send(transfer, timeout_s=12))
     else:
         print("Skipping transfer: set SOLANA_TO_ADDRESS env to run")
 finally:

@@ -2,6 +2,8 @@
 import json
 import os
 import subprocess
+import time
+import select
 
 TARGET_ADDRESS = "0x082a0acDe14881b38963c732E00604A587083937"
 RPC_ENDPOINT = "http://127.0.0.1:8545"
@@ -18,10 +20,25 @@ server = subprocess.Popen(
 )
 
 
-def send(msg):
+def send(msg, timeout_s=8):
     server.stdin.write(json.dumps(msg) + "\n")
     server.stdin.flush()
-    return server.stdout.readline().strip()
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        ready, _, _ = select.select([server.stdout], [], [], 0.2)
+        if not ready:
+            continue
+        line = server.stdout.readline()
+        if not line:
+            return ""
+        line = line.strip()
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("jsonrpc") == "2.0":
+            return line
+    return "timeout"
 
 
 try:
@@ -35,7 +52,7 @@ try:
             "clientInfo": {"name": "local-test", "version": "0.0.1"},
         },
     }
-    print(send(init))
+    print(send(init, timeout_s=8))
 
     server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
     server.stdin.flush()
@@ -54,7 +71,7 @@ try:
             },
         },
     }
-    print(send(balance))
+    print(send(balance, timeout_s=8))
 
     transfer = {
         "jsonrpc": "2.0",
@@ -69,11 +86,11 @@ try:
                 "network": "mainnet",
                 "endpoint": RPC_ENDPOINT,
                 "tx_type": "eip1559",
-                "confirmations": 1,
+                "confirmations": 0,
             },
         },
     }
-    print(send(transfer))
+    print(send(transfer, timeout_s=15))
 
     balance2 = {
         "jsonrpc": "2.0",
@@ -89,6 +106,6 @@ try:
             },
         },
     }
-    print(send(balance2))
+    print(send(balance2, timeout_s=8))
 finally:
     server.terminate()
