@@ -7,6 +7,7 @@ import select
 
 RPC_ENDPOINT = os.environ.get("SOLANA_RPC_ENDPOINT", "https://api.devnet.solana.com")
 TARGET_ADDRESS = os.environ.get("SOLANA_TO_ADDRESS")
+AUTO_RECIPIENT_PATH = "/tmp/solana-test-recipient.json"
 
 server = subprocess.Popen(
     ["./zig-out/bin/omniweb3-mcp"],
@@ -74,24 +75,45 @@ try:
     }
     print(send(balance, timeout_s=8))
 
-    if TARGET_ADDRESS:
-        transfer = {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": "transfer",
-                "arguments": {
-                    "chain": "solana",
-                    "to_address": TARGET_ADDRESS,
-                    "amount": 10000,
-                    "network": "devnet",
-                    "endpoint": RPC_ENDPOINT,
-                },
+    recipient = TARGET_ADDRESS
+    if not recipient:
+        subprocess.run(
+            [
+                "solana-keygen",
+                "new",
+                "--no-bip39-passphrase",
+                "--force",
+                "-o",
+                AUTO_RECIPIENT_PATH,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        result = subprocess.run(
+            ["solana-keygen", "pubkey", AUTO_RECIPIENT_PATH],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        recipient = result.stdout.strip()
+        print(f"Generated recipient: {recipient}")
+
+    transfer = {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "transfer",
+            "arguments": {
+                "chain": "solana",
+                "to_address": recipient,
+                "amount": 10000,
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
             },
-        }
-        print(send(transfer, timeout_s=12))
-    else:
-        print("Skipping transfer: set SOLANA_TO_ADDRESS env to run")
+        },
+    }
+    print(send(transfer, timeout_s=12))
 finally:
     server.terminate()
