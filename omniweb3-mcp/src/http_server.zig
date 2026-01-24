@@ -38,19 +38,35 @@ pub const HttpBridgeTransport = struct {
     }
 
     pub fn submit(self: *HttpBridgeTransport, message: []u8) ![]u8 {
+        const timeout_ns = 5 * std.time.ns_per_s;
+        var waited_ns: u64 = 0;
+
         self.mutex.lock();
         defer self.mutex.unlock();
 
         while (self.incoming != null and !self.closed) {
-            self.cond.wait(&self.mutex);
+            self.cond.timedWait(&self.mutex, std.time.ns_per_ms * 50) catch {
+                waited_ns += std.time.ns_per_ms * 50;
+                if (waited_ns >= timeout_ns) {
+                    std.log.err("transport submit timeout waiting for incoming slot", .{});
+                    return error.RequestTimeout;
+                }
+            };
         }
         if (self.closed) return error.ConnectionClosed;
 
         self.incoming = message;
         self.cond.signal();
 
+        waited_ns = 0;
         while (self.outgoing == null and !self.closed) {
-            self.cond.wait(&self.mutex);
+            self.cond.timedWait(&self.mutex, std.time.ns_per_ms * 50) catch {
+                waited_ns += std.time.ns_per_ms * 50;
+                if (waited_ns >= timeout_ns) {
+                    std.log.err("transport submit timeout waiting for response", .{});
+                    return error.RequestTimeout;
+                }
+            };
         }
         if (self.closed) return error.ConnectionClosed;
 
@@ -201,7 +217,9 @@ const Worker = struct {
 
 fn serverLoop(server: *mcp.Server, transport: mcp.Transport, index: usize) !void {
     std.log.info("worker {d} ready", .{index});
-    try server.runWithTransport(transport);
+    server.runWithTransport(transport) catch |err| {
+        std.log.err("worker {d} exited: {s}", .{ index, @errorName(err) });
+    };
 }
 
 fn handleConnection(
@@ -284,9 +302,13 @@ fn handleConnection(
 
         defer allocator.free(request_body);
 
-        const response_body = worker.transport.submit(request_body) catch {
-            const status: std.http.Status = .internal_server_error;
-            try request.respond("Internal Server Error", .{ .status = status });
+        const response_body = worker.transport.submit(request_body) catch |err| {
+            const status: std.http.Status = if (err == error.RequestTimeout)
+                .gateway_timeout
+            else
+                .internal_server_error;
+            const body = if (status == .gateway_timeout) "Gateway Timeout" else "Internal Server Error";
+            try request.respond(body, .{ .status = status });
             logRequest(method_name, target_copy, status, timer.read());
             continue;
         };
