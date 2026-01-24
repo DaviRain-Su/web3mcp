@@ -1,17 +1,12 @@
 const std = @import("std");
 const mcp = @import("mcp");
-const solana_client = @import("solana_client");
-const solana_sdk = @import("solana_sdk");
 const solana_helpers = @import("../core/solana_helpers.zig");
-
-const RpcClient = solana_client.RpcClient;
-const Signature = solana_sdk.Signature;
-const TransactionStatus = solana_client.TransactionStatus;
+const chain = @import("../core/chain.zig");
 
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    const chain = mcp.tools.getString(args, "chain") orelse "solana";
-    if (!std.mem.eql(u8, chain, "solana")) {
-        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain}) catch {
+    const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
+    if (!std.mem.eql(u8, chain_name, "solana")) {
+        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -25,6 +20,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
     const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     const signature = solana_helpers.parseSignature(signature_str) catch {
         return mcp.tools.errorResult(allocator, "Invalid transaction signature") catch {
@@ -32,11 +28,17 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
 
-    const endpoint = solana_helpers.resolveEndpoint(network);
-    var client = RpcClient.init(allocator, endpoint);
-    defer client.deinit();
+    var adapter = chain.initSolanaAdapter(allocator, network, endpoint_override) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    };
+    defer adapter.deinit();
 
-    const statuses = client.getSignatureStatusesWithHistory(&.{signature}) catch |err| {
+    const status_opt = adapter.getSignatureStatus(signature) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get signature status: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -44,9 +46,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer allocator.free(statuses);
-
-    const status_opt = if (statuses.len > 0) statuses[0] else null;
 
     const StatusResponse = struct {
         signature: []const u8,

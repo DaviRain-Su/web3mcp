@@ -1,9 +1,9 @@
 const std = @import("std");
 const mcp = @import("mcp");
-const solana_client = @import("solana_client");
 const solana_sdk = @import("solana_sdk");
+const solana_helpers = @import("../core/solana_helpers.zig");
+const chain = @import("../core/chain.zig");
 
-const RpcClient = solana_client.RpcClient;
 const PublicKey = solana_sdk.PublicKey;
 
 /// Lamports per SOL
@@ -20,17 +20,18 @@ const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 /// Returns JSON with balance info
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     // Extract parameters
-    const chain = mcp.tools.getString(args, "chain") orelse "solana";
+    const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
     const address = mcp.tools.getString(args, "address") orelse {
         return mcp.tools.errorResult(allocator, "Missing required parameter: address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
     const network_str = mcp.tools.getString(args, "network") orelse "devnet";
+    const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     // Only support Solana for now
-    if (!std.mem.eql(u8, chain, "solana")) {
-        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain}) catch {
+    if (!std.mem.eql(u8, chain_name, "solana")) {
+        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -38,28 +39,23 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    // Get endpoint based on network
-    const endpoint: []const u8 = if (std.mem.eql(u8, network_str, "mainnet"))
-        "https://api.mainnet-beta.solana.com"
-    else if (std.mem.eql(u8, network_str, "testnet"))
-        "https://api.testnet.solana.com"
-    else if (std.mem.eql(u8, network_str, "localhost"))
-        "http://localhost:8899"
-    else
-        "https://api.devnet.solana.com";
-
-    // Parse public key
-    const pubkey = PublicKey.fromBase58(address) catch {
+    const pubkey = solana_helpers.parsePublicKey(address) catch {
         return mcp.tools.errorResult(allocator, "Invalid Solana address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
 
-    // Create RPC client and query balance
-    var client = RpcClient.init(allocator, endpoint);
-    defer client.deinit();
+    var adapter = chain.initSolanaAdapter(allocator, network_str, endpoint_override) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    };
+    defer adapter.deinit();
 
-    const lamports = client.getBalance(pubkey) catch |err| {
+    const lamports = adapter.getBalance(pubkey) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get balance: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };

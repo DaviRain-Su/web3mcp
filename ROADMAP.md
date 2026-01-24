@@ -29,6 +29,13 @@
   - EVM 基础补全：交易/区块查询、nonce/fee/estimate、ERC20 余额
   - 只读 RPC 能力优先（eth_call/账户信息）
 
+## v0.3.2 - Core Adapter Refactor
+- Status: ✅ Completed (2026-01-23)
+- Scope:
+  - core/chain 统一入口 + adapters
+  - core/wallet 抽象签名/密钥加载
+  - tools 全部调用 core
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:

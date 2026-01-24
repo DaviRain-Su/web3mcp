@@ -3,13 +3,12 @@ const mcp = @import("mcp");
 const zabi = @import("zabi");
 const evm_helpers = @import("../core/evm_helpers.zig");
 const evm_runtime = @import("../core/evm_runtime.zig");
+const chain = @import("../core/chain.zig");
+const wallet = @import("../core/wallet.zig");
 
-const HttpProvider = zabi.clients.Provider.HttpProvider;
-const Wallet = zabi.clients.Wallet;
-const EthCall = zabi.types.transactions.EthCall;
 const TransactionTypes = zabi.types.transactions.TransactionTypes;
-const UnpreparedTransactionEnvelope = zabi.types.transactions.UnpreparedTransactionEnvelope;
 const Wei = zabi.types.ethereum.Wei;
+const Address = zabi.types.ethereum.Address;
 
 /// Transfer native token on EVM chains.
 ///
@@ -40,7 +39,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    const chain = mcp.tools.getString(args, "chain") orelse "ethereum";
+    const chain_name = mcp.tools.getString(args, "chain") orelse "ethereum";
     const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
     const private_key_override = mcp.tools.getString(args, "private_key");
@@ -71,31 +70,17 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         break :blk @as(Wei, @intCast(value));
     };
 
-    const config_result = evm_helpers.resolveNetworkConfig(allocator, chain, network, endpoint_override) catch |err| {
-        const msg = std.fmt.allocPrint(allocator, "Failed to resolve network config: {s}", .{@errorName(err)}) catch {
+    var adapter = chain.initEvmAdapter(allocator, evm_runtime.io(), chain_name, network, endpoint_override) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to init EVM adapter: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer allocator.free(config_result.endpoint);
+    defer adapter.deinit();
 
-    var provider = HttpProvider.init(.{
-        .allocator = allocator,
-        .io = evm_runtime.io(),
-        .network_config = config_result.config,
-    }) catch |err| {
-        const msg = std.fmt.allocPrint(allocator, "Failed to init provider: {s}", .{@errorName(err)}) catch {
-            return mcp.tools.ToolError.OutOfMemory;
-        };
-        return mcp.tools.errorResult(allocator, msg) catch {
-            return mcp.tools.ToolError.OutOfMemory;
-        };
-    };
-    defer provider.deinit();
-
-    const private_key = evm_helpers.resolvePrivateKey(allocator, private_key_override, keypair_path) catch |err| {
+    const private_key = wallet.loadEvmPrivateKey(allocator, private_key_override, keypair_path) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to resolve private key: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -104,71 +89,31 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
 
-    var wallet = Wallet.init(private_key, allocator, &provider.provider, false) catch |err| {
-        const msg = std.fmt.allocPrint(allocator, "Failed to init wallet: {s}", .{@errorName(err)}) catch {
+    const from_address = wallet.deriveEvmAddress(private_key) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to derive EVM address: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer wallet.deinit();
 
     const use_legacy = std.ascii.eqlIgnoreCase(tx_type_str, "legacy");
+    const tx_type = if (use_legacy) TransactionTypes.legacy else TransactionTypes.london;
 
-    const call = if (use_legacy)
-        EthCall{ .legacy = .{ .from = wallet.signer.address_bytes, .to = to_address, .value = amount_wei } }
+    const confirmations_u8: u8 = if (confirmations > std.math.maxInt(u8))
+        std.math.maxInt(u8)
     else
-        EthCall{ .london = .{ .from = wallet.signer.address_bytes, .to = to_address, .value = amount_wei } };
+        @intCast(confirmations);
 
-    const gas_estimate = provider.provider.estimateGas(call, .{}) catch |err| {
-        const msg = std.fmt.allocPrint(allocator, "Failed to estimate gas: {s}", .{@errorName(err)}) catch {
-            return mcp.tools.ToolError.OutOfMemory;
-        };
-        return mcp.tools.errorResult(allocator, msg) catch {
-            return mcp.tools.ToolError.OutOfMemory;
-        };
-    };
-    defer gas_estimate.deinit();
-
-    const envelope = if (use_legacy) blk: {
-        const fee_estimate = provider.provider.estimateFeesPerGas(call, null) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to estimate gas price: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-        };
-        const gas_price = fee_estimate.legacy.gas_price;
-        break :blk UnpreparedTransactionEnvelope{
-            .type = TransactionTypes.legacy,
-            .to = to_address,
-            .value = amount_wei,
-            .gas = gas_estimate.response,
-            .gasPrice = gas_price,
-        };
-    } else blk: {
-        const fee_estimate = provider.provider.estimateFeesPerGas(call, null) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to estimate fees: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-        };
-
-        break :blk UnpreparedTransactionEnvelope{
-            .type = TransactionTypes.london,
-            .to = to_address,
-            .value = amount_wei,
-            .gas = gas_estimate.response,
-            .maxPriorityFeePerGas = fee_estimate.london.max_priority_fee,
-            .maxFeePerGas = fee_estimate.london.max_fee_gas,
-        };
-    };
-
-    const tx_hash_response = wallet.sendTransaction(envelope) catch |err| {
+    const transfer_result = adapter.sendTransfer(
+        private_key,
+        from_address,
+        to_address,
+        amount_wei,
+        tx_type,
+        confirmations_u8,
+    ) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to send transaction: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -176,28 +121,12 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer tx_hash_response.deinit();
 
-    const hash_hex = std.fmt.bytesToHex(tx_hash_response.response, .lower);
+    const hash_hex = std.fmt.bytesToHex(transfer_result.tx_hash, .lower);
 
-    const receipt_info = if (confirmations > 0) blk: {
-        const confirmations_u8: u8 = if (confirmations > std.math.maxInt(u8))
-            std.math.maxInt(u8)
-        else
-            @intCast(confirmations);
-
-        const receipt_response = provider.provider.waitForTransactionReceipt(tx_hash_response.response, confirmations_u8) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to fetch receipt: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-        };
-        defer receipt_response.deinit();
-
-        const status = receiptStatus(receipt_response.response);
-        const block_number = receiptBlockNumber(receipt_response.response);
+    const receipt_info = if (transfer_result.receipt) |receipt| blk: {
+        const status = receiptStatus(receipt);
+        const block_number = receiptBlockNumber(receipt);
 
         const status_str = if (status) |value| if (value) "true" else "false" else "null";
         const block_str = if (block_number) |value|
@@ -226,7 +155,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const response = std.fmt.allocPrint(
         allocator,
         "{{\"tx_hash\":\"0x{s}\",\"chain\":\"{s}\",\"network\":\"{s}\",\"to_address\":\"{s}\",\"amount_wei\":\"{s}\",\"tx_type\":\"{s}\",\"endpoint\":\"{s}\"{s}}}",
-        .{ hash_hex, chain, network, to_address_str, amount_wei_str, tx_type_str, config_result.endpoint, receipt_info },
+        .{ hash_hex, chain_name, network, to_address_str, amount_wei_str, tx_type_str, adapter.endpoint, receipt_info },
     ) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };

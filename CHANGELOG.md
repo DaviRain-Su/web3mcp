@@ -69,6 +69,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Validate Solana tools on devnet
 
+### Session 2026-01-23-005
+
+**Date**: 2026-01-23
+**Goal**: v0.3.2 Core Adapter Refactor - core/chain + wallet abstraction
+
+#### Completed Work
+1. Added Solana/EVM adapters under core/adapters
+2. Refactored core/chain to provide adapter constructors
+3. Consolidated key loading into core/wallet (Solana + EVM)
+4. Updated Solana tools to use core adapters
+5. Updated EVM tools to use core adapters + wallet
+6. Added chain adapter design doc and story progress updates
+
+#### Test Results
+- Build: `zig build` (pass)
+
+#### Files Modified
+- `omniweb3-mcp/src/core/adapters/solana.zig` - Solana adapter
+- `omniweb3-mcp/src/core/adapters/evm.zig` - EVM adapter
+- `omniweb3-mcp/src/core/chain.zig` - Unified adapter init
+- `omniweb3-mcp/src/core/wallet.zig` - Key loading abstraction
+- `omniweb3-mcp/src/tools/*` - Tool refactor to core adapters
+- `docs/design/chain-adapter-refactor.md` - Design doc
+- `stories/v0.3.2-core-adapters.md` - Story checklist
+
+#### Next Steps
+- [ ] Validate Solana tools on devnet
+
 ## [v0.2.0] - 2026-01-23
 
 ### Added

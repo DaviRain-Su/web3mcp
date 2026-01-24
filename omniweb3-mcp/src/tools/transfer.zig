@@ -2,8 +2,10 @@ const std = @import("std");
 const mcp = @import("mcp");
 const solana_client = @import("solana_client");
 const solana_sdk = @import("solana_sdk");
+const solana_helpers = @import("../core/solana_helpers.zig");
+const chain = @import("../core/chain.zig");
+const wallet = @import("../core/wallet.zig");
 
-const RpcClient = solana_client.RpcClient;
 const PublicKey = solana_sdk.PublicKey;
 const Keypair = solana_sdk.Keypair;
 const AccountMeta = solana_sdk.AccountMeta;
@@ -14,73 +16,6 @@ const InstructionInput = solana_client.transaction.InstructionInput;
 /// Lamports per SOL
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
-// C interop for getenv
-const c = @cImport({
-    @cInclude("stdlib.h");
-});
-
-/// Get default keypair path
-/// Priority: SOLANA_KEYPAIR env > ~/.config/solana/id.json
-fn getDefaultKeypairPath(allocator: std.mem.Allocator) ![]const u8 {
-    // First check SOLANA_KEYPAIR environment variable
-    if (c.getenv("SOLANA_KEYPAIR")) |env_path_c| {
-        const env_path = std.mem.span(env_path_c);
-        return allocator.dupe(u8, env_path);
-    }
-
-    // Fall back to ~/.config/solana/id.json
-    const home_c = c.getenv("HOME") orelse return error.HomeNotFound;
-    const home = std.mem.span(home_c);
-    return std.fmt.allocPrint(allocator, "{s}/.config/solana/id.json", .{home});
-}
-
-/// Load keypair from JSON file (Solana CLI format: [u8; 64] array)
-fn loadKeypairFromFile(allocator: std.mem.Allocator, path: []const u8) !Keypair {
-    // Add null terminator for C path
-    const path_z = try allocator.dupeZ(u8, path);
-    defer allocator.free(path_z);
-    
-    // Open file using Linux syscall
-    const flags: std.os.linux.O = .{ .ACCMODE = .RDONLY };
-    const fd = std.os.linux.open(path_z.ptr, flags, 0);
-    if (fd < 0) return error.KeypairFileNotFound;
-    defer _ = std.os.linux.close(@intCast(fd));
-    
-    // Read file content
-    var buffer: [1024]u8 = undefined;
-    const bytes_read = std.os.linux.read(@intCast(fd), buffer[0..].ptr, buffer.len);
-    if (bytes_read < 0) return error.KeypairReadFailed;
-    
-    const content = try allocator.dupe(u8, buffer[0..@intCast(bytes_read)]);
-    defer allocator.free(content);
-
-    // Parse JSON array of bytes
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, content, .{}) catch {
-        return error.KeypairParseError;
-    };
-    defer parsed.deinit();
-
-    if (parsed.value != .array) {
-        return error.KeypairInvalidFormat;
-    }
-
-    const arr = parsed.value.array;
-    if (arr.items.len != 64) {
-        return error.KeypairInvalidLength;
-    }
-
-    var keypair_bytes: [64]u8 = undefined;
-    for (arr.items, 0..) |item, i| {
-        if (item != .integer) {
-            return error.KeypairInvalidFormat;
-        }
-        keypair_bytes[i] = @intCast(item.integer);
-    }
-
-    return Keypair.fromBytes(&keypair_bytes) catch {
-        return error.KeypairInvalid;
-    };
-}
 
 /// System Program ID (all zeros)
 const SYSTEM_PROGRAM_ID: [32]u8 = [_]u8{0} ** 32;
@@ -144,23 +79,8 @@ fn createTransferInstruction(
 ///
 /// Returns JSON with transaction signature
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    // Get keypair path (from arg, env var, or default)
+    // Load keypair (from arg, env var, or default)
     const keypair_path_override = mcp.tools.getString(args, "keypair_path");
-    const keypair_path = if (keypair_path_override) |p| blk: {
-        break :blk allocator.dupe(u8, p) catch {
-            return mcp.tools.ToolError.OutOfMemory;
-        };
-    } else blk: {
-        break :blk getDefaultKeypairPath(allocator) catch |err| {
-            const msg = std.fmt.allocPrint(allocator, "Failed to get default keypair path: {s}", .{@errorName(err)}) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-            return mcp.tools.errorResult(allocator, msg) catch {
-                return mcp.tools.ToolError.OutOfMemory;
-            };
-        };
-    };
-    defer allocator.free(keypair_path);
 
     const to_address_str = mcp.tools.getString(args, "to_address") orelse {
         return mcp.tools.errorResult(allocator, "Missing required parameter: to_address") catch {
@@ -181,20 +101,10 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     }
 
     const network_str = mcp.tools.getString(args, "network") orelse "devnet";
+    const endpoint_override = mcp.tools.getString(args, "endpoint");
 
-    // Get endpoint based on network
-    const endpoint: []const u8 = if (std.mem.eql(u8, network_str, "mainnet"))
-        "https://api.mainnet-beta.solana.com"
-    else if (std.mem.eql(u8, network_str, "testnet"))
-        "https://api.testnet.solana.com"
-    else if (std.mem.eql(u8, network_str, "localhost"))
-        "http://localhost:8899"
-    else
-        "https://api.devnet.solana.com";
-
-    // Load sender keypair from file
-    const sender_keypair = loadKeypairFromFile(allocator, keypair_path) catch |err| {
-        const msg = std.fmt.allocPrint(allocator, "Failed to load keypair from '{s}': {s}", .{ keypair_path, @errorName(err) }) catch {
+    const sender_keypair = wallet.loadSolanaKeypair(allocator, keypair_path_override) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to load keypair: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -203,7 +113,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
 
     // Parse recipient address
-    const to_pubkey = PublicKey.fromBase58(to_address_str) catch {
+    const to_pubkey = solana_helpers.parsePublicKey(to_address_str) catch {
         return mcp.tools.errorResult(allocator, "Invalid recipient address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
@@ -212,12 +122,18 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const from_pubkey = sender_keypair.pubkey();
     const lamports: u64 = @intCast(amount);
 
-    // Create RPC client
-    var client = RpcClient.init(allocator, endpoint);
-    defer client.deinit();
+    var adapter = chain.initSolanaAdapter(allocator, network_str, endpoint_override) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    };
+    defer adapter.deinit();
 
     // Get latest blockhash
-    const blockhash_result = client.getLatestBlockhash() catch |err| {
+    const blockhash_result = adapter.getLatestBlockhash() catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get latest blockhash: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -269,8 +185,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer allocator.free(serialized);
 
-    // Send transaction with skip_preflight for better error messages
-    const signature = client.sendTransactionWithConfig(serialized, .{ .skip_preflight = true }) catch |err| {
+    // Send transaction
+    const signature = adapter.sendTransaction(serialized) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to send transaction: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };

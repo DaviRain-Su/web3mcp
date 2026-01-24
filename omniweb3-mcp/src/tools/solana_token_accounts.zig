@@ -1,19 +1,15 @@
 const std = @import("std");
 const mcp = @import("mcp");
-const solana_client = @import("solana_client");
-const solana_sdk = @import("solana_sdk");
 const solana_helpers = @import("../core/solana_helpers.zig");
+const chain = @import("../core/chain.zig");
 
-const RpcClient = solana_client.RpcClient;
+const solana_sdk = @import("solana_sdk");
 const PublicKey = solana_sdk.PublicKey;
-const TokenAccount = solana_client.TokenAccount;
-const TokenAccountFilter = solana_client.RpcClient.TokenAccountFilter;
-const TOKEN_PROGRAM_ID = solana_sdk.spl.token.instruction.TOKEN_PROGRAM_ID;
 
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
-    const chain = mcp.tools.getString(args, "chain") orelse "solana";
-    if (!std.mem.eql(u8, chain, "solana")) {
-        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain}) catch {
+    const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
+    if (!std.mem.eql(u8, chain_name, "solana")) {
+        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -28,6 +24,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     const mint_str = mcp.tools.getString(args, "mint");
     const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     const owner = solana_helpers.parsePublicKey(owner_str) catch {
         return mcp.tools.errorResult(allocator, "Invalid owner address") catch {
@@ -35,22 +32,26 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
 
-    const filter: TokenAccountFilter = if (mint_str) |mint_value| blk: {
-        const mint = solana_helpers.parsePublicKey(mint_value) catch {
+    const mint = if (mint_str) |mint_value| blk: {
+        const mint_pubkey = solana_helpers.parsePublicKey(mint_value) catch {
             return mcp.tools.errorResult(allocator, "Invalid mint address") catch {
                 return mcp.tools.ToolError.InvalidArguments;
             };
         };
-        break :blk .{ .mint = mint };
-    } else blk: {
-        break :blk .{ .program_id = TOKEN_PROGRAM_ID };
+        break :blk mint_pubkey;
+    } else null;
+
+    var adapter = chain.initSolanaAdapter(allocator, network, endpoint_override) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
     };
+    defer adapter.deinit();
 
-    const endpoint = solana_helpers.resolveEndpoint(network);
-    var client = RpcClient.init(allocator, endpoint);
-    defer client.deinit();
-
-    const accounts = client.getTokenAccountsByOwner(owner, filter) catch |err| {
+    const accounts = adapter.getTokenAccountsByOwner(owner, mint) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get token accounts: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
