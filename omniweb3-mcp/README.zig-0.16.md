@@ -60,12 +60,11 @@ omniweb3-mcp/
 │   │   ├── evm_runtime.zig      # EVM I/O runtime
 │   │   └── solana_helpers.zig   # Solana 公共工具
 │   └── tools/            # 工具模块
-│       ├── balance.zig       # 统一余额查询
-│       ├── transfer.zig      # 统一转账
-│       ├── block_number.zig  # 统一区块高度/编号
-│       ├── transaction.zig   # 统一交易查询
-│       ├── token_balance.zig # 统一 Token 余额
-│       └── ...               # 其他链级基础工具
+│       ├── common/           # 通用工具（ping）
+│       ├── unified/          # 跨链工具（balance/transfer/etc）
+│       ├── solana/           # Solana-only 工具
+│       ├── evm/              # EVM-only 工具
+│       └── registry.zig      # 工具注册
 ├── deps/
 │   └── mcp.zig/          # MCP 协议实现 (已适配 Zig 0.16)
 ├── ZIG_0.16_MIGRATION.md # Zig 0.16 迁移文档

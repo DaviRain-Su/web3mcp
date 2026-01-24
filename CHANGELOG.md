@@ -182,6 +182,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Plan next milestone (v0.4.0 protocols)
 
+### Session 2026-01-23-015
+
+**Date**: 2026-01-23
+**Goal**: Refactor tools directory by chain
+
+#### Completed Work
+1. Reorganized tools into solana/evm/unified/common subdirectories
+2. Updated registry imports and relative paths
+3. Updated README and documentation references
+
+#### Test Results
+- Build: `zig16 build` (pass)
+- Solana: `python3 scripts/solana_devnet_test.py` (localhost/surfpool, pass)
+- EVM: `python3 scripts/evm_anvil_test.py` (Anvil, pass)
+
+#### Next Steps
+- [ ] Plan next milestone (v0.4.0 protocols)
+
 ### Session 2026-01-23-014
 
 **Date**: 2026-01-23

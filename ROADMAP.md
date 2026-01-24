@@ -62,6 +62,13 @@
   - get_chain_id / get_fee_history / get_logs
   - 适配器与文档同步
 
+## v0.3.7 - Tools Directory Refactor
+- Status: ✅ Completed (2026-01-23)
+- Scope:
+  - tools 目录按链拆分
+  - 注册与文档同步
+  - 回归测试
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:
