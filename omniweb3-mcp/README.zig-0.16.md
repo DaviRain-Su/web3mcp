@@ -99,6 +99,9 @@ omniweb3-mcp/
 - `get_gas_price`: gas price
 - `estimate_gas`: 估算 gas
 - `call`: eth_call
+- `get_chain_id`: 链 ID
+- `get_fee_history`: fee history
+- `get_logs`: 日志查询
 
 ### Solana-only
 - `account_info`: 账户信息

@@ -12,6 +12,9 @@ const gas_price = @import("gas_price.zig");
 const estimate_gas = @import("estimate_gas.zig");
 const call = @import("call.zig");
 const token_balance = @import("token_balance.zig");
+const get_chain_id = @import("get_chain_id.zig");
+const get_fee_history = @import("get_fee_history.zig");
+const get_logs = @import("get_logs.zig");
 const token_balances = @import("token_balances.zig");
 const token_accounts = @import("token_accounts.zig");
 const account_info = @import("account_info.zig");
@@ -113,6 +116,27 @@ pub fn registerAll(server: *mcp.Server) !void {
         .name = "call",
         .description = "EVM eth_call. Parameters: chain, to_address, data, from_address (optional), value (optional), tag (optional), network (optional), endpoint (optional)",
         .handler = call.handle,
+    });
+
+    // get chain id (EVM only)
+    try server.addTool(.{
+        .name = "get_chain_id",
+        .description = "Get EVM chain id. Parameters: chain, network (optional), endpoint (optional)",
+        .handler = get_chain_id.handle,
+    });
+
+    // get fee history (EVM only)
+    try server.addTool(.{
+        .name = "get_fee_history",
+        .description = "Get EVM fee history. Parameters: chain, block_count, newest_block (optional), reward_percentiles (optional), network (optional), endpoint (optional)",
+        .handler = get_fee_history.handle,
+    });
+
+    // get logs (EVM only)
+    try server.addTool(.{
+        .name = "get_logs",
+        .description = "Get EVM logs. Parameters: chain, address/from_block/to_block/block_hash/topics/tag (optional), network (optional), endpoint (optional)",
+        .handler = get_logs.handle,
     });
 
     // token balance (Solana/EVM)

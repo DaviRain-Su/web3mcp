@@ -105,9 +105,58 @@ try:
     }
     print(send(nonce, timeout_s=8))
 
-    balance = {
+    chain_id = {
         "jsonrpc": "2.0",
         "id": 5,
+        "method": "tools/call",
+        "params": {
+            "name": "get_chain_id",
+            "arguments": {
+                "chain": "ethereum",
+                "network": "mainnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(chain_id, timeout_s=8))
+
+    fee_history = {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+            "name": "get_fee_history",
+            "arguments": {
+                "chain": "ethereum",
+                "network": "mainnet",
+                "endpoint": RPC_ENDPOINT,
+                "block_count": 4,
+                "newest_block": "latest",
+                "reward_percentiles": [10, 50, 90],
+            },
+        },
+    }
+    print(send(fee_history, timeout_s=8))
+
+    logs = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+            "name": "get_logs",
+            "arguments": {
+                "chain": "ethereum",
+                "network": "mainnet",
+                "endpoint": RPC_ENDPOINT,
+                "tag": "latest",
+            },
+        },
+    }
+    print(send(logs, timeout_s=8))
+
+    balance = {
+        "jsonrpc": "2.0",
+        "id": 8,
         "method": "tools/call",
         "params": {
             "name": "get_balance",
@@ -124,7 +173,7 @@ try:
     if TOKEN_ADDRESS and TOKEN_OWNER:
         token_balance = {
             "jsonrpc": "2.0",
-            "id": 6,
+            "id": 9,
             "method": "tools/call",
             "params": {
                 "name": "token_balance",
@@ -141,7 +190,7 @@ try:
 
     transfer = {
         "jsonrpc": "2.0",
-        "id": 7,
+        "id": 10,
         "method": "tools/call",
         "params": {
             "name": "transfer",
@@ -160,7 +209,7 @@ try:
 
     balance2 = {
         "jsonrpc": "2.0",
-        "id": 8,
+        "id": 11,
         "method": "tools/call",
         "params": {
             "name": "get_balance",

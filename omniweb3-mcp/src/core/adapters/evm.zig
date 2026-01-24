@@ -11,6 +11,9 @@ const Transaction = zabi.types.transactions.Transaction;
 const TransactionTypes = zabi.types.transactions.TransactionTypes;
 const UnpreparedTransactionEnvelope = zabi.types.transactions.UnpreparedTransactionEnvelope;
 const TransactionReceipt = zabi.types.transactions.TransactionReceipt;
+const FeeHistory = zabi.types.transactions.FeeHistory;
+const Logs = zabi.types.log.Logs;
+const LogRequest = zabi.types.log.LogRequest;
 const Address = zabi.types.ethereum.Address;
 const Hash = zabi.types.ethereum.Hash;
 const Hex = zabi.types.ethereum.Hex;
@@ -77,6 +80,25 @@ pub const EvmAdapter = struct {
         const response = try self.provider.provider.getBlockNumber();
         defer response.deinit();
         return response.response;
+    }
+
+    pub fn getChainId(self: *EvmAdapter) !usize {
+        const response = try self.provider.provider.getChainId();
+        defer response.deinit();
+        return response.response;
+    }
+
+    pub fn getFeeHistory(
+        self: *EvmAdapter,
+        block_count: u64,
+        newest_block: block.BlockNumberRequest,
+        reward_percentiles: ?[]const f64,
+    ) !RPCResponse(FeeHistory) {
+        return self.provider.provider.feeHistory(block_count, newest_block, reward_percentiles);
+    }
+
+    pub fn getLogs(self: *EvmAdapter, request: LogRequest, tag: ?block.BalanceBlockTag) !RPCResponse(Logs) {
+        return self.provider.provider.getLogs(request, tag);
     }
 
     pub fn getBlockByNumber(self: *EvmAdapter, request: block.BlockRequest) !RPCResponse(block.Block) {

@@ -182,6 +182,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Plan next milestone (v0.4.0 protocols)
 
+### Session 2026-01-23-014
+
+**Date**: 2026-01-23
+**Goal**: Add EVM readonly extra tools
+
+#### Completed Work
+1. Added tools: get_chain_id, get_fee_history, get_logs
+2. Extended EVM adapter + registry + README
+3. Added v0.3.6 story + roadmap entry
+
+#### Test Results
+- Build: `zig16 build` (pass)
+- EVM: `python3 scripts/evm_anvil_test.py` (Anvil, pass)
+
+#### Next Steps
+- [ ] Plan next milestone (v0.4.0 protocols)
+
 ### Session 2026-01-23-013
 
 **Date**: 2026-01-23

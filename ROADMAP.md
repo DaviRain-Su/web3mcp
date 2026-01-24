@@ -56,6 +56,12 @@
   - get_latest_blockhash / rent / fee / program accounts / vote accounts
   - 适配器与文档同步
 
+## v0.3.6 - EVM Readonly Extras
+- Status: ✅ Completed (2026-01-23)
+- Scope:
+  - get_chain_id / get_fee_history / get_logs
+  - 适配器与文档同步
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:
