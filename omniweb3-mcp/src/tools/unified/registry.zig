@@ -9,6 +9,8 @@ const block_number = @import("block_number.zig");
 const block = @import("block.zig");
 const transaction = @import("transaction.zig");
 const token_balance = @import("token_balance.zig");
+const sign_and_send = @import("sign_and_send.zig");
+const wallet_status = @import("wallet_status.zig");
 
 /// Tool definitions for unified/cross-chain operations.
 pub const tools = [_]mcp.tools.Tool{
@@ -41,6 +43,16 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "token_balance",
         .description = "Token balance. Parameters: chain, token_account (solana) or owner+mint (solana) or token_address+owner (evm), network (optional), endpoint (optional)",
         .handler = token_balance.handle,
+    },
+    .{
+        .name = "sign_and_send",
+        .description = "Sign and send transaction using local or Privy wallet. Parameters: chain (solana/ethereum), transaction (base64), wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), network (optional), sponsor (optional, privy only)",
+        .handler = sign_and_send.handle,
+    },
+    .{
+        .name = "wallet_status",
+        .description = "Get available wallet configurations. Parameters: chain (optional, filter by solana/ethereum). Shows local and Privy wallet availability.",
+        .handler = wallet_status.handle,
     },
 };
 
