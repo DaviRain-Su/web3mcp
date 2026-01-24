@@ -182,6 +182,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Plan next milestone (v0.4.0 protocols)
 
+### Session 2026-01-23-016
+
+**Date**: 2026-01-23
+**Goal**: Add Solana Jupiter readonly tools
+
+#### Completed Work
+1. Added tools: get_jupiter_quote, get_jupiter_price
+2. Updated tool registry and README
+3. Added v0.4.0 story entry
+4. Added .env example and dotenv loading for Solana test script
+
+#### Test Results
+- `ZIG_HTTP_DISABLE_TLS=1 zig16 build`
+- `python3 scripts/solana_devnet_test.py` (Jupiter tests skipped)
+
+#### Next Steps
+- [ ] Run Jupiter tool tests with SOLANA_RUN_JUPITER=1
+
 ### Session 2026-01-23-015
 
 **Date**: 2026-01-23

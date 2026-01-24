@@ -70,9 +70,9 @@
   - 回归测试
 
 ## v0.4.0 - 协议集成（Swap + Lending）
-- Status: ⏳ Pending
+- Status: 🔨 In Progress
 - Scope:
-  - DEX Quote：Jupiter / Trader Joe / PancakeSwap（quote-only）
+  - DEX Quote：Jupiter（quote-only）
   - Lending：Marginfi / AAVE / Venus（deposit/withdraw/borrow/repay）
   - 跨链比较工具：compare_swap_rates, find_best_lending_rate
 

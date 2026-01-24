@@ -1,14 +1,14 @@
 const std = @import("std");
 const solana_sdk = @import("solana_sdk");
+const endpoints = @import("endpoints.zig");
 
 const PublicKey = solana_sdk.PublicKey;
 const Signature = solana_sdk.Signature;
 
+/// Resolve Solana RPC endpoint by network name.
+/// Delegates to centralized endpoint configuration.
 pub fn resolveEndpoint(network: []const u8) []const u8 {
-    if (std.mem.eql(u8, network, "mainnet")) return "https://api.mainnet-beta.solana.com";
-    if (std.mem.eql(u8, network, "testnet")) return "https://api.testnet.solana.com";
-    if (std.mem.eql(u8, network, "localhost")) return "http://localhost:8899";
-    return "https://api.devnet.solana.com";
+    return endpoints.solana.resolve(network);
 }
 
 pub fn parsePublicKey(address: []const u8) !PublicKey {

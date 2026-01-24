@@ -6,11 +6,38 @@ import time
 import select
 import urllib.request
 
+
+def load_dotenv(path):
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("\"").strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+load_dotenv(os.path.join(ROOT_DIR, ".env"))
+
 RPC_ENDPOINT = os.environ.get("SOLANA_RPC_ENDPOINT", "https://api.devnet.solana.com")
 NETWORK = os.environ.get("SOLANA_NETWORK", "devnet")
 TARGET_ADDRESS = os.environ.get("SOLANA_TO_ADDRESS")
 AUTO_RECIPIENT_PATH = "/tmp/solana-test-recipient.json"
 TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+SOL_MINT = "So11111111111111111111111111111111111111112"
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+RUN_JUPITER = os.environ.get("SOLANA_RUN_JUPITER") == "1"
+JUPITER_API_KEY = os.environ.get("JUPITER_API_KEY")
+JUPITER_API_ENDPOINT = os.environ.get("JUPITER_API_ENDPOINT")
+JUPITER_PRICE_ENDPOINT = os.environ.get("JUPITER_PRICE_ENDPOINT")
+JUPITER_PRICE_MINT = os.environ.get("JUPITER_PRICE_MINT", SOL_MINT)
+JUPITER_INSECURE = os.environ.get("JUPITER_INSECURE") == "1"
 
 server = subprocess.Popen(
     ["./zig-out/bin/omniweb3-mcp"],
@@ -503,5 +530,52 @@ try:
             },
         }
         print(send(fee_for_message, timeout_s=8))
+
+    if RUN_JUPITER:
+        print(
+            "Jupiter config:",
+            {
+                "quote_endpoint": JUPITER_API_ENDPOINT,
+                "price_endpoint": JUPITER_PRICE_ENDPOINT,
+                "price_mint": JUPITER_PRICE_MINT,
+                "api_key_set": bool(JUPITER_API_KEY),
+            },
+        )
+        jupiter_quote = {
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": {
+                "name": "get_jupiter_quote",
+                "arguments": {
+                "chain": "solana",
+                "input_mint": SOL_MINT,
+                "output_mint": USDC_MINT,
+                "amount": "1000000",
+                "swap_mode": "ExactIn",
+                **({"api_key": JUPITER_API_KEY} if JUPITER_API_KEY else {}),
+                **({"endpoint": JUPITER_API_ENDPOINT} if JUPITER_API_ENDPOINT else {}),
+                **({"insecure": True} if JUPITER_INSECURE else {}),
+            },
+            },
+        }
+        print(send(jupiter_quote, timeout_s=12))
+
+        jupiter_price = {
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {
+                "name": "get_jupiter_price",
+                "arguments": {
+                "chain": "solana",
+                "mint": JUPITER_PRICE_MINT,
+                **({"api_key": JUPITER_API_KEY} if JUPITER_API_KEY else {}),
+                **({"endpoint": JUPITER_PRICE_ENDPOINT} if JUPITER_PRICE_ENDPOINT else {}),
+                **({"insecure": True} if JUPITER_INSECURE else {}),
+            },
+            },
+        }
+        print(send(jupiter_price, timeout_s=12))
 finally:
     server.terminate()
