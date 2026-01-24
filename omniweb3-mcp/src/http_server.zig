@@ -239,6 +239,13 @@ const App = struct {
         };
         defer self.allocator.free(request_body);
 
+        // If this is a JSON-RPC notification (no id), return 204 immediately to avoid timeouts.
+        if (isNotification(res.arena, request_body)) {
+            res.setStatus(.no_content);
+            res.body = "";
+            return;
+        }
+
         const response_body = self.submit(request_body) catch |err| {
             if (err == error.RequestTimeout) {
                 res.setStatus(.gateway_timeout);
@@ -290,4 +297,12 @@ pub fn runHttpServer(
 fn serverLoop(server: *mcp.Server, transport: mcp.Transport, index: usize) !void {
     std.log.info("worker {d} ready", .{index});
     try server.runWithTransport(transport);
+}
+
+fn isNotification(arena: std.mem.Allocator, body: []const u8) bool {
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, arena, body, .{}) catch return false;
+    if (parsed != .object) return false;
+    const obj = parsed.object;
+    const id_val = obj.get("id") orelse return true;
+    return id_val == .null;
 }
