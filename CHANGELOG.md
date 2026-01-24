@@ -132,9 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Completed Work
 1. Added unified EVM core adapter methods (block, tx, receipt, nonce, call)
 2. Implemented unified tools: block_number/block/transaction/receipt/nonce/gas_price/estimate_gas/call/token_balance
-3. Renamed Solana tools to unified names (account_info/signature_status/token_accounts)
-4. Updated tool registry and README to unified names
-5. Updated v0.3.1 story tool list for unified naming
+3. Added Solana support for get_block (slot)
+4. Renamed Solana tools to unified names (account_info/signature_status/token_accounts)
+5. Updated tool registry and README to unified names
+6. Updated v0.3.1 story tool list for unified naming
 
 #### Test Results
 - Build: `zig build` (pass)

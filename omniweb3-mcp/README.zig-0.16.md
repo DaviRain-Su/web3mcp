@@ -89,11 +89,11 @@ omniweb3-mcp/
   - Solana: amount=lamports, keypair_path 可选
   - EVM: amount=wei, private_key/keypair_path 可选
 - `get_block_number`: 统一区块高度/编号
+- `get_block`: 统一区块查询（Solana slot / EVM block）
 - `get_transaction`: 统一交易查询（Solana signature / EVM tx_hash）
 - `token_balance`: 统一 Token 余额（Solana token_account / EVM token_address+owner）
 
 ### EVM-only
-- `get_block`: 区块信息
 - `get_receipt`: 交易回执
 - `get_nonce`: 地址 nonce
 - `get_gas_price`: gas price

@@ -46,10 +46,10 @@ pub fn registerAll(server: *mcp.Server) !void {
         .handler = block_number.handle,
     });
 
-    // block info (EVM only)
+    // block info (Solana/EVM)
     try server.addTool(.{
         .name = "get_block",
-        .description = "Get EVM block info. Parameters: chain, block_number|block_hash, tag, include_transactions, network (optional), endpoint (optional)",
+        .description = "Get block info. Parameters: chain, block_number (evm) or slot (solana), block_hash (evm), tag (evm), include_transactions, network (optional), endpoint (optional)",
         .handler = block.handle,
     });
 

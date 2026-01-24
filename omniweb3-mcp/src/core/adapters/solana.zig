@@ -11,7 +11,9 @@ const TransactionStatus = solana_client.TransactionStatus;
 const TransactionWithMeta = solana_client.types.TransactionWithMeta;
 const TokenBalance = solana_client.types.TokenBalance;
 const TokenAccount = solana_client.types.TokenAccount;
+const Block = solana_client.types.Block;
 const TokenAccountFilter = solana_client.RpcClient.TokenAccountFilter;
+const GetBlockConfig = solana_client.RpcClient.GetBlockConfig;
 const TOKEN_PROGRAM_ID = solana_sdk.spl.token.instruction.TOKEN_PROGRAM_ID;
 
 pub const SolanaAdapter = struct {
@@ -78,6 +80,19 @@ pub const SolanaAdapter = struct {
 
     pub fn getLatestBlockhash(self: *SolanaAdapter) !solana_client.LatestBlockhash {
         return self.client.getLatestBlockhash();
+    }
+
+    pub fn getSlot(self: *SolanaAdapter) !u64 {
+        return self.client.getSlot();
+    }
+
+    pub fn getBlock(self: *SolanaAdapter, slot: u64, include_transactions: bool) !?Block {
+        const config: GetBlockConfig = .{
+            .transaction_details = if (include_transactions) "full" else "none",
+            .rewards = true,
+            .max_supported_transaction_version = 0,
+        };
+        return self.client.getBlockWithConfig(slot, config);
     }
 
     pub fn sendTransaction(self: *SolanaAdapter, transaction: []const u8) !Signature {
