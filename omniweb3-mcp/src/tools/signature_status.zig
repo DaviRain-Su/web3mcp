@@ -3,6 +3,15 @@ const mcp = @import("mcp");
 const solana_helpers = @import("../core/solana_helpers.zig");
 const chain = @import("../core/chain.zig");
 
+/// Get Solana signature status (Solana-only).
+///
+/// Parameters:
+/// - chain: "solana" (optional, default: solana)
+/// - signature: Base58 signature (required)
+/// - network: "devnet" | "testnet" | "mainnet" | "localhost" (optional, default: devnet)
+/// - endpoint: Override RPC endpoint (optional)
+///
+/// Returns JSON with confirmation info
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
     if (!std.ascii.eqlIgnoreCase(chain_name, "solana")) {

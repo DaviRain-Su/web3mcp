@@ -6,6 +6,16 @@ const chain = @import("../core/chain.zig");
 const solana_sdk = @import("solana_sdk");
 const PublicKey = solana_sdk.PublicKey;
 
+/// Get Solana token accounts by owner (Solana-only).
+///
+/// Parameters:
+/// - chain: "solana" (optional, default: solana)
+/// - owner: Base58 owner address (required)
+/// - mint: Base58 mint address (optional)
+/// - network: "devnet" | "testnet" | "mainnet" | "localhost" (optional, default: devnet)
+/// - endpoint: Override RPC endpoint (optional)
+///
+/// Returns JSON with token account list
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
     if (!std.ascii.eqlIgnoreCase(chain_name, "solana")) {
