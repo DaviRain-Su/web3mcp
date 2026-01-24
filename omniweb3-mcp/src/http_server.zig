@@ -239,6 +239,16 @@ fn handleConnection(
             continue;
         }
 
+        // Return 404 for OAuth discovery endpoints (tells clients OAuth is not required)
+        if (request.head.method == .GET and (std.mem.startsWith(u8, request.head.target, "/.well-known/oauth") or
+            std.mem.eql(u8, request.head.target, "/")))
+        {
+            const status: std.http.Status = .not_found;
+            try request.respond("Not Found", .{ .status = status });
+            logRequest(method_name, target_copy, status, timer.read());
+            continue;
+        }
+
         if (request.head.method != .POST) {
             const status: std.http.Status = .method_not_allowed;
             try request.respond("Method Not Allowed", .{ .status = status });
