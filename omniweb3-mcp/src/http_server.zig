@@ -1,8 +1,6 @@
 const std = @import("std");
 const mcp = @import("mcp");
-
-const Io = std.Io;
-const net = std.Io.net;
+const httpz = @import("httpz");
 
 pub const HttpBridgeTransport = struct {
     allocator: std.mem.Allocator,
@@ -87,7 +85,6 @@ pub const HttpBridgeTransport = struct {
 
         const response = self.allocator.dupe(u8, message) catch return error.OutOfMemory;
         self.outgoing = response;
-
         self.cond.signal();
     }
 
@@ -146,41 +143,6 @@ pub const RunOptions = struct {
     setup: ServerSetup,
 };
 
-pub fn runHttpServer(
-    allocator: std.mem.Allocator,
-    io: Io,
-    options: RunOptions,
-) !void {
-    var address = try net.IpAddress.resolve(io, options.host, options.port);
-    var tcp_server = try address.listen(io, .{ .reuse_address = true });
-    defer tcp_server.deinit(io);
-
-    var workers = try allocator.alloc(Worker, options.workers);
-    defer allocator.free(workers);
-
-    for (workers, 0..) |*worker, i| {
-        worker.* = try Worker.init(allocator, options.setup, i);
-    }
-    defer for (workers) |*worker| worker.deinit();
-
-    var next_worker = std.atomic.Value(usize).init(0);
-
-    std.log.info("HTTP MCP listening on http://{s}:{d}", .{ options.host, options.port });
-
-    while (true) {
-        var stream = tcp_server.accept(io) catch |err| {
-            std.log.err("failed to accept connection: {s}", .{@errorName(err)});
-            continue;
-        };
-
-        const idx = next_worker.fetchAdd(1, .monotonic) % workers.len;
-        _ = std.Thread.spawn(.{}, connectionLoop, .{ allocator, io, &workers[idx], stream }) catch |err| {
-            std.log.err("unable to spawn connection thread: {s}", .{@errorName(err)});
-            stream.close(io);
-        };
-    }
-}
-
 const Worker = struct {
     server: *mcp.Server,
     transport: *HttpBridgeTransport,
@@ -215,123 +177,117 @@ const Worker = struct {
     }
 };
 
+const App = struct {
+    allocator: std.mem.Allocator,
+    workers: []Worker,
+    next_worker: std.atomic.Value(usize),
+
+    pub fn init(allocator: std.mem.Allocator, setup: ServerSetup, workers_count: usize) !App {
+        const workers = try allocator.alloc(Worker, workers_count);
+        for (workers, 0..) |*worker, i| {
+            worker.* = try Worker.init(allocator, setup, i);
+        }
+        return .{
+            .allocator = allocator,
+            .workers = workers,
+            .next_worker = std.atomic.Value(usize).init(0),
+        };
+    }
+
+    pub fn deinit(self: *App) void {
+        for (self.workers) |*worker| worker.deinit();
+        self.allocator.free(self.workers);
+    }
+
+    fn submit(self: *App, body: []u8) ![]u8 {
+        const idx = self.next_worker.fetchAdd(1, .monotonic) % self.workers.len;
+        return self.workers[idx].transport.submit(body);
+    }
+
+    pub fn handle(self: *App, req: *httpz.Request, res: *httpz.Response) void {
+        const path = req.url.path;
+        const method = req.method;
+
+        if (method == .GET and std.mem.eql(u8, path, "/health")) {
+            res.setStatus(.ok);
+            res.body = "ok";
+            return;
+        }
+
+        if (method == .GET and (std.mem.eql(u8, path, "/") or std.mem.startsWith(u8, path, "/.well-known/oauth"))) {
+            res.setStatus(.not_found);
+            res.body = "Not Found";
+            return;
+        }
+
+        if (method != .POST or !std.mem.eql(u8, path, "/")) {
+            res.setStatus(.method_not_allowed);
+            res.body = "Method Not Allowed";
+            return;
+        }
+
+        const body = req.body() orelse {
+            res.setStatus(.bad_request);
+            res.body = "Missing Body";
+            return;
+        };
+
+        const request_body = self.allocator.dupe(u8, body) catch {
+            res.setStatus(.internal_server_error);
+            res.body = "Internal Server Error";
+            return;
+        };
+        defer self.allocator.free(request_body);
+
+        const response_body = self.submit(request_body) catch |err| {
+            if (err == error.RequestTimeout) {
+                res.setStatus(.gateway_timeout);
+                res.body = "Gateway Timeout";
+            } else {
+                res.setStatus(.internal_server_error);
+                res.body = "Internal Server Error";
+            }
+            return;
+        };
+        defer self.allocator.free(response_body);
+
+        const out = res.arena.dupe(u8, response_body) catch {
+            res.setStatus(.internal_server_error);
+            res.body = "Internal Server Error";
+            return;
+        };
+
+        res.header("content-type", "application/json");
+        res.setStatus(.ok);
+        res.body = out;
+    }
+};
+
+pub fn runHttpServer(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    options: RunOptions,
+) !void {
+    _ = io;
+    var app = try App.init(allocator, options.setup, options.workers);
+    defer app.deinit();
+
+    var server = try httpz.Server(*App).init(allocator, .{
+        .port = options.port,
+        .address = options.host,
+        .workers = .{ .count = @intCast(options.workers) },
+        .request = .{ .max_body_size = 16 * 1024 * 1024 },
+    }, &app);
+    defer {
+        server.stop();
+        server.deinit();
+    }
+
+    std.log.info("HTTP MCP listening on http://{s}:{d}", .{ options.host, options.port });
+    try server.listen();
+}
+
 fn serverLoop(server: *mcp.Server, transport: mcp.Transport, index: usize) !void {
     std.log.info("worker {d} ready", .{index});
-    server.runWithTransport(transport) catch |err| {
-        std.log.err("worker {d} exited: {s}", .{ index, @errorName(err) });
-    };
-}
-
-fn handleConnection(
-    allocator: std.mem.Allocator,
-    io: Io,
-    worker: *Worker,
-    stream: net.Stream,
-) !void {
-    var read_buf: [16 * 1024]u8 = undefined;
-    var write_buf: [16 * 1024]u8 = undefined;
-    var reader = net.Stream.reader(stream, io, &read_buf);
-    var writer = net.Stream.writer(stream, io, &write_buf);
-    var http_server = std.http.Server.init(&reader.interface, &writer.interface);
-
-    while (true) {
-        var request = http_server.receiveHead() catch |err| switch (err) {
-            error.HttpConnectionClosing => return,
-            else => return err,
-        };
-
-        const method_name = @tagName(request.head.method);
-        const target_copy = try allocator.dupe(u8, request.head.target);
-        defer allocator.free(target_copy);
-        var timer = try std.time.Timer.start();
-
-        if (request.head.method == .GET and std.mem.eql(u8, request.head.target, "/health")) {
-            const status: std.http.Status = .ok;
-            try request.respond("ok", .{ .status = status });
-            logRequest(method_name, target_copy, status, timer.read());
-            continue;
-        }
-
-        // Return 404 for OAuth discovery endpoints (tells clients OAuth is not required)
-        if (request.head.method == .GET and (std.mem.startsWith(u8, request.head.target, "/.well-known/oauth") or
-            std.mem.eql(u8, request.head.target, "/")))
-        {
-            const status: std.http.Status = .not_found;
-            try request.respond("Not Found", .{ .status = status });
-            logRequest(method_name, target_copy, status, timer.read());
-            continue;
-        }
-
-        if (request.head.method != .POST) {
-            const status: std.http.Status = .method_not_allowed;
-            try request.respond("Method Not Allowed", .{ .status = status });
-            logRequest(method_name, target_copy, status, timer.read());
-            continue;
-        }
-
-        var body_reader_buf: [4096]u8 = undefined;
-        var body_reader = request.readerExpectContinue(&body_reader_buf) catch {
-            const status: std.http.Status = .expectation_failed;
-            try request.respond("Expectation Failed", .{ .status = status });
-            logRequest(method_name, target_copy, status, timer.read());
-            continue;
-        };
-
-        const content_len_opt = request.head.content_length;
-        const request_body = blk: {
-            if (content_len_opt) |content_len| {
-                var buf = try allocator.alloc(u8, content_len);
-                var read_total: usize = 0;
-                while (read_total < content_len) {
-                    const n = body_reader.readSliceShort(buf[read_total..]) catch return error.ReadFailed;
-                    if (n == 0) break;
-                    read_total += n;
-                }
-                if (read_total != content_len) {
-                    buf = try allocator.realloc(buf, read_total);
-                }
-                break :blk buf;
-            }
-
-            var allocating = std.Io.Writer.Allocating.init(allocator);
-            defer allocating.deinit();
-
-            _ = body_reader.streamRemaining(&allocating.writer) catch return error.ReadFailed;
-            break :blk try allocating.toOwnedSlice();
-        };
-
-        defer allocator.free(request_body);
-
-        const response_body = worker.transport.submit(request_body) catch |err| {
-            const status: std.http.Status = if (err == error.RequestTimeout)
-                .gateway_timeout
-            else
-                .internal_server_error;
-            const body = if (status == .gateway_timeout) "Gateway Timeout" else "Internal Server Error";
-            try request.respond(body, .{ .status = status });
-            logRequest(method_name, target_copy, status, timer.read());
-            continue;
-        };
-        defer allocator.free(response_body);
-
-        const headers = [_]std.http.Header{.{
-            .name = "content-type",
-            .value = "application/json",
-        }};
-        const status: std.http.Status = .ok;
-        try request.respond(response_body, .{ .status = status, .extra_headers = &headers });
-        logRequest(method_name, target_copy, status, timer.read());
-    }
-}
-
-fn logRequest(method: []const u8, target: []const u8, status: std.http.Status, elapsed_ns: u64) void {
-    const elapsed_ms = elapsed_ns / std.time.ns_per_ms;
-    std.log.info("{s} {s} -> {d} in {d}ms", .{ method, target, @intFromEnum(status), elapsed_ms });
-}
-
-fn connectionLoop(allocator: std.mem.Allocator, io: Io, worker: *Worker, stream: net.Stream) void {
-    handleConnection(allocator, io, worker, stream) catch |err| {
-        std.log.err("connection error: {s}", .{@errorName(err)});
-    };
-    stream.close(io);
+    try server.runWithTransport(transport);
 }

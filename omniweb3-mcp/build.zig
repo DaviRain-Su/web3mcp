@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) void {
     const solana_client_dep = b.dependency("solana_client", .{ .target = target, .optimize = optimize });
     const solana_sdk_dep = b.dependency("solana_sdk", .{ .target = target, .optimize = optimize });
     const zabi_dep = b.dependency("zabi", .{ .target = target, .optimize = optimize });
+    const httpz_dep = b.dependency("httpz", .{ .target = target, .optimize = optimize });
 
     const exe = b.addExecutable(.{
         .name = "omniweb3-mcp",
@@ -24,6 +25,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("solana_client", solana_client_dep.module("solana_client"));
     exe.root_module.addImport("solana_sdk", solana_sdk_dep.module("solana_sdk"));
     exe.root_module.addImport("zabi", zabi_dep.module("zabi"));
+    exe.root_module.addImport("httpz", httpz_dep.module("httpz"));
 
     b.installArtifact(exe);
 

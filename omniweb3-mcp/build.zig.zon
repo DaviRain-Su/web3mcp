@@ -25,9 +25,5 @@
             .url = "git+https://github.com/DaviRain-Su/http.zig?ref=master#b769a5867ebf7a5239e38fd4960560e0117d771c",
             .hash = "httpz-0.0.0-PNVzrCuHBwDRRex4Mtn5wo5jpXVfgoVNmm3xCteJYBEu",
         },
-        .websocket = .{
-            .url = "git+https://github.com/karlseguin/websocket.zig?ref=dev#ceafc41ed7196c450f75c7eda13fcc446b62a471",
-            .hash = "websocket-0.1.0-ZPISdelTAwAaBc98NKr9gIn2spLOxPx-Ed0W9zd1wYoR",
-        },
     },
 }
