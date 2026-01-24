@@ -149,6 +149,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Verify EVM tools on Anvil
 
+### Session 2026-01-23-009
+
+**Date**: 2026-01-23
+**Goal**: Add additional Solana base RPC tools
+
+#### Completed Work
+1. Added Solana tools: get_epoch_info, get_version, get_supply
+2. Added Solana token tools: get_token_supply, get_token_largest_accounts
+3. Added Solana query tools: get_signatures_for_address, get_block_time
+4. Updated registry, README, and v0.3.1 story
+
+#### Test Results
+- Build: `zig16 build` (pass)
+
+#### Next Steps
+- [ ] Verify EVM tools on Anvil
+
 ### Session 2026-01-23-008
 
 **Date**: 2026-01-23

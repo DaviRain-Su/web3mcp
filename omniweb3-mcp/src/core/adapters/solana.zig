@@ -13,6 +13,11 @@ const TokenBalance = solana_client.types.TokenBalance;
 const TokenAccount = solana_client.types.TokenAccount;
 const Block = solana_client.types.Block;
 const PerformanceSample = solana_client.types.PerformanceSample;
+const SignatureInfo = solana_client.types.SignatureInfo;
+const TokenSupply = solana_client.types.TokenSupply;
+const TokenLargestAccount = solana_client.types.TokenLargestAccount;
+const Supply = solana_client.types.Supply;
+const RpcVersionInfo = solana_client.types.RpcVersionInfo;
 const TokenAccountFilter = solana_client.RpcClient.TokenAccountFilter;
 const GetBlockConfig = solana_client.RpcClient.GetBlockConfig;
 const TOKEN_PROGRAM_ID = solana_sdk.spl.token.instruction.TOKEN_PROGRAM_ID;
@@ -98,6 +103,44 @@ pub const SolanaAdapter = struct {
             .max_supported_transaction_version = 0,
         };
         return self.client.getBlockWithConfig(slot, config);
+    }
+
+    pub fn getBlockTime(self: *SolanaAdapter, slot: u64) !?i64 {
+        return self.client.getBlockTime(slot);
+    }
+
+    pub fn getEpochInfo(self: *SolanaAdapter) !solana_sdk.EpochInfo {
+        return self.client.getEpochInfo();
+    }
+
+    pub fn getVersion(self: *SolanaAdapter) !RpcVersionInfo {
+        return self.client.getVersion();
+    }
+
+    pub fn getSupply(self: *SolanaAdapter) !Supply {
+        return self.client.getSupply();
+    }
+
+    pub fn getSignaturesForAddress(
+        self: *SolanaAdapter,
+        address: PublicKey,
+        limit: ?u32,
+        before: ?Signature,
+        until: ?Signature,
+    ) ![]SignatureInfo {
+        return self.client.getSignaturesForAddressWithConfig(address, .{
+            .limit = limit,
+            .before = before,
+            .until = until,
+        });
+    }
+
+    pub fn getTokenSupply(self: *SolanaAdapter, mint: PublicKey) !TokenSupply {
+        return self.client.getTokenSupply(mint);
+    }
+
+    pub fn getTokenLargestAccounts(self: *SolanaAdapter, mint: PublicKey) ![]TokenLargestAccount {
+        return self.client.getTokenLargestAccounts(mint);
     }
 
     pub fn requestAirdrop(self: *SolanaAdapter, pubkey: PublicKey, lamports: u64) !Signature {

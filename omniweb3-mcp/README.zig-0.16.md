@@ -110,6 +110,13 @@ omniweb3-mcp/
 - `get_tps`: 获取近期 TPS
 - `get_slot`: 获取当前 slot
 - `get_block_height`: 获取当前 block height
+- `get_epoch_info`: 获取 epoch 信息
+- `get_version`: 获取版本信息
+- `get_supply`: 获取 supply 信息
+- `get_token_supply`: 获取 SPL token supply
+- `get_token_largest_accounts`: 获取 SPL 最大账户列表
+- `get_signatures_for_address`: 获取地址交易签名列表
+- `get_block_time`: 获取 slot 对应区块时间
 
 ## Zig 0.16 API 变更
 

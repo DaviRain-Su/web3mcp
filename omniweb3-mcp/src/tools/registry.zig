@@ -21,6 +21,13 @@ const tps = @import("tps.zig");
 const slot = @import("slot.zig");
 const block_height = @import("block_height.zig");
 const parse_transaction = @import("parse_transaction.zig");
+const epoch_info = @import("epoch_info.zig");
+const version = @import("version.zig");
+const supply = @import("supply.zig");
+const token_supply = @import("token_supply.zig");
+const token_largest_accounts = @import("token_largest_accounts.zig");
+const signatures_for_address = @import("signatures_for_address.zig");
+const block_time = @import("block_time.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -169,6 +176,55 @@ pub fn registerAll(server: *mcp.Server) !void {
         .name = "get_block_height",
         .description = "Get Solana current block height. Parameters: chain=solana, network (optional), endpoint (optional)",
         .handler = block_height.handle,
+    });
+
+    // get epoch info (Solana only)
+    try server.addTool(.{
+        .name = "get_epoch_info",
+        .description = "Get Solana epoch info. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = epoch_info.handle,
+    });
+
+    // get version (Solana only)
+    try server.addTool(.{
+        .name = "get_version",
+        .description = "Get Solana version info. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = version.handle,
+    });
+
+    // get supply (Solana only)
+    try server.addTool(.{
+        .name = "get_supply",
+        .description = "Get Solana supply info. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = supply.handle,
+    });
+
+    // get token supply (Solana only)
+    try server.addTool(.{
+        .name = "get_token_supply",
+        .description = "Get SPL token supply. Parameters: chain=solana, mint, network (optional), endpoint (optional)",
+        .handler = token_supply.handle,
+    });
+
+    // get token largest accounts (Solana only)
+    try server.addTool(.{
+        .name = "get_token_largest_accounts",
+        .description = "Get SPL token largest accounts. Parameters: chain=solana, mint, network (optional), endpoint (optional)",
+        .handler = token_largest_accounts.handle,
+    });
+
+    // get signatures for address (Solana only)
+    try server.addTool(.{
+        .name = "get_signatures_for_address",
+        .description = "Get signatures for address. Parameters: chain=solana, address, limit/before/until (optional), network (optional), endpoint (optional)",
+        .handler = signatures_for_address.handle,
+    });
+
+    // get block time (Solana only)
+    try server.addTool(.{
+        .name = "get_block_time",
+        .description = "Get Solana block time. Parameters: chain=solana, slot, network (optional), endpoint (optional)",
+        .handler = block_time.handle,
     });
 }
 
