@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+
+RPC_ENDPOINT = os.environ.get("SOLANA_RPC_ENDPOINT", "https://api.devnet.solana.com")
+TARGET_ADDRESS = os.environ.get("SOLANA_TO_ADDRESS")
+
+server = subprocess.Popen(
+    ["./zig-out/bin/omniweb3-mcp"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    text=True,
+    env=dict(os.environ),
+)
+
+
+def send(msg):
+    server.stdin.write(json.dumps(msg) + "\n")
+    server.stdin.flush()
+    return server.stdout.readline().strip()
+
+
+try:
+    init = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "local-test", "version": "0.0.1"},
+        },
+    }
+    print(send(init))
+
+    server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+    server.stdin.flush()
+
+    address = os.environ.get("SOLANA_ADDRESS")
+    if not address:
+        raise SystemExit("Missing SOLANA_ADDRESS env for balance check")
+
+    balance = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "get_balance",
+            "arguments": {
+                "chain": "solana",
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
+                "address": address,
+            },
+        },
+    }
+    print(send(balance))
+
+    if TARGET_ADDRESS:
+        transfer = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "transfer",
+                "arguments": {
+                    "chain": "solana",
+                    "to_address": TARGET_ADDRESS,
+                    "amount": 10000,
+                    "network": "devnet",
+                    "endpoint": RPC_ENDPOINT,
+                },
+            },
+        }
+        print(send(transfer))
+    else:
+        print("Skipping transfer: set SOLANA_TO_ADDRESS env to run")
+finally:
+    server.terminate()

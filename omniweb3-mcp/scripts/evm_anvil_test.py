@@ -45,7 +45,7 @@ try:
         "id": 2,
         "method": "tools/call",
         "params": {
-            "name": "get_evm_balance",
+            "name": "get_balance",
             "arguments": {
                 "chain": "ethereum",
                 "network": "mainnet",
@@ -61,7 +61,7 @@ try:
         "id": 3,
         "method": "tools/call",
         "params": {
-            "name": "evm_transfer",
+            "name": "transfer",
             "arguments": {
                 "to_address": TARGET_ADDRESS,
                 "amount": "1000000000000000",
@@ -80,7 +80,7 @@ try:
         "id": 4,
         "method": "tools/call",
         "params": {
-            "name": "get_evm_balance",
+            "name": "get_balance",
             "arguments": {
                 "chain": "ethereum",
                 "network": "mainnet",

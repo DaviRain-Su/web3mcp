@@ -107,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 2. Unified `transfer` across Solana/EVM
 3. Removed evm_balance/evm_transfer tool registrations
 4. Updated README and v0.3.3 story progress
+5. Updated Anvil test script and added Solana devnet script
 
 #### Test Results
 - Build: `zig build` (pass)
