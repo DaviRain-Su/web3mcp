@@ -21,6 +21,9 @@ pub const unified = @import("unified/registry.zig");
 pub const evm = @import("evm/registry.zig");
 pub const solana = @import("solana/registry.zig");
 
+// Auth & wallet infrastructure
+pub const privy = @import("auth/privy/registry.zig");
+
 /// Register all tools with the MCP server.
 ///
 /// This function delegates to each sub-registry to register their tools.
@@ -37,11 +40,14 @@ pub fn registerAll(server: *mcp.Server) !void {
 
     // Solana-specific tools
     try solana.registerAll(server);
+
+    // Privy auth & wallet tools
+    try privy.registerAll(server);
 }
 
 /// Get total count of registered tools across all registries.
 pub fn toolCount() usize {
-    return common.tools.len + unified.tools.len + evm.tools.len + solana.tools.len;
+    return common.tools.len + unified.tools.len + evm.tools.len + solana.tools.len + privy.tools.len;
 }
 
 test "tool count" {
