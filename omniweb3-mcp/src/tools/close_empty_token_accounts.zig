@@ -6,12 +6,12 @@ const solana_helpers = @import("../core/solana_helpers.zig");
 const chain = @import("../core/chain.zig");
 const wallet = @import("../core/wallet.zig");
 
+const json_rpc = solana_client.json_rpc;
 const PublicKey = solana_sdk.PublicKey;
 const Keypair = solana_sdk.Keypair;
 const AccountMeta = solana_sdk.AccountMeta;
 const TransactionBuilder = solana_client.TransactionBuilder;
 const InstructionInput = solana_client.transaction.InstructionInput;
-const TokenAccount = solana_client.types.TokenAccount;
 const TokenAccountState = solana_sdk.spl.token.Account;
 const TOKEN_PROGRAM_ID = solana_sdk.spl.token.instruction.TOKEN_PROGRAM_ID;
 
@@ -97,7 +97,28 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const owner_pubkey = keypair.pubkey();
 
-    const accounts: []TokenAccount = adapter.getTokenAccountsByOwner(owner_pubkey, null) catch |err| {
+    var params_arr = std.json.Array.init(allocator);
+    defer params_arr.deinit();
+
+    var owner_buf: [PublicKey.max_base58_len]u8 = undefined;
+    const owner_str = owner_pubkey.toBase58(&owner_buf);
+
+    var program_buf: [PublicKey.max_base58_len]u8 = undefined;
+    const program_str = TOKEN_PROGRAM_ID.toBase58(&program_buf);
+
+    try params_arr.append(json_rpc.jsonString(owner_str));
+
+    var filter_obj = json_rpc.jsonObject(allocator);
+    defer filter_obj.deinit();
+    try filter_obj.put("programId", json_rpc.jsonString(program_str));
+    try params_arr.append(.{ .object = filter_obj });
+
+    var config_obj = json_rpc.jsonObject(allocator);
+    defer config_obj.deinit();
+    try config_obj.put("encoding", json_rpc.jsonString("base64"));
+    try params_arr.append(.{ .object = config_obj });
+
+    var result = adapter.client.json_rpc.callWithResult(allocator, "getTokenAccountsByOwner", .{ .array = params_arr }) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get token accounts: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -105,15 +126,42 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer allocator.free(accounts);
+    defer result.deinit();
+
+    if (result.rpc_error) |rpc_err| {
+        const msg = std.fmt.allocPrint(allocator, "RPC error: {s}", .{rpc_err.message}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    }
+
+    const value = result.value orelse {
+        return mcp.tools.errorResult(allocator, "Missing token accounts result") catch {
+            return mcp.tools.ToolError.InvalidArguments;
+        };
+    };
 
     var empty_accounts: std.ArrayList(PublicKey) = .empty;
     defer empty_accounts.deinit(allocator);
 
-    for (accounts) |account| {
-        const amount = decodeTokenAccountAmount(allocator, account.account.data) catch null;
+    const value_arr = value.object.get("value").?.array;
+    for (value_arr.items) |item| {
+        const item_obj = item.object;
+        const account_obj = item_obj.get("account").?.object;
+        const data_arr = account_obj.get("data").?.array;
+        const data_b64 = data_arr.items[0].string;
+
+        const amount = decodeTokenAccountAmount(allocator, data_b64) catch null;
         if (amount != null and amount.? == 0) {
-            try empty_accounts.append(allocator, account.pubkey);
+            const pubkey_str = item_obj.get("pubkey").?.string;
+            const account_pubkey = solana_helpers.parsePublicKey(pubkey_str) catch {
+                return mcp.tools.errorResult(allocator, "Invalid token account pubkey") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            };
+            try empty_accounts.append(allocator, account_pubkey);
         }
     }
 

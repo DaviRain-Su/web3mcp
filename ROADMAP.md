@@ -44,7 +44,7 @@
   - 文档同步
 
 ## v0.3.4 - Solana Utility Tools
-- Status: 🔨 In Progress
+- Status: ✅ Completed (2026-01-23)
 - Scope:
   - Solana 钱包地址读取工具
   - 关闭空 Token 账户工具

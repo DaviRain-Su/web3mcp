@@ -195,9 +195,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Test Results
 - Build: `zig16 build` (pass)
+- Solana: get_wallet_address/close_empty_token_accounts (localhost/surfpool, pass)
 
 #### Next Steps
-- [ ] Run Solana utility tools locally
+- [ ] Plan next milestone (v0.4.0 protocols)
 
 ### Session 2026-01-23-011
 
