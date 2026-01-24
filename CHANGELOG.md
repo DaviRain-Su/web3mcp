@@ -140,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 8. Added Solana tools: token_balances/request_airdrop/get_tps
 9. Added Solana tools: get_slot/get_block_height
 10. Added Solana parse_transaction tool
-11. Updated v0.3.1 story tool list for unified naming
+11. Updated solana_devnet_test.py to exercise request_airdrop/parse_transaction
+12. Updated v0.3.1 story tool list for unified naming
 
 #### Test Results
 - Build: `zig build` (pass)

@@ -39,6 +39,28 @@ def send(msg, timeout_s=8):
     return "timeout"
 
 
+def extract_tool_payload(line):
+    if not line or line == "timeout":
+        return None
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if not isinstance(result, dict):
+        return None
+    content = result.get("content")
+    if not content:
+        return None
+    text = content[0].get("text") if isinstance(content, list) and content else None
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
 try:
     init = {
         "jsonrpc": "2.0",
@@ -75,6 +97,42 @@ try:
     }
     print(send(balance, timeout_s=8))
 
+    if os.environ.get("SOLANA_RUN_AIRDROP") == "1":
+        airdrop = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "request_airdrop",
+                "arguments": {
+                    "chain": "solana",
+                    "amount": 10000000,
+                    "network": "devnet",
+                    "endpoint": RPC_ENDPOINT,
+                    "address": address,
+                },
+            },
+        }
+        airdrop_line = send(airdrop, timeout_s=12)
+        print(airdrop_line)
+        airdrop_payload = extract_tool_payload(airdrop_line)
+        if airdrop_payload and airdrop_payload.get("signature"):
+            parse_airdrop = {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "parse_transaction",
+                    "arguments": {
+                        "chain": "solana",
+                        "signature": airdrop_payload["signature"],
+                        "network": "devnet",
+                        "endpoint": RPC_ENDPOINT,
+                    },
+                },
+            }
+            print(send(parse_airdrop, timeout_s=12))
+
     recipient = TARGET_ADDRESS
     if not recipient:
         subprocess.run(
@@ -101,7 +159,7 @@ try:
 
     transfer = {
         "jsonrpc": "2.0",
-        "id": 3,
+        "id": 5,
         "method": "tools/call",
         "params": {
             "name": "transfer",
@@ -114,6 +172,24 @@ try:
             },
         },
     }
-    print(send(transfer, timeout_s=12))
+    transfer_line = send(transfer, timeout_s=12)
+    print(transfer_line)
+    transfer_payload = extract_tool_payload(transfer_line)
+    if transfer_payload and transfer_payload.get("signature"):
+        parse_tx = {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "parse_transaction",
+                "arguments": {
+                    "chain": "solana",
+                    "signature": transfer_payload["signature"],
+                    "network": "devnet",
+                    "endpoint": RPC_ENDPOINT,
+                },
+            },
+        }
+        print(send(parse_tx, timeout_s=12))
 finally:
     server.terminate()
