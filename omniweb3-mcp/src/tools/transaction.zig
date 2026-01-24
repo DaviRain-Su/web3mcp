@@ -70,7 +70,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             err_instruction: ?u8 = null,
             pre_balances: ?[]const u64 = null,
             post_balances: ?[]const u64 = null,
-            transaction_data: []const u8,
             network: []const u8,
             endpoint: []const u8,
         };
@@ -80,7 +79,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             .signature = signature_str,
             .slot = tx.slot,
             .block_time = tx.block_time,
-            .transaction_data = tx.transaction.data,
             .network = network,
             .endpoint = adapter.endpoint,
         };

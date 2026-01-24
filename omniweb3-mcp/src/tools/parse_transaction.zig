@@ -1,11 +1,7 @@
 const std = @import("std");
 const mcp = @import("mcp");
 const solana_helpers = @import("../core/solana_helpers.zig");
-const solana_client = @import("solana_client");
 const chain = @import("../core/chain.zig");
-
-const TokenBalanceInfo = solana_client.types.TokenBalanceInfo;
-const Reward = solana_client.types.Reward;
 
 /// Parse Solana transaction details (Solana-only).
 ///
@@ -78,12 +74,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         err_instruction: ?u8 = null,
         pre_balances: ?[]const u64 = null,
         post_balances: ?[]const u64 = null,
-        log_messages: ?[]const []const u8 = null,
-        pre_token_balances: ?[]const TokenBalanceInfo = null,
-        post_token_balances: ?[]const TokenBalanceInfo = null,
-        rewards: ?[]const Reward = null,
         compute_units_consumed: ?u64 = null,
-        transaction_data: []const u8,
         network: []const u8,
         endpoint: []const u8,
     };
@@ -93,7 +84,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         .signature = signature_str,
         .slot = tx.slot,
         .block_time = tx.block_time,
-        .transaction_data = tx.transaction.data,
         .network = network,
         .endpoint = adapter.endpoint,
     };
@@ -102,10 +92,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         response_value.fee = meta.fee;
         response_value.pre_balances = meta.pre_balances;
         response_value.post_balances = meta.post_balances;
-        response_value.log_messages = meta.log_messages;
-        response_value.pre_token_balances = meta.pre_token_balances;
-        response_value.post_token_balances = meta.post_token_balances;
-        response_value.rewards = meta.rewards;
         response_value.compute_units_consumed = meta.compute_units_consumed;
         if (meta.err) |err_info| {
             response_value.err_type = err_info.err_type;

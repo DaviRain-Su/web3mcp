@@ -21,7 +21,6 @@ pub fn parseSignature(signature: []const u8) !Signature {
 
 pub fn jsonStringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
-    defer out.deinit();
 
     var stringify: std.json.Stringify = .{
         .writer = &out.writer,
@@ -29,5 +28,13 @@ pub fn jsonStringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
     };
 
     try stringify.write(value);
-    return out.written();
+    return out.toOwnedSlice();
+}
+
+pub fn base64EncodeAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    const encoder = std.base64.standard.Encoder;
+    const out_len = encoder.calcSize(input.len);
+    const buffer = try allocator.alloc(u8, out_len);
+    const written = encoder.encode(buffer, input);
+    return buffer[0..written.len];
 }

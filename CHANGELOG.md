@@ -149,6 +149,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Verify EVM tools on Anvil
 
+### Session 2026-01-23-008
+
+**Date**: 2026-01-23
+**Goal**: Fix parse_transaction output and run Solana devnet tests
+
+#### Completed Work
+1. Fixed mcp tools textResult/errorResult to copy response text (avoid freed buffers)
+2. Adjusted Solana parse_transaction/transaction outputs to avoid invalid data slices
+3. Ran Solana devnet script with airdrop + parse_transaction
+
+#### Test Results
+- Build: `zig16 build` (pass)
+- Solana local: `scripts/solana_devnet_test.py` (pass; airdrop + parse_transaction)
+
+#### Next Steps
+- [ ] Verify EVM tools on Anvil
+
 ## [v0.2.0] - 2026-01-23
 
 ### Added

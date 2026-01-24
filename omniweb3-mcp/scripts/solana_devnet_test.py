@@ -14,6 +14,8 @@ server = subprocess.Popen(
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     text=True,
+    encoding="utf-8",
+    errors="ignore",
     env=dict(os.environ),
 )
 

@@ -132,14 +132,16 @@ pub const ToolBuilder = struct {
 /// Creates a tool result containing a single text content item.
 pub fn textResult(allocator: std.mem.Allocator, text: []const u8) !ToolResult {
     const content = try allocator.alloc(types.ContentItem, 1);
-    content[0] = .{ .text = .{ .text = text } };
+    const text_copy = try allocator.dupe(u8, text);
+    content[0] = .{ .text = .{ .text = text_copy } };
     return .{ .content = content };
 }
 
 /// Creates an error result containing a message.
 pub fn errorResult(allocator: std.mem.Allocator, message: []const u8) !ToolResult {
     const content = try allocator.alloc(types.ContentItem, 1);
-    content[0] = .{ .text = .{ .text = message } };
+    const message_copy = try allocator.dupe(u8, message);
+    content[0] = .{ .text = .{ .text = message_copy } };
     return .{
         .content = content,
         .is_error = true,
@@ -149,7 +151,9 @@ pub fn errorResult(allocator: std.mem.Allocator, message: []const u8) !ToolResul
 /// Creates a tool result containing an image.
 pub fn imageResult(allocator: std.mem.Allocator, data: []const u8, mimeType: []const u8) !ToolResult {
     const content = try allocator.alloc(types.ContentItem, 1);
-    content[0] = .{ .image = .{ .data = data, .mimeType = mimeType } };
+    const data_copy = try allocator.dupe(u8, data);
+    const mime_copy = try allocator.dupe(u8, mimeType);
+    content[0] = .{ .image = .{ .data = data_copy, .mimeType = mime_copy } };
     return .{ .content = content };
 }
 
