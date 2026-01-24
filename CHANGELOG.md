@@ -124,6 +124,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Validate unified transfer on Solana devnet (non-local)
 
+### Session 2026-01-23-007
+
+**Date**: 2026-01-23
+**Goal**: v0.3.1 EVM base tools unified naming
+
+#### Completed Work
+1. Added unified EVM core adapter methods (block, tx, receipt, nonce, call)
+2. Implemented unified tools: block_number/block/transaction/receipt/nonce/gas_price/estimate_gas/call/token_balance
+3. Renamed Solana tools to unified names (account_info/signature_status/token_accounts)
+4. Updated tool registry and README to unified names
+5. Updated v0.3.1 story tool list for unified naming
+
+#### Test Results
+- Build: `zig build` (pass)
+
+#### Next Steps
+- [ ] Verify EVM tools on Anvil
+
 ## [v0.2.0] - 2026-01-23
 
 ### Added

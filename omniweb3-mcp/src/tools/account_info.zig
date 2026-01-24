@@ -2,11 +2,14 @@ const std = @import("std");
 const mcp = @import("mcp");
 const solana_helpers = @import("../core/solana_helpers.zig");
 const chain = @import("../core/chain.zig");
+const solana_sdk = @import("solana_sdk");
+
+const PublicKey = solana_sdk.PublicKey;
 
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
-    if (!std.mem.eql(u8, chain_name, "solana")) {
-        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain_name}) catch {
+    if (!std.ascii.eqlIgnoreCase(chain_name, "solana")) {
+        const msg = std.fmt.allocPrint(allocator, "Unsupported chain for account_info: {s}", .{chain_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -14,16 +17,16 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    const signature_str = mcp.tools.getString(args, "signature") orelse {
-        return mcp.tools.errorResult(allocator, "Missing required parameter: signature") catch {
+    const address = mcp.tools.getString(args, "address") orelse {
+        return mcp.tools.errorResult(allocator, "Missing required parameter: address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
     const network = mcp.tools.getString(args, "network") orelse "devnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
-    const signature = solana_helpers.parseSignature(signature_str) catch {
-        return mcp.tools.errorResult(allocator, "Invalid transaction signature") catch {
+    const pubkey = solana_helpers.parsePublicKey(address) catch {
+        return mcp.tools.errorResult(allocator, "Invalid Solana address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
@@ -38,8 +41,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer adapter.deinit();
 
-    const tx_opt = adapter.getTransaction(signature) catch |err| {
-        const msg = std.fmt.allocPrint(allocator, "Failed to get transaction: {s}", .{@errorName(err)}) catch {
+    const info_opt = adapter.getAccountInfo(pubkey) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to get account info: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -47,44 +50,48 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
 
-    if (tx_opt == null) {
-        return mcp.tools.errorResult(allocator, "Transaction not found") catch {
+    if (info_opt == null) {
+        return mcp.tools.errorResult(allocator, "Account not found") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
     }
 
-    const tx = tx_opt.?;
+    const info = info_opt.?;
 
-    const TxResponse = struct {
-        signature: []const u8,
-        slot: u64,
-        block_time: ?i64 = null,
-        fee: ?u64 = null,
-        err_type: ?[]const u8 = null,
-        err_instruction: ?u8 = null,
-        pre_balances: ?[]const u64 = null,
-        post_balances: ?[]const u64 = null,
-        transaction_data: []const u8,
+    var owner_buf: [PublicKey.max_base58_len]u8 = undefined;
+    const owner_str = info.owner.toBase58(&owner_buf);
+    const owner = allocator.dupe(u8, owner_str) catch {
+        return mcp.tools.ToolError.OutOfMemory;
+    };
+    defer allocator.free(owner);
+
+    const Response = struct {
+        chain: []const u8,
+        address: []const u8,
+        lamports: u64,
+        owner: []const u8,
+        executable: bool,
+        rent_epoch: u64,
+        data_base64: []const u8,
+        data_len: usize,
         network: []const u8,
+        endpoint: []const u8,
+        space: ?u64 = null,
     };
 
-    var response_value: TxResponse = .{
-        .signature = signature_str,
-        .slot = tx.slot,
-        .block_time = tx.block_time,
-        .transaction_data = tx.transaction.data,
+    const response_value: Response = .{
+        .chain = "solana",
+        .address = address,
+        .lamports = info.lamports,
+        .owner = owner,
+        .executable = info.executable,
+        .rent_epoch = info.rent_epoch,
+        .data_base64 = info.data,
+        .data_len = info.data.len,
         .network = network,
+        .endpoint = adapter.endpoint,
+        .space = info.space,
     };
-
-    if (tx.meta) |meta| {
-        response_value.fee = meta.fee;
-        response_value.pre_balances = meta.pre_balances;
-        response_value.post_balances = meta.post_balances;
-        if (meta.err) |err_info| {
-            response_value.err_type = err_info.err_type;
-            response_value.err_instruction = err_info.instruction_index;
-        }
-    }
 
     const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {
         return mcp.tools.ToolError.OutOfMemory;

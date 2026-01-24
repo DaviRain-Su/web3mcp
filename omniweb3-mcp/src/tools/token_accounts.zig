@@ -8,8 +8,8 @@ const PublicKey = solana_sdk.PublicKey;
 
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
-    if (!std.mem.eql(u8, chain_name, "solana")) {
-        const msg = std.fmt.allocPrint(allocator, "Unsupported chain: {s}. Only 'solana' is supported.", .{chain_name}) catch {
+    if (!std.ascii.eqlIgnoreCase(chain_name, "solana")) {
+        const msg = std.fmt.allocPrint(allocator, "Unsupported chain for token_accounts: {s}", .{chain_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -108,15 +108,19 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     }
 
     const Response = struct {
+        chain: []const u8,
         owner: []const u8,
         network: []const u8,
+        endpoint: []const u8,
         mint: ?[]const u8 = null,
         accounts: []const TokenAccountSummary,
     };
 
     const response_value: Response = .{
+        .chain = "solana",
         .owner = owner_str,
         .network = network,
+        .endpoint = adapter.endpoint,
         .mint = mint_str,
         .accounts = summaries,
     };

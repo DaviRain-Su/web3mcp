@@ -60,10 +60,12 @@ omniweb3-mcp/
 │   │   ├── evm_runtime.zig      # EVM I/O runtime
 │   │   └── solana_helpers.zig   # Solana 公共工具
 │   └── tools/            # 工具模块
-│       ├── balance.zig       # Solana 余额查询
-│       ├── transfer.zig      # Solana 转账工具
-│       ├── evm_balance.zig   # EVM 余额查询
-│       └── evm_transfer.zig  # EVM 转账工具
+│       ├── balance.zig       # 统一余额查询
+│       ├── transfer.zig      # 统一转账
+│       ├── block_number.zig  # 统一区块高度/编号
+│       ├── transaction.zig   # 统一交易查询
+│       ├── token_balance.zig # 统一 Token 余额
+│       └── ...               # 其他链级基础工具
 ├── deps/
 │   └── mcp.zig/          # MCP 协议实现 (已适配 Zig 0.16)
 ├── ZIG_0.16_MIGRATION.md # Zig 0.16 迁移文档
@@ -86,13 +88,22 @@ omniweb3-mcp/
 - `transfer`: 统一转账（Solana + EVM，支持 EIP-1559/Legacy）
   - Solana: amount=lamports, keypair_path 可选
   - EVM: amount=wei, private_key/keypair_path 可选
+- `get_block_number`: 统一区块高度/编号
+- `get_transaction`: 统一交易查询（Solana signature / EVM tx_hash）
+- `token_balance`: 统一 Token 余额（Solana token_account / EVM token_address+owner）
 
-### Solana
-- `solana_account_info`: 查询账户信息
-- `solana_signature_status`: 查询交易状态
-- `solana_transaction`: 查询交易详情
-- `solana_token_balance`: SPL Token 账户余额
-- `solana_token_accounts`: 列出 Token 账户
+### EVM-only
+- `get_block`: 区块信息
+- `get_receipt`: 交易回执
+- `get_nonce`: 地址 nonce
+- `get_gas_price`: gas price
+- `estimate_gas`: 估算 gas
+- `call`: eth_call
+
+### Solana-only
+- `account_info`: 账户信息
+- `signature_status`: 交易状态
+- `token_accounts`: 列出 Token 账户
 
 ## Zig 0.16 API 变更
 

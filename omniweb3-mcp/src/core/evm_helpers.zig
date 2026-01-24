@@ -56,6 +56,36 @@ pub fn parsePrivateKey(private_key_hex: []const u8) !Hash {
     return utils.hashToBytes(private_key_hex);
 }
 
+pub fn parseHash(hash_hex: []const u8) !Hash {
+    return utils.hashToBytes(hash_hex);
+}
+
+pub fn parseHexDataAlloc(allocator: std.mem.Allocator, hex_str: []const u8) ![]u8 {
+    const trimmed = if (std.mem.startsWith(u8, hex_str, "0x")) hex_str[2..] else hex_str;
+    if (trimmed.len == 0) return allocator.alloc(u8, 0);
+    if (trimmed.len % 2 != 0) return error.InvalidHexLength;
+
+    const out_len = trimmed.len / 2;
+    const buffer = try allocator.alloc(u8, out_len);
+    errdefer allocator.free(buffer);
+
+    _ = std.fmt.hexToBytes(buffer, trimmed) catch return error.InvalidHexData;
+    return buffer;
+}
+
+pub fn jsonStringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+
+    var stringify: std.json.Stringify = .{
+        .writer = &out.writer,
+        .options = .{ .emit_null_optional_fields = false },
+    };
+
+    try stringify.write(value);
+    return out.written();
+}
+
 pub fn resolvePrivateKey(
     allocator: std.mem.Allocator,
     private_key_override: ?[]const u8,

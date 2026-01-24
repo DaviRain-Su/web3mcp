@@ -3,11 +3,18 @@ const mcp = @import("mcp");
 const ping = @import("ping.zig");
 const balance = @import("balance.zig");
 const transfer = @import("transfer.zig");
-const solana_account_info = @import("solana_account_info.zig");
-const solana_signature_status = @import("solana_signature_status.zig");
-const solana_transaction = @import("solana_transaction.zig");
-const solana_token_balance = @import("solana_token_balance.zig");
-const solana_token_accounts = @import("solana_token_accounts.zig");
+const block_number = @import("block_number.zig");
+const block = @import("block.zig");
+const transaction = @import("transaction.zig");
+const receipt = @import("receipt.zig");
+const nonce = @import("nonce.zig");
+const gas_price = @import("gas_price.zig");
+const estimate_gas = @import("estimate_gas.zig");
+const call = @import("call.zig");
+const token_balance = @import("token_balance.zig");
+const token_accounts = @import("token_accounts.zig");
+const account_info = @import("account_info.zig");
+const signature_status = @import("signature_status.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -18,54 +25,101 @@ pub fn registerAll(server: *mcp.Server) !void {
         .handler = ping.handle,
     });
 
-    // get_balance tool - unified balance query
+    // unified balance
     try server.addTool(.{
         .name = "get_balance",
-        .description = "Get balance across Solana/EVM. Parameters: chain='solana'|'ethereum'|'avalanche'|'bnb', address, network (optional), endpoint (optional)",
+        .description = "Get balance across Solana/EVM. Parameters: chain, address, network (optional), endpoint (optional)",
         .handler = balance.handle,
     });
 
-    // transfer tool - unified transfer
+    // unified transfer
     try server.addTool(.{
         .name = "transfer",
         .description = "Transfer native tokens across Solana/EVM. Parameters: chain, to_address, amount, network (optional), endpoint (optional), keypair_path (Solana), private_key (EVM), tx_type (EVM), confirmations (EVM)",
         .handler = transfer.handle,
     });
 
-    // solana_account_info tool
+    // unified block number
     try server.addTool(.{
-        .name = "solana_account_info",
-        .description = "Get Solana account info. Parameters: address (base58), network (optional)",
-        .handler = solana_account_info.handle,
+        .name = "get_block_number",
+        .description = "Get latest block height/number. Parameters: chain, network (optional), endpoint (optional)",
+        .handler = block_number.handle,
     });
 
-    // solana_signature_status tool
+    // block info (EVM only)
     try server.addTool(.{
-        .name = "solana_signature_status",
-        .description = "Get Solana transaction signature status. Parameters: signature (base58), network (optional)",
-        .handler = solana_signature_status.handle,
+        .name = "get_block",
+        .description = "Get EVM block info. Parameters: chain, block_number|block_hash, tag, include_transactions, network (optional), endpoint (optional)",
+        .handler = block.handle,
     });
 
-    // solana_transaction tool
+    // transaction info (Solana/EVM)
     try server.addTool(.{
-        .name = "solana_transaction",
-        .description = "Get Solana transaction details. Parameters: signature (base58), network (optional)",
-        .handler = solana_transaction.handle,
+        .name = "get_transaction",
+        .description = "Get transaction info. Parameters: chain, signature (solana) or tx_hash (evm), network (optional), endpoint (optional)",
+        .handler = transaction.handle,
     });
 
-    // solana_token_balance tool
+    // receipt (EVM only)
     try server.addTool(.{
-        .name = "solana_token_balance",
-        .description = "Get SPL token account balance. Parameters: token_account (base58), network (optional)",
-        .handler = solana_token_balance.handle,
+        .name = "get_receipt",
+        .description = "Get EVM transaction receipt. Parameters: chain, tx_hash, network (optional), endpoint (optional)",
+        .handler = receipt.handle,
     });
 
-    // solana_token_accounts tool
+    // nonce (EVM only)
     try server.addTool(.{
-        .name = "solana_token_accounts",
-        .description = "List SPL token accounts for owner. Parameters: owner (base58), mint (optional), network (optional)",
-        .handler = solana_token_accounts.handle,
+        .name = "get_nonce",
+        .description = "Get EVM address nonce. Parameters: chain, address, tag (optional), network (optional), endpoint (optional)",
+        .handler = nonce.handle,
     });
 
+    // gas price (EVM only)
+    try server.addTool(.{
+        .name = "get_gas_price",
+        .description = "Get EVM gas price. Parameters: chain, network (optional), endpoint (optional)",
+        .handler = gas_price.handle,
+    });
 
+    // estimate gas (EVM only)
+    try server.addTool(.{
+        .name = "estimate_gas",
+        .description = "Estimate EVM gas. Parameters: chain, to_address, from_address (optional), value (optional), data (optional), network (optional), endpoint (optional)",
+        .handler = estimate_gas.handle,
+    });
+
+    // call (EVM only)
+    try server.addTool(.{
+        .name = "call",
+        .description = "EVM eth_call. Parameters: chain, to_address, data, from_address (optional), value (optional), tag (optional), network (optional), endpoint (optional)",
+        .handler = call.handle,
+    });
+
+    // token balance (Solana/EVM)
+    try server.addTool(.{
+        .name = "token_balance",
+        .description = "Token balance. Parameters: chain, token_account (solana) or token_address+owner (evm), network (optional), endpoint (optional)",
+        .handler = token_balance.handle,
+    });
+
+    // token accounts (Solana only)
+    try server.addTool(.{
+        .name = "token_accounts",
+        .description = "Solana token accounts by owner. Parameters: chain=solana, owner, mint (optional), network (optional), endpoint (optional)",
+        .handler = token_accounts.handle,
+    });
+
+    // account info (Solana only)
+    try server.addTool(.{
+        .name = "account_info",
+        .description = "Solana account info. Parameters: chain=solana, address, network (optional), endpoint (optional)",
+        .handler = account_info.handle,
+    });
+
+    // signature status (Solana only)
+    try server.addTool(.{
+        .name = "signature_status",
+        .description = "Solana signature status. Parameters: chain=solana, signature, network (optional), endpoint (optional)",
+        .handler = signature_status.handle,
+    });
 }
