@@ -20,6 +20,7 @@ const request_airdrop = @import("request_airdrop.zig");
 const tps = @import("tps.zig");
 const slot = @import("slot.zig");
 const block_height = @import("block_height.zig");
+const parse_transaction = @import("parse_transaction.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -133,6 +134,13 @@ pub fn registerAll(server: *mcp.Server) !void {
         .name = "signature_status",
         .description = "Solana signature status. Parameters: chain=solana, signature, network (optional), endpoint (optional)",
         .handler = signature_status.handle,
+    });
+
+    // parse transaction (Solana only)
+    try server.addTool(.{
+        .name = "parse_transaction",
+        .description = "Parse Solana transaction details. Parameters: chain=solana, signature, network (optional), endpoint (optional)",
+        .handler = parse_transaction.handle,
     });
 
     // request airdrop (Solana only)

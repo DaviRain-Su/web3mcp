@@ -103,6 +103,7 @@ omniweb3-mcp/
 ### Solana-only
 - `account_info`: 账户信息
 - `signature_status`: 交易状态
+- `parse_transaction`: 解析交易详情（日志/Token 余额）
 - `token_accounts`: 列出 Token 账户
 - `token_balances`: 列出钱包所有 SPL Token 余额
 - `request_airdrop`: 请求测试网空投
