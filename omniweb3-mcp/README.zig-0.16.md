@@ -107,6 +107,8 @@ omniweb3-mcp/
 - `token_balances`: 列出钱包所有 SPL Token 余额
 - `request_airdrop`: 请求测试网空投
 - `get_tps`: 获取近期 TPS
+- `get_slot`: 获取当前 slot
+- `get_block_height`: 获取当前 block height
 
 ## Zig 0.16 API 变更
 

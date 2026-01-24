@@ -138,7 +138,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 6. Updated tool registry and README to unified names
 7. Added Solana token_balance support for owner+mint
 8. Added Solana tools: token_balances/request_airdrop/get_tps
-9. Updated v0.3.1 story tool list for unified naming
+9. Added Solana tools: get_slot/get_block_height
+10. Updated v0.3.1 story tool list for unified naming
 
 #### Test Results
 - Build: `zig build` (pass)

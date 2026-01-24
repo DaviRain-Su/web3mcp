@@ -18,6 +18,8 @@ const account_info = @import("account_info.zig");
 const signature_status = @import("signature_status.zig");
 const request_airdrop = @import("request_airdrop.zig");
 const tps = @import("tps.zig");
+const slot = @import("slot.zig");
+const block_height = @import("block_height.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -145,6 +147,20 @@ pub fn registerAll(server: *mcp.Server) !void {
         .name = "get_tps",
         .description = "Get Solana TPS from recent performance samples. Parameters: chain=solana, limit (optional), network (optional), endpoint (optional)",
         .handler = tps.handle,
+    });
+
+    // get slot (Solana only)
+    try server.addTool(.{
+        .name = "get_slot",
+        .description = "Get Solana current slot. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = slot.handle,
+    });
+
+    // get block height (Solana only)
+    try server.addTool(.{
+        .name = "get_block_height",
+        .description = "Get Solana current block height. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .handler = block_height.handle,
     });
 }
 

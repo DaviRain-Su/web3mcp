@@ -87,6 +87,10 @@ pub const SolanaAdapter = struct {
         return self.client.getSlot();
     }
 
+    pub fn getBlockHeight(self: *SolanaAdapter) !u64 {
+        return self.client.getBlockHeight();
+    }
+
     pub fn getBlock(self: *SolanaAdapter, slot: u64, include_transactions: bool) !?Block {
         const config: GetBlockConfig = .{
             .transaction_details = if (include_transactions) "full" else "none",
