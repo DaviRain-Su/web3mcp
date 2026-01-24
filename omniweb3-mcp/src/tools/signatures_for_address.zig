@@ -1,12 +1,10 @@
 const std = @import("std");
 const mcp = @import("mcp");
-const solana_sdk = @import("solana_sdk");
 const solana_client = @import("solana_client");
 const solana_helpers = @import("../core/solana_helpers.zig");
 const chain = @import("../core/chain.zig");
 
-const PublicKey = solana_sdk.PublicKey;
-const SignatureInfo = solana_client.types.SignatureInfo;
+const json_rpc = solana_client.json_rpc;
 
 /// Get signatures for a Solana address (Solana-only).
 ///
@@ -42,7 +40,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const network = mcp.tools.getString(args, "network") orelse "devnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
-    const address = solana_helpers.parsePublicKey(address_str) catch {
+    _ = solana_helpers.parsePublicKey(address_str) catch {
         return mcp.tools.errorResult(allocator, "Invalid address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
@@ -59,18 +57,41 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     defer adapter.deinit();
 
     const limit: ?u32 = if (limit_raw) |value| if (value > 0) @as(u32, @intCast(value)) else null else null;
-    const before_sig = if (before_str) |value| solana_helpers.parseSignature(value) catch {
-        return mcp.tools.errorResult(allocator, "Invalid before signature") catch {
-            return mcp.tools.ToolError.InvalidArguments;
+    if (before_str) |value| {
+        _ = solana_helpers.parseSignature(value) catch {
+            return mcp.tools.errorResult(allocator, "Invalid before signature") catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
         };
-    } else null;
-    const until_sig = if (until_str) |value| solana_helpers.parseSignature(value) catch {
-        return mcp.tools.errorResult(allocator, "Invalid until signature") catch {
-            return mcp.tools.ToolError.InvalidArguments;
+    }
+    if (until_str) |value| {
+        _ = solana_helpers.parseSignature(value) catch {
+            return mcp.tools.errorResult(allocator, "Invalid until signature") catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
         };
-    } else null;
+    }
 
-    const signatures: []SignatureInfo = adapter.getSignaturesForAddress(address, limit, before_sig, until_sig) catch |err| {
+    var params_arr = std.json.Array.init(allocator);
+    defer params_arr.deinit();
+
+    try params_arr.append(json_rpc.jsonString(address_str));
+
+    var cfg = json_rpc.jsonObject(allocator);
+    defer cfg.deinit();
+    try cfg.put("commitment", json_rpc.jsonString(adapter.client.commitment.commitment.toJsonString()));
+    if (limit) |value| {
+        try cfg.put("limit", json_rpc.jsonInt(@intCast(value)));
+    }
+    if (before_str) |value| {
+        try cfg.put("before", json_rpc.jsonString(value));
+    }
+    if (until_str) |value| {
+        try cfg.put("until", json_rpc.jsonString(value));
+    }
+    try params_arr.append(.{ .object = cfg });
+
+    var result = adapter.client.json_rpc.callWithResult(allocator, "getSignaturesForAddress", .{ .array = params_arr }) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get signatures: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -78,30 +99,37 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer allocator.free(signatures);
+    defer result.deinit();
 
-    const Response = struct {
-        chain: []const u8,
-        address: []const u8,
-        signatures: []const SignatureInfo,
-        network: []const u8,
-        endpoint: []const u8,
+    if (result.rpc_error) |rpc_err| {
+        const msg = std.fmt.allocPrint(allocator, "RPC error: {s}", .{rpc_err.message}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    }
+
+    const value = result.value orelse {
+        return mcp.tools.errorResult(allocator, "Missing signatures result") catch {
+            return mcp.tools.ToolError.InvalidArguments;
+        };
     };
 
-    const response_value: Response = .{
-        .chain = "solana",
-        .address = address_str,
-        .signatures = signatures,
-        .network = network,
-        .endpoint = adapter.endpoint,
-    };
-
-    const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {
+    const signatures_json = solana_helpers.jsonStringifyAlloc(allocator, value) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
-    defer allocator.free(json);
+    defer allocator.free(signatures_json);
 
-    return mcp.tools.textResult(allocator, json) catch {
+    const response = std.fmt.allocPrint(
+        allocator,
+        "{{\"chain\":\"solana\",\"address\":\"{s}\",\"network\":\"{s}\",\"endpoint\":\"{s}\",\"signatures\":{s}}}",
+        .{ address_str, network, adapter.endpoint, signatures_json },
+    ) catch {
+        return mcp.tools.ToolError.OutOfMemory;
+    };
+
+    return mcp.tools.textResult(allocator, response) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
 }

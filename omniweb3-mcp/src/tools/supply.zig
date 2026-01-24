@@ -4,7 +4,7 @@ const solana_client = @import("solana_client");
 const chain = @import("../core/chain.zig");
 const solana_helpers = @import("../core/solana_helpers.zig");
 
-const Supply = solana_client.types.Supply;
+const json_rpc = solana_client.json_rpc;
 
 /// Get Solana supply info (Solana-only).
 ///
@@ -38,7 +38,15 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer adapter.deinit();
 
-    const supply: Supply = adapter.getSupply() catch |err| {
+    var params_arr = std.json.Array.init(allocator);
+    defer params_arr.deinit();
+
+    var cfg = json_rpc.jsonObject(allocator);
+    defer cfg.deinit();
+    try cfg.put("commitment", json_rpc.jsonString(adapter.client.commitment.commitment.toJsonString()));
+    try params_arr.append(.{ .object = cfg });
+
+    var result = adapter.client.json_rpc.callWithResult(allocator, "getSupply", .{ .array = params_arr }) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get supply: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -46,27 +54,37 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
+    defer result.deinit();
 
-    const Response = struct {
-        chain: []const u8,
-        supply: Supply,
-        network: []const u8,
-        endpoint: []const u8,
+    if (result.rpc_error) |rpc_err| {
+        const msg = std.fmt.allocPrint(allocator, "RPC error: {s}", .{rpc_err.message}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    }
+
+    const value = result.value orelse {
+        return mcp.tools.errorResult(allocator, "Missing supply result") catch {
+            return mcp.tools.ToolError.InvalidArguments;
+        };
     };
 
-    const response_value: Response = .{
-        .chain = "solana",
-        .supply = supply,
-        .network = network,
-        .endpoint = adapter.endpoint,
-    };
-
-    const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {
+    const supply_json = solana_helpers.jsonStringifyAlloc(allocator, value) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
-    defer allocator.free(json);
+    defer allocator.free(supply_json);
 
-    return mcp.tools.textResult(allocator, json) catch {
+    const response = std.fmt.allocPrint(
+        allocator,
+        "{{\"chain\":\"solana\",\"network\":\"{s}\",\"endpoint\":\"{s}\",\"supply\":{s}}}",
+        .{ network, adapter.endpoint, supply_json },
+    ) catch {
+        return mcp.tools.ToolError.OutOfMemory;
+    };
+
+    return mcp.tools.textResult(allocator, response) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
 }

@@ -1,12 +1,10 @@
 const std = @import("std");
 const mcp = @import("mcp");
-const solana_sdk = @import("solana_sdk");
 const solana_client = @import("solana_client");
 const solana_helpers = @import("../core/solana_helpers.zig");
 const chain = @import("../core/chain.zig");
 
-const PublicKey = solana_sdk.PublicKey;
-const TokenLargestAccount = solana_client.types.TokenLargestAccount;
+const json_rpc = solana_client.json_rpc;
 
 /// Get SPL token largest accounts (Solana-only).
 ///
@@ -36,7 +34,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const network = mcp.tools.getString(args, "network") orelse "devnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
-    const mint: PublicKey = solana_helpers.parsePublicKey(mint_str) catch {
+    _ = solana_helpers.parsePublicKey(mint_str) catch {
         return mcp.tools.errorResult(allocator, "Invalid mint address") catch {
             return mcp.tools.ToolError.InvalidArguments;
         };
@@ -52,7 +50,17 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer adapter.deinit();
 
-    const accounts: []TokenLargestAccount = adapter.getTokenLargestAccounts(mint) catch |err| {
+    var params_arr = std.json.Array.init(allocator);
+    defer params_arr.deinit();
+
+    try params_arr.append(json_rpc.jsonString(mint_str));
+
+    var cfg = json_rpc.jsonObject(allocator);
+    defer cfg.deinit();
+    try cfg.put("commitment", json_rpc.jsonString(adapter.client.commitment.commitment.toJsonString()));
+    try params_arr.append(.{ .object = cfg });
+
+    var result = adapter.client.json_rpc.callWithResult(allocator, "getTokenLargestAccounts", .{ .array = params_arr }) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get token largest accounts: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -60,30 +68,37 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
-    defer allocator.free(accounts);
+    defer result.deinit();
 
-    const Response = struct {
-        chain: []const u8,
-        mint: []const u8,
-        accounts: []const TokenLargestAccount,
-        network: []const u8,
-        endpoint: []const u8,
+    if (result.rpc_error) |rpc_err| {
+        const msg = std.fmt.allocPrint(allocator, "RPC error: {s}", .{rpc_err.message}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    }
+
+    const value = result.value orelse {
+        return mcp.tools.errorResult(allocator, "Missing token largest accounts result") catch {
+            return mcp.tools.ToolError.InvalidArguments;
+        };
     };
 
-    const response_value: Response = .{
-        .chain = "solana",
-        .mint = mint_str,
-        .accounts = accounts,
-        .network = network,
-        .endpoint = adapter.endpoint,
-    };
-
-    const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {
+    const accounts_json = solana_helpers.jsonStringifyAlloc(allocator, value) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
-    defer allocator.free(json);
+    defer allocator.free(accounts_json);
 
-    return mcp.tools.textResult(allocator, json) catch {
+    const response = std.fmt.allocPrint(
+        allocator,
+        "{{\"chain\":\"solana\",\"mint\":\"{s}\",\"network\":\"{s}\",\"endpoint\":\"{s}\",\"accounts\":{s}}}",
+        .{ mint_str, network, adapter.endpoint, accounts_json },
+    ) catch {
+        return mcp.tools.ToolError.OutOfMemory;
+    };
+
+    return mcp.tools.textResult(allocator, response) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
 }

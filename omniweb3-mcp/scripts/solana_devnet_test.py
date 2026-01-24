@@ -193,5 +193,101 @@ try:
             },
         }
         print(send(parse_tx, timeout_s=12))
+
+    epoch_info = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+            "name": "get_epoch_info",
+            "arguments": {
+                "chain": "solana",
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(epoch_info, timeout_s=8))
+
+    version = {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+            "name": "get_version",
+            "arguments": {
+                "chain": "solana",
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(version, timeout_s=8))
+
+    supply = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+            "name": "get_supply",
+            "arguments": {
+                "chain": "solana",
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }
+    print(send(supply, timeout_s=8))
+
+    signatures = {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+            "name": "get_signatures_for_address",
+            "arguments": {
+                "chain": "solana",
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
+                "address": address,
+                "limit": 5,
+            },
+        },
+    }
+    print(send(signatures, timeout_s=8))
+
+    slot_line = send({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+            "name": "get_slot",
+            "arguments": {
+                "chain": "solana",
+                "network": "devnet",
+                "endpoint": RPC_ENDPOINT,
+            },
+        },
+    }, timeout_s=8)
+    print(slot_line)
+    slot_payload = extract_tool_payload(slot_line)
+    slot_value = slot_payload.get("slot") if slot_payload else None
+
+    if slot_value is not None:
+        block_time = {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": {
+                "name": "get_block_time",
+                "arguments": {
+                    "chain": "solana",
+                    "slot": slot_value,
+                    "network": "devnet",
+                    "endpoint": RPC_ENDPOINT,
+                },
+            },
+        }
+        print(send(block_time, timeout_s=8))
 finally:
     server.terminate()

@@ -4,7 +4,7 @@ const solana_client = @import("solana_client");
 const chain = @import("../core/chain.zig");
 const solana_helpers = @import("../core/solana_helpers.zig");
 
-const RpcVersionInfo = solana_client.types.RpcVersionInfo;
+const json_rpc = solana_client.json_rpc;
 
 /// Get Solana version info (Solana-only).
 ///
@@ -38,7 +38,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer adapter.deinit();
 
-    const info: RpcVersionInfo = adapter.getVersion() catch |err| {
+    var result = adapter.client.json_rpc.callWithResult(allocator, "getVersion", null) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get version: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -46,27 +46,37 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
+    defer result.deinit();
 
-    const Response = struct {
-        chain: []const u8,
-        version: RpcVersionInfo,
-        network: []const u8,
-        endpoint: []const u8,
+    if (result.rpc_error) |rpc_err| {
+        const msg = std.fmt.allocPrint(allocator, "RPC error: {s}", .{rpc_err.message}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        return mcp.tools.errorResult(allocator, msg) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+    }
+
+    const value = result.value orelse {
+        return mcp.tools.errorResult(allocator, "Missing version result") catch {
+            return mcp.tools.ToolError.InvalidArguments;
+        };
     };
 
-    const response_value: Response = .{
-        .chain = "solana",
-        .version = info,
-        .network = network,
-        .endpoint = adapter.endpoint,
-    };
-
-    const json = solana_helpers.jsonStringifyAlloc(allocator, response_value) catch {
+    const version_json = solana_helpers.jsonStringifyAlloc(allocator, value) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
-    defer allocator.free(json);
+    defer allocator.free(version_json);
 
-    return mcp.tools.textResult(allocator, json) catch {
+    const response = std.fmt.allocPrint(
+        allocator,
+        "{{\"chain\":\"solana\",\"network\":\"{s}\",\"endpoint\":\"{s}\",\"version\":{s}}}",
+        .{ network, adapter.endpoint, version_json },
+    ) catch {
+        return mcp.tools.ToolError.OutOfMemory;
+    };
+
+    return mcp.tools.textResult(allocator, response) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
 }
