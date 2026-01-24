@@ -28,7 +28,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     var adapter = chain.initSolanaAdapter(allocator, network, endpoint_override) catch |err| {

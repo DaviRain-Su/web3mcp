@@ -42,7 +42,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             };
         }
 
-        const network = network_raw orelse "devnet";
+        const network = network_raw orelse "mainnet";
         var adapter = chain.initSolanaAdapter(allocator, network, endpoint_override) catch |err| {
             const msg = std.fmt.allocPrint(allocator, "Failed to init Solana adapter: {s}", .{@errorName(err)}) catch {
                 return mcp.tools.ToolError.OutOfMemory;

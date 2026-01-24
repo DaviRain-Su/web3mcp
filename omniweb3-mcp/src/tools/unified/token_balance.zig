@@ -32,7 +32,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         const token_account_str = mcp.tools.getString(args, "token_account");
         const owner_str = mcp.tools.getString(args, "owner");
         const mint_str = mcp.tools.getString(args, "mint");
-        const network = mcp.tools.getString(args, "network") orelse "devnet";
+        const network = mcp.tools.getString(args, "network") orelse "mainnet";
 
         if (token_account_str == null and (owner_str == null or mint_str == null)) {
             return mcp.tools.errorResult(allocator, "Missing required parameter: token_account or owner+mint") catch {

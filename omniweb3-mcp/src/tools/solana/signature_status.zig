@@ -28,7 +28,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.InvalidArguments;
         };
     };
-    const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     const signature = solana_helpers.parseSignature(signature_str) catch {

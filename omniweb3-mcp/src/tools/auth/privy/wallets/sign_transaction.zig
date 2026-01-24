@@ -24,7 +24,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         return client.errorResult(allocator, "Missing required parameter: chain_type");
     };
 
-    const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const network = mcp.tools.getString(args, "network") orelse "mainnet";
 
     // Build request body based on chain type
     const body = if (std.mem.eql(u8, chain_type, "solana")) blk: {

@@ -33,7 +33,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
     const mint_str = mcp.tools.getString(args, "mint");
-    const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     const owner = solana_helpers.parsePublicKey(owner_str) catch {

@@ -43,7 +43,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const address_str = mcp.tools.getString(args, "address");
     const keypair_path = mcp.tools.getString(args, "keypair_path");
-    const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
 
     var address_buf: [PublicKey.max_base58_len]u8 = undefined;

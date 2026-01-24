@@ -23,7 +23,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    const network = mcp.tools.getString(args, "network") orelse "devnet";
+    const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
     const limit_raw = mcp.tools.getInteger(args, "limit");
     const limit = if (limit_raw) |value| if (value > 0) @as(u64, @intCast(value)) else 1 else 1;
