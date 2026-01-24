@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniWeb3 MCP - Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/@privy-io/js-sdk-core@latest/dist/umd/index.js"></script>
     <style>
         body {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
@@ -89,14 +88,21 @@
     </div>
 
     <script type="module">
-        import { PrivyClient } from 'https://esm.sh/@privy-io/server-auth@latest';
+        import Privy from 'https://unpkg.com/@privy-io/js-sdk-core@0.59.0/dist/esm/index.mjs';
         
         const PRIVY_APP_ID = 'clt574a4m058ovy6y0glgc48j';
         
-        // Initialize Privy
-        const privy = new window.Privy.PrivyClient({
-            appId: PRIVY_APP_ID,
+        const privy = new Privy({
+            clientId: PRIVY_APP_ID,
         });
+
+        async function initPrivy() {
+            try {
+                await privy.initialize();
+            } catch (e) {
+                console.error('Privy initialize failed:', e);
+            }
+        }
 
         const loginSection = document.getElementById('login-section');
         const loggedSection = document.getElementById('logged-section');
@@ -141,8 +147,10 @@
         // Check existing session
         async function checkSession() {
             try {
-                const { user, token } = await privy.getUser();
-                if (user) {
+                await initPrivy();
+                const { user } = await privy.user.get();
+                const token = privy.getAccessToken();
+                if (user && token) {
                     updateUI(user, token);
                 }
             } catch (e) {
@@ -150,11 +158,39 @@
             }
         }
 
+        async function loginWithSiwe() {
+            if (!window.ethereum) return null;
+            const [address] = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+            const chainId = `eip155:${parseInt(chainIdHex, 16)}`;
+            const wallet = {
+                address,
+                chainId,
+                connectorType: 'injected',
+                walletClientType: 'metamask',
+            };
+
+            const { message } = await privy.auth.siwe.init(wallet, window.location.host, window.location.origin);
+            const signature = await window.ethereum.request({ method: 'personal_sign', params: [message, address] });
+            return privy.auth.siwe.loginWithSiwe(signature, wallet, message);
+        }
+
+        async function loginAsGuest() {
+            return privy.auth.guest.create();
+        }
+
         loginBtn.addEventListener('click', async () => {
             showSection(loadingSection);
             try {
-                const { user, token } = await privy.login();
-                updateUI(user, token);
+                await initPrivy();
+                let result = null;
+                if (window.ethereum) {
+                    result = await loginWithSiwe();
+                } else {
+                    result = await loginAsGuest();
+                }
+                const token = privy.getAccessToken();
+                updateUI(result.user, token);
             } catch (e) {
                 console.error('Login failed:', e);
                 showSection(loginSection);
@@ -163,7 +199,7 @@
         });
 
         logoutBtn.addEventListener('click', async () => {
-            await privy.logout();
+            await privy.auth.logout();
             showSection(loginSection);
         });
 
