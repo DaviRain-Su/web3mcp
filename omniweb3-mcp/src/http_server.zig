@@ -270,7 +270,7 @@ fn handleConnection(
                 var buf = try allocator.alloc(u8, content_len);
                 var read_total: usize = 0;
                 while (read_total < content_len) {
-                    const n = body_reader.read(buf[read_total..]) catch return error.ReadFailed;
+                    const n = body_reader.readSliceShort(buf[read_total..]) catch return error.ReadFailed;
                     if (n == 0) break;
                     read_total += n;
                 }
