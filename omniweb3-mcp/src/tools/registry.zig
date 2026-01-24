@@ -12,9 +12,12 @@ const gas_price = @import("gas_price.zig");
 const estimate_gas = @import("estimate_gas.zig");
 const call = @import("call.zig");
 const token_balance = @import("token_balance.zig");
+const token_balances = @import("token_balances.zig");
 const token_accounts = @import("token_accounts.zig");
 const account_info = @import("account_info.zig");
 const signature_status = @import("signature_status.zig");
+const request_airdrop = @import("request_airdrop.zig");
+const tps = @import("tps.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -102,6 +105,13 @@ pub fn registerAll(server: *mcp.Server) !void {
         .handler = token_balance.handle,
     });
 
+    // token balances (Solana only)
+    try server.addTool(.{
+        .name = "token_balances",
+        .description = "Solana token balances by owner. Parameters: chain=solana, owner (optional), mint (optional), network (optional), endpoint (optional)",
+        .handler = token_balances.handle,
+    });
+
     // token accounts (Solana only)
     try server.addTool(.{
         .name = "token_accounts",
@@ -122,4 +132,19 @@ pub fn registerAll(server: *mcp.Server) !void {
         .description = "Solana signature status. Parameters: chain=solana, signature, network (optional), endpoint (optional)",
         .handler = signature_status.handle,
     });
+
+    // request airdrop (Solana only)
+    try server.addTool(.{
+        .name = "request_airdrop",
+        .description = "Request SOL airdrop (devnet/testnet). Parameters: chain=solana, amount (lamports), address (optional), network (optional), endpoint (optional)",
+        .handler = request_airdrop.handle,
+    });
+
+    // get TPS (Solana only)
+    try server.addTool(.{
+        .name = "get_tps",
+        .description = "Get Solana TPS from recent performance samples. Parameters: chain=solana, limit (optional), network (optional), endpoint (optional)",
+        .handler = tps.handle,
+    });
 }
+

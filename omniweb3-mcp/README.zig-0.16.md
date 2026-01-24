@@ -104,6 +104,9 @@ omniweb3-mcp/
 - `account_info`: 账户信息
 - `signature_status`: 交易状态
 - `token_accounts`: 列出 Token 账户
+- `token_balances`: 列出钱包所有 SPL Token 余额
+- `request_airdrop`: 请求测试网空投
+- `get_tps`: 获取近期 TPS
 
 ## Zig 0.16 API 变更
 

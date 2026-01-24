@@ -12,6 +12,7 @@ const TransactionWithMeta = solana_client.types.TransactionWithMeta;
 const TokenBalance = solana_client.types.TokenBalance;
 const TokenAccount = solana_client.types.TokenAccount;
 const Block = solana_client.types.Block;
+const PerformanceSample = solana_client.types.PerformanceSample;
 const TokenAccountFilter = solana_client.RpcClient.TokenAccountFilter;
 const GetBlockConfig = solana_client.RpcClient.GetBlockConfig;
 const TOKEN_PROGRAM_ID = solana_sdk.spl.token.instruction.TOKEN_PROGRAM_ID;
@@ -93,6 +94,14 @@ pub const SolanaAdapter = struct {
             .max_supported_transaction_version = 0,
         };
         return self.client.getBlockWithConfig(slot, config);
+    }
+
+    pub fn requestAirdrop(self: *SolanaAdapter, pubkey: PublicKey, lamports: u64) !Signature {
+        return self.client.requestAirdrop(pubkey, lamports);
+    }
+
+    pub fn getRecentPerformanceSamples(self: *SolanaAdapter, limit: ?u64) ![]PerformanceSample {
+        return self.client.getRecentPerformanceSamples(limit);
     }
 
     pub fn sendTransaction(self: *SolanaAdapter, transaction: []const u8) !Signature {
