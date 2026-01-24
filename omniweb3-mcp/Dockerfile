@@ -3,7 +3,7 @@ RUN apt update && apt install -y curl xz-utils
 WORKDIR /opt
 RUN curl -L https://ziglang.org/builds/zig-x86_64-linux-0.16.0-dev.2261+d6b3dd25a.tar.xz \
   | tar -xJ
-ENV PATH="/opt/zig-linux-x86_64-0.16.0-dev.2261+d6b3dd25a:$PATH"
+ENV PATH="/opt/zig-x86_64-linux-0.16.0-dev.2261+d6b3dd25a:$PATH"
 WORKDIR /app
 COPY . .
 RUN zig build -Doptimize=ReleaseFast
