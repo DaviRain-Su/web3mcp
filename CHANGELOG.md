@@ -182,6 +182,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Next Steps
 - [ ] Plan next milestone (v0.4.0 protocols)
 
+### Session 2026-01-23-012
+
+**Date**: 2026-01-23
+**Goal**: Add Solana utility tools (wallet address + close empty token accounts)
+
+#### Completed Work
+1. Added get_wallet_address tool
+2. Added close_empty_token_accounts tool
+3. Updated tool registry and README
+4. Added v0.3.4 story + roadmap entry
+
+#### Test Results
+- Build: `zig16 build` (pass)
+
+#### Next Steps
+- [ ] Run Solana utility tools locally
+
 ### Session 2026-01-23-011
 
 **Date**: 2026-01-23

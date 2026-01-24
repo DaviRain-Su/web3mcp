@@ -117,6 +117,8 @@ omniweb3-mcp/
 - `get_token_largest_accounts`: 获取 SPL 最大账户列表
 - `get_signatures_for_address`: 获取地址交易签名列表
 - `get_block_time`: 获取 slot 对应区块时间
+- `get_wallet_address`: 获取钱包地址
+- `close_empty_token_accounts`: 关闭空 Token 账户
 
 ## Zig 0.16 API 变更
 

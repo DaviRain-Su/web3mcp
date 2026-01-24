@@ -43,6 +43,13 @@
   - 移除链特定工具
   - 文档同步
 
+## v0.3.4 - Solana Utility Tools
+- Status: 🔨 In Progress
+- Scope:
+  - Solana 钱包地址读取工具
+  - 关闭空 Token 账户工具
+  - 文档与注册同步
+
 ## v0.4.0 - 协议集成（Swap + Lending）
 - Status: ⏳ Pending
 - Scope:

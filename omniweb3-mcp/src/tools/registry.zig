@@ -28,6 +28,8 @@ const token_supply = @import("token_supply.zig");
 const token_largest_accounts = @import("token_largest_accounts.zig");
 const signatures_for_address = @import("signatures_for_address.zig");
 const block_time = @import("block_time.zig");
+const get_wallet_address = @import("get_wallet_address.zig");
+const close_empty_token_accounts = @import("close_empty_token_accounts.zig");
 
 /// Register all tools with the MCP server
 pub fn registerAll(server: *mcp.Server) !void {
@@ -225,6 +227,20 @@ pub fn registerAll(server: *mcp.Server) !void {
         .name = "get_block_time",
         .description = "Get Solana block time. Parameters: chain=solana, slot, network (optional), endpoint (optional)",
         .handler = block_time.handle,
+    });
+
+    // get wallet address (Solana only)
+    try server.addTool(.{
+        .name = "get_wallet_address",
+        .description = "Get Solana wallet address from keypair. Parameters: chain=solana, keypair_path (optional)",
+        .handler = get_wallet_address.handle,
+    });
+
+    // close empty token accounts (Solana only)
+    try server.addTool(.{
+        .name = "close_empty_token_accounts",
+        .description = "Close empty SPL token accounts. Parameters: chain=solana, keypair_path (optional), network (optional), endpoint (optional)",
+        .handler = close_empty_token_accounts.handle,
     });
 }
 
