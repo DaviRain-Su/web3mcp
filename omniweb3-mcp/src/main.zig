@@ -14,7 +14,6 @@ pub fn main(init: std.process.Init) !void {
 fn run(init: std.process.Init) !void {
     // Wrap GPA with a thread-safe allocator for multi-threaded HTTP workers.
     var ts_allocator = std.heap.ThreadSafeAllocator{ .child_allocator = init.gpa };
-    defer ts_allocator.deinit();
     const allocator = ts_allocator.allocator();
 
     try evm_runtime.init(allocator, init.minimal.environ);
