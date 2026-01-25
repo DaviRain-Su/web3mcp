@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 # 安装运行时依赖
-RUN apt update && apt install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

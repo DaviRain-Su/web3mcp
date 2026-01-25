@@ -3,7 +3,7 @@ const mcp = @import("mcp");
 const evm_runtime = @import("../../../../../core/evm_runtime.zig");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
-const process = std.process;
+const http_utils = @import("../../../../../core/http_utils.zig");
 
 /// Get Jupiter trigger (limit) orders for a Solana account.
 ///
@@ -79,7 +79,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
 fn fetchHttp(allocator: std.mem.Allocator, url: []const u8, api_key: ?[]const u8, insecure: bool) ![]u8 {
     if (insecure) {
-        return fetchViaCurl(allocator, url, api_key, true);
+        return http_utils.fetch(allocator, url, api_key, true);
     }
 
     var client = std.http.Client{ .allocator = allocator, .io = evm_runtime.io() };
@@ -98,45 +98,13 @@ fn fetchHttp(allocator: std.mem.Allocator, url: []const u8, api_key: ?[]const u8
         .response_writer = &out.writer,
         .extra_headers = extra_headers,
     }) catch {
-        return fetchViaCurl(allocator, url, api_key, false);
+        return http_utils.fetch(allocator, url, api_key, false);
     };
 
     if (fetch_result.status.class() != .success) {
-        return fetchViaCurl(allocator, url, api_key, false);
+        return http_utils.fetch(allocator, url, api_key, false);
     }
 
     return out.toOwnedSlice();
 }
 
-fn fetchViaCurl(allocator: std.mem.Allocator, url: []const u8, api_key: ?[]const u8, insecure: bool) ![]u8 {
-    var argv = std.ArrayList([]const u8).empty;
-    defer argv.deinit(allocator);
-
-    try argv.append(allocator, "curl");
-    if (insecure) {
-        try argv.append(allocator, "-k");
-    }
-    try argv.append(allocator, "-sL");
-
-    var header_value: ?[]u8 = null;
-    defer if (header_value) |value| allocator.free(value);
-
-    if (api_key) |key| {
-        try argv.append(allocator, "-H");
-        header_value = try std.fmt.allocPrint(allocator, "x-api-key: {s}", .{key});
-        try argv.append(allocator, header_value.?);
-    }
-
-    try argv.append(allocator, url);
-
-    const result = try process.run(allocator, evm_runtime.io(), .{
-        .argv = argv.items,
-        .max_output_bytes = 2 * 1024 * 1024,
-    });
-    defer allocator.free(result.stderr);
-    if (result.term != .exited or result.term.exited != 0) {
-        allocator.free(result.stdout);
-        return error.FetchFailed;
-    }
-    return result.stdout;
-}
