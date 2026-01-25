@@ -161,10 +161,12 @@ pub fn imageResult(allocator: std.mem.Allocator, data: []const u8, mimeType: []c
 pub fn getString(args: ?std.json.Value, key: []const u8) ?[]const u8 {
     if (args) |a| {
         if (a == .object) {
-            if (a.object.get(key)) |val| {
-                if (val == .string) {
-                    return val.string;
-                }
+            if (a.object.get(key)) |val| if (val == .string) return val.string;
+        }
+        if (a == .string) {
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, std.heap.page_allocator, a.string, .{}) catch return null;
+            if (parsed == .object) {
+                if (parsed.object.get(key)) |val| if (val == .string) return val.string;
             }
         }
     }
@@ -175,10 +177,12 @@ pub fn getString(args: ?std.json.Value, key: []const u8) ?[]const u8 {
 pub fn getInteger(args: ?std.json.Value, key: []const u8) ?i64 {
     if (args) |a| {
         if (a == .object) {
-            if (a.object.get(key)) |val| {
-                if (val == .integer) {
-                    return val.integer;
-                }
+            if (a.object.get(key)) |val| if (val == .integer) return val.integer;
+        }
+        if (a == .string) {
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, std.heap.page_allocator, a.string, .{}) catch return null;
+            if (parsed == .object) {
+                if (parsed.object.get(key)) |val| if (val == .integer) return val.integer;
             }
         }
     }
@@ -197,6 +201,18 @@ pub fn getFloat(args: ?std.json.Value, key: []const u8) ?f64 {
                 };
             }
         }
+        if (a == .string) {
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, std.heap.page_allocator, a.string, .{}) catch return null;
+            if (parsed == .object) {
+                if (parsed.object.get(key)) |val| {
+                    return switch (val) {
+                        .float => val.float,
+                        .integer => @floatFromInt(val.integer),
+                        else => null,
+                    };
+                }
+            }
+        }
     }
     return null;
 }
@@ -205,10 +221,12 @@ pub fn getFloat(args: ?std.json.Value, key: []const u8) ?f64 {
 pub fn getBoolean(args: ?std.json.Value, key: []const u8) ?bool {
     if (args) |a| {
         if (a == .object) {
-            if (a.object.get(key)) |val| {
-                if (val == .bool) {
-                    return val.bool;
-                }
+            if (a.object.get(key)) |val| if (val == .bool) return val.bool;
+        }
+        if (a == .string) {
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, std.heap.page_allocator, a.string, .{}) catch return null;
+            if (parsed == .object) {
+                if (parsed.object.get(key)) |val| if (val == .bool) return val.bool;
             }
         }
     }
@@ -219,10 +237,12 @@ pub fn getBoolean(args: ?std.json.Value, key: []const u8) ?bool {
 pub fn getArray(args: ?std.json.Value, key: []const u8) ?std.json.Array {
     if (args) |a| {
         if (a == .object) {
-            if (a.object.get(key)) |val| {
-                if (val == .array) {
-                    return val.array;
-                }
+            if (a.object.get(key)) |val| if (val == .array) return val.array;
+        }
+        if (a == .string) {
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, std.heap.page_allocator, a.string, .{}) catch return null;
+            if (parsed == .object) {
+                if (parsed.object.get(key)) |val| if (val == .array) return val.array;
             }
         }
     }
@@ -233,10 +253,12 @@ pub fn getArray(args: ?std.json.Value, key: []const u8) ?std.json.Array {
 pub fn getObject(args: ?std.json.Value, key: []const u8) ?std.json.ObjectMap {
     if (args) |a| {
         if (a == .object) {
-            if (a.object.get(key)) |val| {
-                if (val == .object) {
-                    return val.object;
-                }
+            if (a.object.get(key)) |val| if (val == .object) return val.object;
+        }
+        if (a == .string) {
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, std.heap.page_allocator, a.string, .{}) catch return null;
+            if (parsed == .object) {
+                if (parsed.object.get(key)) |val| if (val == .object) return val.object;
             }
         }
     }
