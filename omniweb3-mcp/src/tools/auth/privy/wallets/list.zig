@@ -12,7 +12,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         return client.errorResult(allocator, "Privy not configured. Set PRIVY_APP_ID and PRIVY_APP_SECRET environment variables.");
     }
 
-    const chain_type = mcp.tools.getString(args, "chain_type");
+    const chain_type = getChainType(allocator, args);
     const cursor = mcp.tools.getString(args, "cursor");
     const limit = mcp.tools.getInteger(args, "limit");
 
@@ -51,4 +51,22 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     defer allocator.free(response);
 
     return client.jsonResult(allocator, response);
+}
+
+fn getChainType(allocator: std.mem.Allocator, args: ?std.json.Value) ?[]const u8 {
+    if (mcp.tools.getString(args, "chain_type")) |val| return val;
+    if (mcp.tools.getString(args, "chainType")) |val| return val;
+
+    if (args) |a| {
+        if (a == .string) {
+            const parsed = std.json.parseFromSlice(std.json.Value, allocator, a.string, .{}) catch return null;
+            defer parsed.deinit();
+            if (parsed.value == .object) {
+                if (parsed.value.object.get("chain_type")) |v| if (v == .string) return v.string;
+                if (parsed.value.object.get("chainType")) |v| if (v == .string) return v.string;
+            }
+        }
+    }
+
+    return null;
 }
