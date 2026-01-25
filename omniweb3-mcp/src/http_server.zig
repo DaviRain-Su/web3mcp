@@ -295,7 +295,11 @@ pub fn runHttpServer(
 }
 
 fn serverLoop(server: *mcp.Server, transport: mcp.Transport, index: usize) !void {
-    std.log.info("worker {d} ready", .{index});
+    // Auto-initialize server for HTTP transport (stateless requests)
+    // HTTP mode doesn't maintain session state, so we bypass the initialization protocol
+    server.state = .ready;
+
+    std.log.info("worker {d} ready (auto-initialized for HTTP)", .{index});
     try server.runWithTransport(transport);
 }
 
