@@ -380,22 +380,28 @@ pub const Server = struct {
             }
 
             // Add input schema
-            const tool_schema = buildToolInputSchema(self.allocator, entry.value_ptr.name) orelse types.InputSchema{};
+            var schema_opt = buildToolInputSchema(self.allocator, entry.value_ptr.name);
+            if (schema_opt == null) {
+                if (entry.value_ptr.description) |desc| {
+                    schema_opt = deriveSchemaFromDescription(self.allocator, desc);
+                }
+            }
+            const tool_schema = schema_opt orelse types.InputSchema{};
             var input_schema = std.json.ObjectMap.init(self.allocator);
-            try input_schema.put("type", .{ .string = tool_schema.type });
+            _ = input_schema.put("type", .{ .string = tool_schema.type }) catch {};
             if (tool_schema.properties) |props| {
-                try input_schema.put("properties", props);
+                _ = input_schema.put("properties", props) catch {};
             }
             if (tool_schema.required) |req| {
                 var req_arr = std.json.Array.init(self.allocator);
-                for (req) |name| try req_arr.append(.{ .string = name });
-                try input_schema.put("required", .{ .array = req_arr });
+                for (req) |name| _ = req_arr.append(.{ .string = name }) catch {};
+                _ = input_schema.put("required", .{ .array = req_arr }) catch {};
             }
             if (tool_schema.description) |desc| {
-                try input_schema.put("description", .{ .string = desc });
+                _ = input_schema.put("description", .{ .string = desc }) catch {};
             }
 
-            try tool_obj.put("inputSchema", .{ .object = input_schema });
+            _ = tool_obj.put("inputSchema", .{ .object = input_schema }) catch {};
             try tools_array.append(.{ .object = tool_obj });
         }
 
@@ -479,6 +485,48 @@ pub const Server = struct {
             }
         }
 
+        return .{
+            .type = "object",
+            .properties = .{ .object = properties },
+            .required = required.toOwnedSlice(allocator) catch null,
+        };
+    }
+
+    fn deriveSchemaFromDescription(allocator: std.mem.Allocator, desc: []const u8) ?types.InputSchema {
+        const marker = "Parameters:";
+        const start_idx = std.mem.indexOf(u8, desc, marker) orelse return null;
+        var rest = desc[start_idx + marker.len ..];
+        if (std.mem.indexOfScalar(u8, rest, '.')) |dot| {
+            rest = rest[0..dot];
+        }
+        if (std.mem.indexOfScalar(u8, rest, '\n')) |nl| {
+            rest = rest[0..nl];
+        }
+
+        var properties = std.json.ObjectMap.init(allocator);
+        var required = std.ArrayList([]const u8).empty;
+
+        var it = std.mem.splitScalar(u8, rest, ',');
+        while (it.next()) |seg_raw| {
+            var seg = std.mem.trim(u8, seg_raw, " \t\r\n");
+            if (seg.len == 0) continue;
+
+            const optional = std.ascii.indexOfIgnoreCase(seg, "optional") != null;
+            // take name before space or '(' if present
+            if (std.mem.indexOfAny(u8, seg, " (")) |cut| {
+                seg = seg[0..cut];
+            }
+            if (seg.len == 0) continue;
+
+            var prop = std.json.ObjectMap.init(allocator);
+            _ = prop.put("type", .{ .string = "string" }) catch {};
+            _ = properties.put(seg, .{ .object = prop }) catch {};
+            if (!optional) {
+                _ = required.append(allocator, seg) catch {};
+            }
+        }
+
+        if (properties.count() == 0) return null;
         return .{
             .type = "object",
             .properties = .{ .object = properties },
