@@ -6,5 +6,15 @@ zig-out/*
 !zig-out/bin/
 !zig-out/bin/omniweb3-mcp
 
+# Web app
+web-app/node_modules/
+web-app/dist/
+
+# Allow web app config and lockfile
+!web-app/package-lock.json
+!web-app/postcss.config.js
+!web-app/tailwind.config.js
+!web-app/vite.config.ts
+
 # OS files
 .DS_Store
