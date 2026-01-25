@@ -12,6 +12,14 @@
 const mcp = @import("mcp");
 
 // =============================================================================
+// Meteora REST API Tools - Accurate data via official HTTP API
+// =============================================================================
+
+const api_list_dlmm_pools = @import("api/list_dlmm_pools.zig");
+const api_get_dlmm_pool = @import("api/get_dlmm_pool.zig");
+const api_list_damm_pools = @import("api/list_damm_pools.zig");
+
+// =============================================================================
 // DLMM Tools - Concentrated Liquidity with Dynamic Fees
 // =============================================================================
 
@@ -92,7 +100,26 @@ const m3m3_get_user_balance = @import("stake_for_fee/get_user_balance.zig");
 /// All Meteora tool definitions
 pub const tools = [_]mcp.tools.Tool{
     // =========================================================================
-    // DLMM - Concentrated Liquidity
+    // REST API Tools - RECOMMENDED: Use these for accurate pool data
+    // =========================================================================
+    .{
+        .name = "meteora_api_list_dlmm_pools",
+        .description = "Get all Meteora DLMM pools via REST API (RECOMMENDED - accurate data). Returns pool addresses, prices, TVL, volume, fees, APR. Parameters: endpoint (optional), insecure (optional)",
+        .handler = api_list_dlmm_pools.handle,
+    },
+    .{
+        .name = "meteora_api_get_dlmm_pool",
+        .description = "Get specific DLMM pool info via REST API (RECOMMENDED - accurate data). Returns detailed pool data including current price, reserves, volume, APR. Parameters: pool_address (required), endpoint (optional), insecure (optional)",
+        .handler = api_get_dlmm_pool.handle,
+    },
+    .{
+        .name = "meteora_api_list_damm_pools",
+        .description = "Get all Meteora DAMM pools via REST API (RECOMMENDED - accurate data). Returns DAMM V2 pool list with TVL, volume, fees. Parameters: endpoint (optional), insecure (optional)",
+        .handler = api_list_damm_pools.handle,
+    },
+
+    // =========================================================================
+    // DLMM - Concentrated Liquidity (ON-CHAIN PARSING - KNOWN ISSUES)
     // =========================================================================
     .{
         .name = "meteora_dlmm_get_pool",

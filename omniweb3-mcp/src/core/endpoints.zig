@@ -411,3 +411,39 @@ pub const dflow = struct {
     /// GET /sports/filters - Get filters by sports
     pub const pm_sports_filters = prediction_base ++ "/sports/filters";
 };
+
+// =============================================================================
+// Meteora API Endpoints
+// Docs: https://docs.meteora.ag/api-reference
+// =============================================================================
+
+pub const meteora = struct {
+    /// Base URL for Meteora DLMM API
+    pub const dlmm_base = "https://dlmm-api.meteora.ag";
+
+    /// Base URL for Meteora DAMM API
+    pub const damm_base = "https://amm-v2.meteora.ag";
+
+    // =========================================================================
+    // DLMM (Dynamic Liquidity Market Maker) API
+    // =========================================================================
+
+    /// GET /pair/all - Get all DLMM pairs
+    pub const dlmm_pairs_all = dlmm_base ++ "/pair/all";
+
+    /// GET /pair/{address} - Get specific DLMM pair info
+    pub const dlmm_pair = dlmm_base ++ "/pair";
+
+    /// GET /pair/all_by_groups - Get pairs grouped by base token
+    pub const dlmm_pairs_by_groups = dlmm_base ++ "/pair/all_by_groups";
+
+    // =========================================================================
+    // DAMM (Dynamic AMM) API
+    // =========================================================================
+
+    /// GET /pool/list - Get all DAMM pools
+    pub const damm_pools = damm_base ++ "/pool/list";
+
+    /// GET /pool/{address} - Get specific DAMM pool info
+    pub const damm_pool = damm_base ++ "/pool";
+};
