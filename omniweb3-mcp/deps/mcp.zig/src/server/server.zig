@@ -547,7 +547,12 @@ pub const Server = struct {
                         tool_name = name_val.string;
                     }
                 }
-                arguments = params.object.get("arguments");
+                if (params.object.get("arguments")) |args_val| {
+                    arguments = args_val;
+                } else {
+                    // Some clients pass arguments at the top-level of params.
+                    arguments = params;
+                }
             }
         }
 
