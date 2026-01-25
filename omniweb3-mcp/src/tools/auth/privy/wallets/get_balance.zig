@@ -16,8 +16,16 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         return client.errorResult(allocator, "Missing required parameter: wallet_id");
     };
 
-    // Build path
-    const path = std.fmt.allocPrint(allocator, "/wallets/{s}/balance", .{wallet_id}) catch {
+    const chain = mcp.tools.getString(args, "chain") orelse {
+        return client.errorResult(allocator, "Missing required parameter: chain (e.g., solana, ethereum, base)");
+    };
+
+    const asset = mcp.tools.getString(args, "asset") orelse {
+        return client.errorResult(allocator, "Missing required parameter: asset (e.g., sol, eth, usdc)");
+    };
+
+    // Build path with query parameters
+    const path = std.fmt.allocPrint(allocator, "/wallets/{s}/balance?chain={s}&asset={s}", .{ wallet_id, chain, asset }) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
     defer allocator.free(path);

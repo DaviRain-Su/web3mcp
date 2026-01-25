@@ -87,7 +87,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "privy_get_wallet_balance",
-        .description = "Get native token balance of a Privy wallet. Parameters: wallet_id. Requires PRIVY_APP_ID and PRIVY_APP_SECRET env vars.",
+        .description = "Get native token balance of a Privy wallet. Parameters: wallet_id, chain (e.g., solana, ethereum, base), asset (e.g., sol, eth, usdc). Requires PRIVY_APP_ID and PRIVY_APP_SECRET env vars.",
         .handler = wallet_get_balance.handle,
     },
     .{
