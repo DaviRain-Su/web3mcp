@@ -380,10 +380,22 @@ pub const Server = struct {
             }
 
             // Add input schema
+            const tool_schema = buildToolInputSchema(self.allocator, entry.value_ptr.name) orelse types.InputSchema{};
             var input_schema = std.json.ObjectMap.init(self.allocator);
-            try input_schema.put("type", .{ .string = "object" });
-            try tool_obj.put("inputSchema", .{ .object = input_schema });
+            try input_schema.put("type", .{ .string = tool_schema.type });
+            if (tool_schema.properties) |props| {
+                try input_schema.put("properties", props);
+            }
+            if (tool_schema.required) |req| {
+                var req_arr = std.json.Array.init(self.allocator);
+                for (req) |name| try req_arr.append(.{ .string = name });
+                try input_schema.put("required", .{ .array = req_arr });
+            }
+            if (tool_schema.description) |desc| {
+                try input_schema.put("description", .{ .string = desc });
+            }
 
+            try tool_obj.put("inputSchema", .{ .object = input_schema });
             try tools_array.append(.{ .object = tool_obj });
         }
 
@@ -392,6 +404,86 @@ pub const Server = struct {
 
         const response = jsonrpc.createResponse(request.id, .{ .object = result });
         try self.sendResponse(.{ .response = response });
+    }
+
+    fn buildToolInputSchema(allocator: std.mem.Allocator, tool_name: []const u8) ?types.InputSchema {
+        // Only provide detailed schemas for Privy wallet tools right now.
+        if (std.mem.eql(u8, tool_name, "privy_create_wallet")) {
+            return makeSchema(allocator, &.{
+                .{ .name = "chain_type", .desc = "Target chain type", .required = true, .enum_values = &.{
+                    "ethereum", "solana", "cosmos", "stellar", "sui", "aptos", "movement", "tron", "bitcoin-segwit", "near", "ton", "starknet", "spark",
+                } },
+                .{ .name = "user_id", .desc = "Privy user id (did:privy:xxx)", .required = false, .enum_values = null },
+            });
+        }
+        if (std.mem.eql(u8, tool_name, "privy_list_wallets")) {
+            return makeSchema(allocator, &.{
+                .{ .name = "chain_type", .desc = "Filter by chain type", .required = false, .enum_values = &.{
+                    "ethereum", "solana", "cosmos", "stellar", "sui", "aptos", "movement", "tron", "bitcoin-segwit", "near", "ton", "starknet", "spark",
+                } },
+                .{ .name = "cursor", .desc = "Pagination cursor", .required = false, .enum_values = null },
+                .{ .name = "limit", .desc = "Max results (default 100)", .required = false, .enum_values = null },
+            });
+        }
+        if (std.mem.eql(u8, tool_name, "privy_sign_message")) {
+            return makeSchema(allocator, &.{
+                .{ .name = "wallet_id", .desc = "Privy wallet id", .required = true, .enum_values = null },
+                .{ .name = "message", .desc = "Message to sign", .required = true, .enum_values = null },
+                .{ .name = "chain_type", .desc = "solana or ethereum", .required = true, .enum_values = &.{ "solana", "ethereum" } },
+                .{ .name = "network", .desc = "mainnet/devnet/testnet (default mainnet)", .required = false, .enum_values = null },
+            });
+        }
+        if (std.mem.eql(u8, tool_name, "privy_sign_transaction")) {
+            return makeSchema(allocator, &.{
+                .{ .name = "wallet_id", .desc = "Privy wallet id", .required = true, .enum_values = null },
+                .{ .name = "transaction", .desc = "Base64 encoded transaction", .required = true, .enum_values = null },
+                .{ .name = "chain_type", .desc = "solana or ethereum", .required = true, .enum_values = &.{ "solana", "ethereum" } },
+                .{ .name = "network", .desc = "mainnet/devnet/testnet (default mainnet)", .required = false, .enum_values = null },
+            });
+        }
+        if (std.mem.eql(u8, tool_name, "privy_sign_and_send_transaction")) {
+            return makeSchema(allocator, &.{
+                .{ .name = "wallet_id", .desc = "Privy wallet id", .required = true, .enum_values = null },
+                .{ .name = "transaction", .desc = "Base64 encoded transaction", .required = true, .enum_values = null },
+                .{ .name = "chain_type", .desc = "solana or ethereum", .required = true, .enum_values = &.{ "solana", "ethereum" } },
+                .{ .name = "network", .desc = "mainnet/devnet/testnet (default mainnet)", .required = false, .enum_values = null },
+                .{ .name = "sponsor", .desc = "Enable gas sponsorship (true/false)", .required = false, .enum_values = null },
+            });
+        }
+        return null;
+    }
+
+    const Field = struct {
+        name: []const u8,
+        desc: ?[]const u8,
+        required: bool,
+        enum_values: ?[]const []const u8,
+    };
+
+    fn makeSchema(allocator: std.mem.Allocator, fields: []const Field) types.InputSchema {
+        var properties = std.json.ObjectMap.init(allocator);
+        var required = std.ArrayList([]const u8).empty;
+
+        for (fields) |field| {
+            var prop = std.json.ObjectMap.init(allocator);
+            _ = prop.put("type", .{ .string = "string" }) catch {};
+            if (field.desc) |d| _ = prop.put("description", .{ .string = d }) catch {};
+            if (field.enum_values) |vals| {
+                var arr = std.json.Array.init(allocator);
+                for (vals) |v| _ = arr.append(.{ .string = v }) catch {};
+                _ = prop.put("enum", .{ .array = arr }) catch {};
+            }
+            _ = properties.put(field.name, .{ .object = prop }) catch {};
+            if (field.required) {
+                _ = required.append(allocator, field.name) catch {};
+            }
+        }
+
+        return .{
+            .type = "object",
+            .properties = .{ .object = properties },
+            .required = required.toOwnedSlice(allocator) catch null,
+        };
     }
 
     /// Handle tools/call request
