@@ -342,7 +342,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "get_jupiter_price",
-        .description = "Get Jupiter token price. Parameters: chain=solana, mint, endpoint (optional), api_key (optional), insecure (optional)",
+        .description = "Get Jupiter token price. Parameters: chain=solana, mint, endpoint (optional), insecure (optional). Requires JUPITER_API_KEY environment variable.",
         .handler = get_jupiter_price.handle,
     },
 

@@ -3,7 +3,7 @@ const mcp = @import("mcp");
 const evm_runtime = @import("../../../../../core/evm_runtime.zig");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
-const http_utils = @import("../../../../../core/http_utils.zig");
+const secure_http = @import("../../../../../core/secure_http.zig");
 
 /// Get available tokens for Jupiter Lend (Earn).
 ///
@@ -15,10 +15,10 @@ const http_utils = @import("../../../../../core/http_utils.zig");
 /// Returns JSON with available lending tokens
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     const endpoint_override = mcp.tools.getString(args, "endpoint") orelse endpoints.jupiter.lend_tokens;
-    const api_key = mcp.tools.getString(args, "api_key");
+    const use_api_key = true; // Always use API key from environment variable
     const insecure = mcp.tools.getBoolean(args, "insecure") orelse false;
 
-    const body = fetchHttp(allocator, endpoint_override, api_key, insecure) catch |err| {
+    const body = secure_http.secureGet(allocator, endpoint_override, use_api_key, insecure) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get lend tokens: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -53,36 +53,5 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     return mcp.tools.textResult(allocator, json) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
-}
-
-fn fetchHttp(allocator: std.mem.Allocator, url: []const u8, api_key: ?[]const u8, insecure: bool) ![]u8 {
-    if (insecure) {
-        return http_utils.fetch(allocator, url, api_key, true);
-    }
-
-    var client = std.http.Client{ .allocator = allocator, .io = evm_runtime.io() };
-    defer client.deinit();
-
-    var out: std.Io.Writer.Allocating = .init(allocator);
-
-    var headers: [1]std.http.Header = undefined;
-    const extra_headers = if (api_key) |key| blk: {
-        headers[0] = .{ .name = "x-api-key", .value = key };
-        break :blk headers[0..1];
-    } else &.{};
-
-    const fetch_result = client.fetch(.{
-        .location = .{ .url = url },
-        .response_writer = &out.writer,
-        .extra_headers = extra_headers,
-    }) catch {
-        return http_utils.fetch(allocator, url, api_key, false);
-    };
-
-    if (fetch_result.status.class() != .success) {
-        return http_utils.fetch(allocator, url, api_key, false);
-    }
-
-    return out.toOwnedSlice();
 }
 

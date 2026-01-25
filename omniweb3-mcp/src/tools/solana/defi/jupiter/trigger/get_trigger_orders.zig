@@ -3,7 +3,7 @@ const mcp = @import("mcp");
 const evm_runtime = @import("../../../../../core/evm_runtime.zig");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
-const http_utils = @import("../../../../../core/http_utils.zig");
+const secure_http = @import("../../../../../core/secure_http.zig");
 
 /// Get Jupiter trigger (limit) orders for a Solana account.
 ///
@@ -24,7 +24,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const status = mcp.tools.getString(args, "status") orelse "active";
     const endpoint_override = mcp.tools.getString(args, "endpoint") orelse endpoints.jupiter.trigger_orders;
-    const api_key = mcp.tools.getString(args, "api_key");
+    const use_api_key = true; // Always use API key from environment variable
     const insecure = mcp.tools.getBoolean(args, "insecure") orelse false;
 
     const url = std.fmt.allocPrint(
@@ -36,7 +36,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer allocator.free(url);
 
-    const body = fetchHttp(allocator, url, api_key, insecure) catch |err| {
+    const body = secure_http.secureGet(allocator, url, use_api_key, insecure) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to get trigger orders: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
@@ -75,36 +75,5 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     return mcp.tools.textResult(allocator, json) catch {
         return mcp.tools.ToolError.OutOfMemory;
     };
-}
-
-fn fetchHttp(allocator: std.mem.Allocator, url: []const u8, api_key: ?[]const u8, insecure: bool) ![]u8 {
-    if (insecure) {
-        return http_utils.fetch(allocator, url, api_key, true);
-    }
-
-    var client = std.http.Client{ .allocator = allocator, .io = evm_runtime.io() };
-    defer client.deinit();
-
-    var out: std.Io.Writer.Allocating = .init(allocator);
-
-    var headers: [1]std.http.Header = undefined;
-    const extra_headers = if (api_key) |key| blk: {
-        headers[0] = .{ .name = "x-api-key", .value = key };
-        break :blk headers[0..1];
-    } else &.{};
-
-    const fetch_result = client.fetch(.{
-        .location = .{ .url = url },
-        .response_writer = &out.writer,
-        .extra_headers = extra_headers,
-    }) catch {
-        return http_utils.fetch(allocator, url, api_key, false);
-    };
-
-    if (fetch_result.status.class() != .success) {
-        return http_utils.fetch(allocator, url, api_key, false);
-    }
-
-    return out.toOwnedSlice();
 }
 

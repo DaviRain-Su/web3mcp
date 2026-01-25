@@ -2,7 +2,7 @@ const std = @import("std");
 const mcp = @import("mcp");
 const solana_helpers = @import("../../../../../core/solana_helpers.zig");
 const endpoints = @import("../../../../../core/endpoints.zig");
-const http_utils = @import("../../../../../core/http_utils.zig");
+const secure_http = @import("../../../../../core/secure_http.zig");
 
 /// Get Jupiter token price (Solana-only).
 ///
@@ -32,12 +32,12 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
 
     const endpoint_override = mcp.tools.getString(args, "endpoint") orelse endpoints.jupiter.price;
-    const api_key = mcp.tools.getString(args, "api_key");
+    const use_api_key = true; // Always use API key from environment variable
     const insecure = mcp.tools.getBoolean(args, "insecure") orelse false;
     const url = try std.fmt.allocPrint(allocator, "{s}?ids={s}", .{ endpoint_override, mint });
     defer allocator.free(url);
 
-    const body = http_utils.fetch(allocator, url, api_key, insecure) catch |err| {
+    const body = secure_http.secureGet(allocator, url, use_api_key, insecure) catch |err| {
         const msg = std.fmt.allocPrint(allocator, "Failed to fetch Jupiter price: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
