@@ -89,15 +89,18 @@ test {
 
     // Core modules
     _ = @import("core/borsh.zig");
+    _ = @import("core/borsh_test.zig");
     _ = @import("core/endpoints_test.zig");
     _ = @import("core/evm_helpers_test.zig");
     _ = @import("core/solana_helpers_test.zig");
+    _ = @import("core/wallet_provider_test.zig");
 
     // Solana provider modules
     _ = @import("providers/solana/idl_resolver.zig");
     _ = @import("providers/solana/provider.zig");
     _ = @import("providers/solana/tool_generator.zig");
     _ = @import("providers/solana/transaction_builder.zig");
+    _ = @import("providers/solana/transaction_builder_test.zig");
 
     // Tool registry modules
     _ = @import("tools/dynamic/registry.zig");
@@ -110,5 +113,6 @@ test {
 
     // Jupiter modules
     _ = @import("tools/solana/defi/jupiter/constants.zig");
+    _ = @import("tools/solana/defi/jupiter/constants_extra_test.zig");
     _ = @import("tools/solana/defi/jupiter/helpers_test.zig");
 }
