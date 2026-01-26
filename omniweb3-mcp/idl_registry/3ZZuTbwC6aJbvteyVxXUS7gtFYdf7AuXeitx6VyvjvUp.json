@@ -1,0 +1,782 @@
+{
+  "address": "3ZZuTbwC6aJbvteyVxXUS7gtFYdf7AuXeitx6VyvjvUp",
+  "metadata": {
+    "name": "IDL",
+    "version": "1.0.0",
+    "spec": "0.1.0",
+    "description": "Jupiter Prediction Market"
+  },
+  "instructions": [
+    {
+      "name": "claim_payout",
+      "discriminator": [
+        127,
+        240,
+        132,
+        62,
+        227,
+        198,
+        146,
+        133
+      ],
+      "accounts": [
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "position"
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        },
+        {
+          "name": "associated_token_program"
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "vault"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_lost_position",
+      "discriminator": [
+        235,
+        157,
+        191,
+        130,
+        227,
+        214,
+        104,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "market_result"
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_order",
+      "discriminator": [
+        90,
+        103,
+        209,
+        28,
+        7,
+        63,
+        168,
+        4
+      ],
+      "accounts": [
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "position"
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        },
+        {
+          "name": "associated_token_program"
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "vault"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_market_result",
+      "discriminator": [
+        51,
+        39,
+        218,
+        9,
+        68,
+        94,
+        136,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "associated_token_program"
+        },
+        {
+          "name": "admin",
+          "writable": true
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "market_result",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_order",
+      "discriminator": [
+        141,
+        54,
+        37,
+        207,
+        237,
+        210,
+        250,
+        215
+      ],
+      "accounts": [
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "associated_token_program"
+        },
+        {
+          "name": "system_program"
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "vault"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "disable_deposits",
+      "discriminator": [
+        214,
+        13,
+        103,
+        248,
+        66,
+        87,
+        164,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "market_result",
+          "writable": true
+        },
+        {
+          "name": "admin"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "disable_withdrawals",
+      "discriminator": [
+        150,
+        136,
+        206,
+        120,
+        173,
+        230,
+        137,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "market_result",
+          "writable": true
+        },
+        {
+          "name": "admin"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fill_buy_order",
+      "discriminator": [
+        179,
+        201,
+        221,
+        22,
+        91,
+        16,
+        208,
+        4
+      ],
+      "accounts": [
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "field_0",
+          "type": "u64"
+        },
+        {
+          "name": "field_1",
+          "type": "u64"
+        },
+        {
+          "name": "field_2",
+          "type": "u64"
+        },
+        {
+          "name": "field_3",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "fill_sell_order",
+      "discriminator": [
+        251,
+        169,
+        25,
+        71,
+        13,
+        120,
+        20,
+        126
+      ],
+      "accounts": [
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "field_0",
+          "type": "u64"
+        },
+        {
+          "name": "field_1",
+          "type": "u64"
+        },
+        {
+          "name": "field_2",
+          "type": "u64"
+        },
+        {
+          "name": "field_3",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "initialize_vault",
+      "discriminator": [
+        48,
+        191,
+        163,
+        44,
+        71,
+        129,
+        63,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "associated_token_program"
+        },
+        {
+          "name": "admin",
+          "writable": true
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "market_result",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_vault_config",
+      "discriminator": [
+        65,
+        5,
+        248,
+        136,
+        48,
+        58,
+        235,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "market_result",
+          "writable": true
+        },
+        {
+          "name": "admin"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": [
+        {
+          "name": "field_0",
+          "type": "u64"
+        },
+        {
+          "name": "field_1",
+          "type": "u64"
+        },
+        {
+          "name": "field_2",
+          "type": "u32"
+        },
+        {
+          "name": "field_3",
+          "type": "u16"
+        },
+        {
+          "name": "field_4",
+          "type": "u64"
+        },
+        {
+          "name": "field_5",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "update_market_result",
+      "discriminator": [
+        98,
+        196,
+        33,
+        22,
+        90,
+        8,
+        47,
+        71
+      ],
+      "accounts": [
+        {
+          "name": "admin"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "market_result"
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "admin"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account"
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "market_result"
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "secondary_authority"
+        },
+        {
+          "name": "owner"
+        }
+      ],
+      "args": [
+        {
+          "name": "field_0",
+          "type": "u64"
+        }
+      ]
+    }
+  ]
+}

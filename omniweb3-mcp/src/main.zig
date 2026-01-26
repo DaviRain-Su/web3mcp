@@ -89,6 +89,9 @@ test {
 
     // Core modules
     _ = @import("core/borsh.zig");
+    _ = @import("core/endpoints_test.zig");
+    _ = @import("core/evm_helpers_test.zig");
+    _ = @import("core/solana_helpers_test.zig");
 
     // Solana provider modules
     _ = @import("providers/solana/idl_resolver.zig");
@@ -103,4 +106,9 @@ test {
     // Meteora modules
     _ = @import("tools/solana/defi/meteora/constants.zig");
     _ = @import("tools/solana/defi/meteora/helpers_test.zig");
+    _ = @import("tools/solana/defi/meteora/math_test.zig");
+
+    // Jupiter modules
+    _ = @import("tools/solana/defi/jupiter/constants.zig");
+    _ = @import("tools/solana/defi/jupiter/helpers_test.zig");
 }

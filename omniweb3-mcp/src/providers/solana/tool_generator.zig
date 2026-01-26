@@ -225,35 +225,85 @@ fn genericInstructionHandler(
 }
 
 // Tests
-// TODO: Update these tests for new InputSchema API
-// test "generateInputSchema for simple function" {
-//     const allocator = std.testing.allocator;
-//
-//     const params = [_]Parameter{
-//         .{
-//             .name = "amount",
-//             .type = Type{ .primitive = .u64 },
-//             .optional = false,
-//         },
-//         .{
-//             .name = "recipient",
-//             .type = Type{ .primitive = .pubkey },
-//             .optional = false,
-//         },
-//     };
-//
-//     const schema = try generateInputSchema(allocator, &params);
-//     // Verify schema structure - API changed, needs update
-//     _ = schema;
-// }
-//
-// test "primitiveToJsonSchema" {
-//     const allocator = std.testing.allocator;
-//
-//     const u64_schema = try primitiveToJsonSchema(allocator, .u64);
-//     // API changed, needs update
-//     _ = u64_schema;
-//
-//     const pubkey_schema = try primitiveToJsonSchema(allocator, .pubkey);
-//     _ = pubkey_schema;
-// }
+test "generateInputSchema for simple function" {
+    const allocator = std.testing.allocator;
+
+    const params = [_]Parameter{
+        .{
+            .name = "amount",
+            .type = Type{ .primitive = .u64 },
+            .optional = false,
+        },
+        .{
+            .name = "recipient",
+            .type = Type{ .primitive = .pubkey },
+            .optional = false,
+        },
+    };
+
+    const schema = try generateInputSchema(allocator, &params);
+    defer {
+        if (schema.properties) |props| {
+            if (props == .object) {
+                var obj = props.object;
+                // First, deinit all nested ObjectMaps inside the properties
+                var iter = obj.iterator();
+                while (iter.next()) |entry| {
+                    if (entry.value_ptr.* == .object) {
+                        var nested = entry.value_ptr.*.object;
+                        nested.deinit();
+                    }
+                }
+                // Then deinit the parent ObjectMap
+                obj.deinit();
+            }
+        }
+        if (schema.required) |req| {
+            allocator.free(req);
+        }
+    }
+
+    // Verify schema structure
+    try std.testing.expectEqualStrings("object", schema.type);
+    try std.testing.expect(schema.properties != null);
+    try std.testing.expect(schema.required != null);
+
+    // Verify properties
+    const properties = schema.properties.?.object;
+    try std.testing.expect(properties.contains("amount"));
+    try std.testing.expect(properties.contains("recipient"));
+
+    // Verify required list
+    const required = schema.required.?;
+    try std.testing.expectEqual(@as(usize, 2), required.len);
+}
+
+test "primitiveToJsonSchema" {
+    const allocator = std.testing.allocator;
+
+    // Test u64 schema
+    const u64_schema = try primitiveToJsonSchema(allocator, .u64);
+    defer {
+        var obj = u64_schema.object;
+        obj.deinit();
+    }
+
+    try std.testing.expect(u64_schema == .object);
+    const u64_type = u64_schema.object.get("type").?;
+    try std.testing.expectEqualStrings("integer", u64_type.string);
+
+    // Test pubkey schema
+    const pubkey_schema = try primitiveToJsonSchema(allocator, .pubkey);
+    defer {
+        var obj = pubkey_schema.object;
+        obj.deinit();
+    }
+
+    try std.testing.expect(pubkey_schema == .object);
+    const pubkey_type = pubkey_schema.object.get("type").?;
+    try std.testing.expectEqualStrings("string", pubkey_type.string);
+
+    // Verify pubkey has description
+    const pubkey_desc = pubkey_schema.object.get("description");
+    try std.testing.expect(pubkey_desc != null);
+}

@@ -97,6 +97,14 @@
       "description": "Raydium Concentrated Liquidity Market Maker - 25 instructions"
     },
     {
+      "id": "3ZZuTbwC6aJbvteyVxXUS7gtFYdf7AuXeitx6VyvjvUp",
+      "name": "jup_prediction_market",
+      "display_name": "Jupiter Prediction Market",
+      "category": "prediction_market",
+      "enabled": true,
+      "description": "Jupiter Prediction Market - 12 instructions"
+    },
+    {
       "id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
       "name": "raydium_v4",
       "display_name": "Raydium AMM v4",
