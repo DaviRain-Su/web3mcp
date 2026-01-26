@@ -30,6 +30,10 @@ const get_fee_for_message = @import("get_fee_for_message.zig");
 const get_program_accounts = @import("get_program_accounts.zig");
 const get_vote_accounts = @import("get_vote_accounts.zig");
 
+// Batch RPC operations (Phase 2 - Performance Optimization)
+const batch_account_info = @import("batch_account_info.zig");
+const batch_token_balances = @import("batch_token_balances.zig");
+
 // =============================================================================
 // DeFi integrations - Jupiter (organized by API category)
 // =============================================================================
@@ -261,6 +265,18 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "get_vote_accounts",
         .description = "Get vote accounts. Parameters: chain=solana, network (optional), endpoint (optional)",
         .handler = get_vote_accounts.handle,
+    },
+
+    // Batch RPC operations (Phase 2 - Performance Optimization)
+    .{
+        .name = "batch_account_info",
+        .description = "Batch query multiple Solana accounts in one RPC call (100x faster). Parameters: chain=solana, addresses (array, max 100), network (optional), endpoint (optional). Performance: 100 accounts from ~50s to ~500ms. Returns JSON array with account info for each address.",
+        .handler = batch_account_info.handle,
+    },
+    .{
+        .name = "batch_token_balances",
+        .description = "Batch query token balances for multiple SPL tokens in one RPC call. Parameters: chain=solana, owner, mints (array, max 100), network (optional), endpoint (optional). Use case: Portfolio tracking - query all token balances at once instead of individual calls. Returns JSON array with balances for each mint.",
+        .handler = batch_token_balances.handle,
     },
 
     // Transaction operations
