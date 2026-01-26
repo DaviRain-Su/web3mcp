@@ -150,9 +150,12 @@ pub fn signSolanaTransaction(
             var sig_buf: [solana_sdk.signature.MAX_BASE58_LEN]u8 = undefined;
             const sig_str = signed.signature.toBase58(&sig_buf);
 
+            const sig_copy = try allocator.dupe(u8, sig_str);
+            errdefer allocator.free(sig_copy);
+
             return SignResult{
                 .signed_transaction = signed_b64,
-                .signature = try allocator.dupe(u8, sig_str),
+                .signature = sig_copy,
                 .sent = false,
             };
         },
@@ -227,9 +230,12 @@ pub fn signAndSendSolanaTransaction(
             errdefer allocator.free(signed_b64);
             _ = std.base64.standard.Encoder.encode(signed_b64, signed.signed_bytes);
 
+            const sig_copy = try allocator.dupe(u8, sig_str);
+            errdefer allocator.free(sig_copy);
+
             return SignResult{
                 .signed_transaction = signed_b64,
-                .signature = try allocator.dupe(u8, sig_str),
+                .signature = sig_copy,
                 .sent = true,
             };
         },
