@@ -90,10 +90,13 @@ test {
     // Core modules
     _ = @import("core/borsh.zig");
     _ = @import("core/borsh_test.zig");
+    _ = @import("core/chain_test.zig");
     _ = @import("core/endpoints_test.zig");
     _ = @import("core/evm_helpers_test.zig");
+    _ = @import("core/http_utils_test.zig");
     _ = @import("core/solana_helpers_test.zig");
     _ = @import("core/wallet_provider_test.zig");
+    _ = @import("core/wallet_test.zig");
 
     // Solana provider modules
     _ = @import("providers/solana/idl_resolver.zig");
