@@ -18,12 +18,14 @@ pub const IdlResolver = struct {
     allocator: std.mem.Allocator,
     rpc_url: []const u8,
     registry_path: ?[]const u8,
+    io: *const std.Io,
 
-    pub fn init(allocator: std.mem.Allocator, rpc_url: []const u8) !IdlResolver {
+    pub fn init(allocator: std.mem.Allocator, rpc_url: []const u8, io: *const std.Io) !IdlResolver {
         return .{
             .allocator = allocator,
             .rpc_url = rpc_url,
             .registry_path = null,
+            .io = io,
         };
     }
 
@@ -75,15 +77,24 @@ pub const IdlResolver = struct {
         );
         defer allocator.free(file_path);
 
-        // Try to read the file
-        const file = std.fs.cwd().openFile(file_path, .{}) catch {
+        // Read entire file
+        const file = std.Io.Dir.cwd().openFile(self.io.*, file_path, .{}) catch {
             return error.RegistryNotFound;
         };
-        defer file.close();
+        defer file.close(self.io.*);
 
-        // Read entire file
+        // Get file size
+        const stat = try file.stat(self.io.*);
         const max_size = 10 * 1024 * 1024; // 10MB max
-        const idl_json = try file.readToEndAlloc(allocator, max_size);
+        if (stat.size > max_size) return error.FileTooLarge;
+
+        // Allocate buffer and read
+        const idl_json = try allocator.alloc(u8, stat.size);
+        errdefer allocator.free(idl_json);
+
+        const bytes_read = try file.readPositionalAll(self.io.*, idl_json, 0);
+        if (bytes_read != stat.size) return error.UnexpectedEndOfFile;
+
         defer allocator.free(idl_json);
 
         // Parse IDL JSON
@@ -360,7 +371,7 @@ pub const IdlResolver = struct {
                 const field_name = try allocator.dupe(u8, field_json.object.get("name").?.string);
                 const field_type = try parseType(allocator, field_json.object.get("type").?);
 
-                try fields.append(.{
+                try fields.append(allocator, .{
                     .name = field_name,
                     .type = field_type,
                 });

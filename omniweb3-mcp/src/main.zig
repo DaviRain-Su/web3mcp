@@ -1,6 +1,7 @@
 const std = @import("std");
 const mcp = @import("mcp");
 const tools = @import("tools/registry.zig");
+const dynamic_tools = @import("tools/dynamic/registry.zig");
 const evm_runtime = @import("core/evm_runtime.zig");
 const http_server = @import("http_server.zig");
 
@@ -19,6 +20,24 @@ fn run(init: std.process.Init) !void {
     try evm_runtime.init(allocator, init.minimal.environ);
     defer evm_runtime.deinit();
 
+    // Initialize dynamic tool registry
+    var dyn_registry = dynamic_tools.DynamicToolRegistry.init(allocator);
+    defer dyn_registry.deinit();
+
+    // Load Jupiter v6 program from IDL (optional - only if RPC URL available)
+    const rpc_url = init.environ_map.get("SOLANA_RPC_URL") orelse "https://api.mainnet-beta.solana.com";
+    const enable_dynamic = init.environ_map.get("ENABLE_DYNAMIC_TOOLS");
+
+    if (enable_dynamic == null or std.mem.eql(u8, enable_dynamic.?, "true")) {
+        std.log.info("Loading dynamic tools from Jupiter IDL...", .{});
+        dyn_registry.loadJupiter(rpc_url, &init.io) catch |err| {
+            std.log.warn("Failed to load Jupiter dynamic tools: {}", .{err});
+            std.log.warn("Continuing with static tools only...", .{});
+        };
+    } else {
+        std.log.info("Dynamic tools disabled via ENABLE_DYNAMIC_TOOLS=false", .{});
+    }
+
     const host = init.environ_map.get("HOST") orelse "0.0.0.0";
     const port = parsePort(init.environ_map.get("PORT") orelse "8765") catch 8765;
     const workers = parseWorkers(init.environ_map.get("MCP_WORKERS") orelse "4") catch 4;
@@ -27,9 +46,10 @@ fn run(init: std.process.Init) !void {
         .name = "omniweb3-mcp",
         .version = "0.1.0",
         .title = "Omni Web3 MCP",
-        .description = "Cross-chain Web3 MCP server for AI agents",
+        .description = "Cross-chain Web3 MCP server for AI agents (Hybrid: Static + Dynamic Tools)",
         .enable_logging = true,
-        .register = tools.registerAll,
+        .register = tools.registerAllWithDynamic,
+        .dynamic_registry = &dyn_registry,
     };
 
     try http_server.runHttpServer(allocator, init.io, .{

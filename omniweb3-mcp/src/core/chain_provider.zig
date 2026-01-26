@@ -1,5 +1,5 @@
 const std = @import("std");
-const mcp = @import("../mcp.zig");
+const mcp = @import("mcp");
 
 /// Chain types supported by the universal gateway
 pub const ChainType = enum {

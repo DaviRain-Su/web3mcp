@@ -1,5 +1,5 @@
 const std = @import("std");
-const mcp = @import("../../mcp.zig");
+const mcp = @import("mcp");
 const chain_provider = @import("../../core/chain_provider.zig");
 const idl_resolver = @import("./idl_resolver.zig");
 const tool_generator = @import("./tool_generator.zig");
@@ -20,7 +20,7 @@ pub const SolanaProvider = struct {
     resolver: idl_resolver.IdlResolver,
 
     /// Initialize Solana provider
-    pub fn init(allocator: std.mem.Allocator, rpc_url: []const u8) !*SolanaProvider {
+    pub fn init(allocator: std.mem.Allocator, rpc_url: []const u8, io: *const std.Io) !*SolanaProvider {
         const self = try allocator.create(SolanaProvider);
         errdefer allocator.destroy(self);
 
@@ -28,7 +28,7 @@ pub const SolanaProvider = struct {
             .allocator = allocator,
             .rpc_url = rpc_url,
             .idl_cache = std.StringHashMap(ContractMeta).init(allocator),
-            .resolver = try idl_resolver.IdlResolver.init(allocator, rpc_url),
+            .resolver = try idl_resolver.IdlResolver.init(allocator, rpc_url, io),
         };
 
         return self;
@@ -90,10 +90,8 @@ pub const SolanaProvider = struct {
         allocator: std.mem.Allocator,
         call: FunctionCall,
     ) anyerror!Transaction {
-        const self: *SolanaProvider = @ptrCast(@alignCast(ctx));
-
         // Get contract metadata
-        const meta = try self.getContractMetaImpl(ctx, allocator, call.contract);
+        const meta = try getContractMetaImpl(ctx, allocator, call.contract);
 
         // Build transaction using transaction builder
         return transaction_builder.buildTransaction(allocator, &meta, call);

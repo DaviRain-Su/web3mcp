@@ -93,7 +93,7 @@ fn serializeArguments(
     if (args == .object) {
         for (func.inputs) |param| {
             if (args.object.get(param.name)) |arg_value| {
-                try serializeParameter(&buffer, arg_value, param.type);
+                try serializeParameter(allocator, &buffer, arg_value, param.type);
             } else {
                 if (!param.optional) {
                     return error.MissingRequiredParameter;

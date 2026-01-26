@@ -1,5 +1,5 @@
 const std = @import("std");
-const mcp = @import("../../mcp.zig");
+const mcp = @import("mcp");
 const chain_provider = @import("../../core/chain_provider.zig");
 
 const ContractMeta = chain_provider.ContractMeta;
@@ -73,9 +73,9 @@ fn generateToolForFunction(
 fn generateInputSchema(
     allocator: std.mem.Allocator,
     parameters: []const Parameter,
-) !std.json.Value {
+) !mcp.types.InputSchema {
     var properties = std.json.ObjectMap.init(allocator);
-    var required: std.ArrayList(std.json.Value) = .empty;
+    var required_list: std.ArrayList([]const u8) = .empty;
 
     // Add parameters to schema
     for (parameters) |param| {
@@ -84,20 +84,20 @@ fn generateInputSchema(
 
         // Add to required list if not optional
         if (!param.optional) {
-            try required.append(allocator, std.json.Value{ .string = param.name });
+            try required_list.append(allocator, param.name);
         }
     }
 
-    // Build schema object
-    var schema = std.json.ObjectMap.init(allocator);
-    try schema.put("type", std.json.Value{ .string = "object" });
-    try schema.put("properties", std.json.Value{ .object = properties });
-
-    if (required.items.len > 0) {
-        try schema.put("required", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try required.toOwnedSlice(allocator)) });
-    }
-
-    return std.json.Value{ .object = schema };
+    // Build InputSchema struct
+    return .{
+        .type = "object",
+        .properties = std.json.Value{ .object = properties },
+        .required = if (required_list.items.len > 0)
+            try required_list.toOwnedSlice(allocator)
+        else
+            null,
+        .description = null,
+    };
 }
 
 /// Convert Type to JSON Schema
@@ -210,11 +210,10 @@ fn genericInstructionHandler(
     // 4. Returns unsigned transaction
 
     return mcp.tools.ToolResult{
-        .content = &[_]mcp.tools.Content{
-            .{
-                .type = "text",
+        .content = &[_]mcp.types.ContentItem{
+            .{ .text = .{
                 .text = "Tool generation successful (handler not yet implemented)",
-            },
+            } },
         },
     };
 }
