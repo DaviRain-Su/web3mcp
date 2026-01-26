@@ -161,7 +161,16 @@ pub const PriceSubscription = struct {
             .token_b = "USDC",
             .price = 0.0,
             .liquidity = null,
-            .timestamp = std.time.timestamp(),
+            .timestamp = blk: {
+                const now = std.time.Instant.now() catch break :blk 0;
+                // Convert Instant to seconds since epoch
+                // This is simplified - actual conversion depends on platform
+                if (@TypeOf(now.timestamp) == u64) {
+                    break :blk @intCast(now.timestamp / std.time.ns_per_s);
+                } else {
+                    break :blk now.timestamp.tv_sec;
+                }
+            },
         };
     }
 

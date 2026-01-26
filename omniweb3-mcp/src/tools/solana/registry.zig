@@ -40,6 +40,9 @@ const price_subscribe = @import("price_subscribe.zig");
 // Arbitrage detection (Phase 2 - Trading Strategy)
 const detect_arbitrage = @import("detect_arbitrage.zig");
 
+// Cache management (Phase 2 - Performance)
+const cache_stats = @import("cache_stats.zig");
+
 // =============================================================================
 // DeFi integrations - Jupiter (organized by API category)
 // =============================================================================
@@ -297,6 +300,13 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "detect_arbitrage",
         .description = "Detect arbitrage opportunities across multiple DEXs by comparing prices. Parameters: chain=solana, quotes (array of price quotes from different DEXs, min 2), min_profit_pct (optional, default 0.5), max_slippage_bps (optional, default 50), include_gas_cost (optional, default true). Each quote requires: dex, input_mint, output_mint, input_amount, output_amount, price, fee_bps, slippage_bps, pool_address (optional). Returns sorted array of profitable opportunities with buy/sell DEX, prices, net profit, and confidence score. Use cases: Arbitrage trading bots, market analysis, price efficiency monitoring.",
         .handler = detect_arbitrage.handle,
+    },
+
+    // Cache management (Phase 2 - Performance)
+    .{
+        .name = "cache_stats",
+        .description = "Query response cache statistics or manage cache entries. Parameters: chain=solana, action (optional, default 'stats'). Actions: 'stats' (get cache statistics including total entries, hit rate, size), 'clear' (clear all cache entries). Use cases: Monitor cache performance, check hit rate, manage cache size, optimize query performance. Note: Cache infrastructure is ready for integration with RPC query tools.",
+        .handler = cache_stats.handle,
     },
 
     // Transaction operations
