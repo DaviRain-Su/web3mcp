@@ -89,13 +89,21 @@
       "description": "Multi-signature wallet - 31 instructions"
     },
     {
+      "id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "name": "raydium_clmm",
+      "display_name": "Raydium CLMM",
+      "category": "dex",
+      "enabled": true,
+      "description": "Raydium Concentrated Liquidity Market Maker - 25 instructions"
+    },
+    {
       "id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-      "name": "raydium",
+      "name": "raydium_v4",
       "display_name": "Raydium AMM v4",
       "category": "dex",
       "enabled": false,
-      "description": "Raydium AMM (non-Anchor, use CLMM instead)",
-      "note": "Not using Anchor framework"
+      "description": "Raydium AMM v4 (non-Anchor, legacy)",
+      "note": "Not using Anchor framework, use CLMM instead"
     },
     {
       "id": "KLend2g3cP87ber41qQDzWpAFuqP2tCxDqC8S3k7L1U",
@@ -103,8 +111,8 @@
       "display_name": "Kamino Lending",
       "category": "lending",
       "enabled": false,
-      "description": "Lending and borrowing (no on-chain IDL)",
-      "note": "Need to fetch from GitHub or SDK"
+      "description": "Lending and borrowing protocol",
+      "note": "IDL not publicly available. Tried: Anchor CLI (AccountNotFound), GitHub repos, npm packages, Solana FM API. Contact Hubble Protocol team for IDL access."
     },
     {
       "id": "FEESngU3neckdwib9X3KWqdL7Mjmqk1XNp3uh5JbP4KP",
@@ -112,8 +120,8 @@
       "display_name": "Meteora M3M3",
       "category": "staking",
       "enabled": false,
-      "description": "Stake-for-Fee (no on-chain IDL)",
-      "note": "Need to fetch from GitHub"
+      "description": "Stake-for-Fee mechanism",
+      "note": "IDL not publicly available. Tried: Anchor CLI (AccountNotFound), MeteoraAg GitHub repos, Solana FM API. May require direct contact with Meteora team."
     },
     {
       "id": "5ocnV1qiCgaQR8Jb8xWnVbApfaygJ8tNoZfgPwsgx9kx",
@@ -121,8 +129,8 @@
       "display_name": "Sanctum S Controller",
       "category": "liquid_staking",
       "enabled": false,
-      "description": "Liquid staking (no on-chain IDL)",
-      "note": "Need to fetch from GitHub"
+      "description": "Liquid staking infrastructure",
+      "note": "IDL not publicly available. Tried: Anchor CLI (points to different account), Solana FM API. Contact Sanctum/Igneous Labs team for IDL."
     }
   ]
 }
