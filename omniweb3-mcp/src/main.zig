@@ -98,6 +98,7 @@ test {
     _ = @import("core/wallet_provider_test.zig");
     _ = @import("core/wallet_test.zig");
     _ = @import("core/batch_rpc_test.zig");
+    _ = @import("core/price_subscription_test.zig");
 
     // Solana provider modules
     _ = @import("providers/solana/idl_resolver.zig");

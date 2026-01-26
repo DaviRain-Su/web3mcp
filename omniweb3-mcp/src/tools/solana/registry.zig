@@ -34,6 +34,9 @@ const get_vote_accounts = @import("get_vote_accounts.zig");
 const batch_account_info = @import("batch_account_info.zig");
 const batch_token_balances = @import("batch_token_balances.zig");
 
+// Real-time data streams (Phase 2 - WebSocket)
+const price_subscribe = @import("price_subscribe.zig");
+
 // =============================================================================
 // DeFi integrations - Jupiter (organized by API category)
 // =============================================================================
@@ -277,6 +280,13 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "batch_token_balances",
         .description = "Batch query token balances for multiple SPL tokens in one RPC call. Parameters: chain=solana, owner, mints (array, max 100), network (optional), endpoint (optional). Use case: Portfolio tracking - query all token balances at once instead of individual calls. Returns JSON array with balances for each mint.",
         .handler = batch_token_balances.handle,
+    },
+
+    // Real-time data streams (Phase 2 - WebSocket)
+    .{
+        .name = "price_subscribe",
+        .description = "Subscribe to real-time price updates for DEX pools using WebSocket. Parameters: chain=solana, pool_address, network (optional), endpoint (optional), commitment (optional). Use cases: Trading bots, arbitrage detection, live portfolio tracking. Note: This demonstrates WebSocket infrastructure - production use requires background service.",
+        .handler = price_subscribe.handle,
     },
 
     // Transaction operations
