@@ -6,7 +6,7 @@
       "display_name": "Jupiter v6",
       "category": "dex_aggregator",
       "enabled": true,
-      "description": "Jupiter aggregator v6 - Best prices across Solana DEXs"
+      "description": "Jupiter aggregator v6 - 6 instructions"
     },
     {
       "id": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
@@ -15,15 +15,6 @@
       "category": "nft",
       "enabled": true,
       "description": "Metaplex NFT metadata standard - 58 instructions"
-    },
-    {
-      "id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-      "name": "raydium",
-      "display_name": "Raydium AMM v4",
-      "category": "dex",
-      "enabled": false,
-      "description": "Raydium automated market maker",
-      "note": "Enable when IDL is available"
     },
     {
       "id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
@@ -40,6 +31,98 @@
       "category": "liquid_staking",
       "enabled": true,
       "description": "Marinade liquid staking for SOL - 28 instructions"
+    },
+    {
+      "id": "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH",
+      "name": "drift",
+      "display_name": "Drift Protocol",
+      "category": "perpetuals",
+      "enabled": true,
+      "description": "Perpetual futures and spot trading - 241 instructions"
+    },
+    {
+      "id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "name": "meteora_dlmm",
+      "display_name": "Meteora DLMM",
+      "category": "dex",
+      "enabled": true,
+      "description": "Dynamic Liquidity Market Maker - 74 instructions"
+    },
+    {
+      "id": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+      "name": "meteora_damm_v2",
+      "display_name": "Meteora DAMM v2",
+      "category": "dex",
+      "enabled": true,
+      "description": "Dynamic AMM v2 - 35 instructions"
+    },
+    {
+      "id": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",
+      "name": "meteora_damm_v1",
+      "display_name": "Meteora DAMM v1",
+      "category": "dex",
+      "enabled": true,
+      "description": "Dynamic AMM v1 - 26 instructions"
+    },
+    {
+      "id": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+      "name": "meteora_dbc",
+      "display_name": "Meteora DBC",
+      "category": "token_launch",
+      "enabled": true,
+      "description": "Dynamic Bonding Curve - 28 instructions"
+    },
+    {
+      "id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+      "name": "pumpfun",
+      "display_name": "PumpFun",
+      "category": "token_launch",
+      "enabled": true,
+      "description": "Token launch platform - 27 instructions"
+    },
+    {
+      "id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
+      "name": "squads",
+      "display_name": "Squads V4",
+      "category": "multisig",
+      "enabled": true,
+      "description": "Multi-signature wallet - 31 instructions"
+    },
+    {
+      "id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      "name": "raydium",
+      "display_name": "Raydium AMM v4",
+      "category": "dex",
+      "enabled": false,
+      "description": "Raydium AMM (non-Anchor, use CLMM instead)",
+      "note": "Not using Anchor framework"
+    },
+    {
+      "id": "KLend2g3cP87ber41qQDzWpAFuqP2tCxDqC8S3k7L1U",
+      "name": "kamino_lending",
+      "display_name": "Kamino Lending",
+      "category": "lending",
+      "enabled": false,
+      "description": "Lending and borrowing (no on-chain IDL)",
+      "note": "Need to fetch from GitHub or SDK"
+    },
+    {
+      "id": "FEESngU3neckdwib9X3KWqdL7Mjmqk1XNp3uh5JbP4KP",
+      "name": "meteora_m3m3",
+      "display_name": "Meteora M3M3",
+      "category": "staking",
+      "enabled": false,
+      "description": "Stake-for-Fee (no on-chain IDL)",
+      "note": "Need to fetch from GitHub"
+    },
+    {
+      "id": "5ocnV1qiCgaQR8Jb8xWnVbApfaygJ8tNoZfgPwsgx9kx",
+      "name": "sanctum",
+      "display_name": "Sanctum S Controller",
+      "category": "liquid_staking",
+      "enabled": false,
+      "description": "Liquid staking (no on-chain IDL)",
+      "note": "Need to fetch from GitHub"
     }
   ]
 }
