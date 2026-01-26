@@ -128,17 +128,37 @@ pub const DynamicToolRegistry = struct {
 
         // Read programs configuration
         const config_path = "idl_registry/programs.json";
-        const config_file = std.fs.cwd().openFile(config_path, .{}) catch |err| {
+        const config_file = std.Io.Dir.cwd().openFile(io.*, config_path, .{}) catch |err| {
             std.log.warn("Failed to open {s}: {}, falling back to Jupiter only", .{ config_path, err });
             return self.loadJupiter(rpc_url, io);
         };
-        defer config_file.close();
+        defer config_file.close(io.*);
 
-        const config_content = config_file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
+        // Get file size
+        const stat = config_file.stat(io.*) catch |err| {
+            std.log.warn("Failed to stat {s}: {}, falling back to Jupiter only", .{ config_path, err });
+            return self.loadJupiter(rpc_url, io);
+        };
+
+        const max_size = 1024 * 1024; // 1MB max for config
+        if (stat.size > max_size) {
+            std.log.warn("Config file too large: {} bytes, falling back to Jupiter only", .{stat.size});
+            return self.loadJupiter(rpc_url, io);
+        }
+
+        // Read file content
+        const config_content = try self.allocator.alloc(u8, stat.size);
+        defer self.allocator.free(config_content);
+
+        const bytes_read = config_file.readPositionalAll(io.*, config_content, 0) catch |err| {
             std.log.warn("Failed to read {s}: {}, falling back to Jupiter only", .{ config_path, err });
             return self.loadJupiter(rpc_url, io);
         };
-        defer self.allocator.free(config_content);
+
+        if (bytes_read != stat.size) {
+            std.log.warn("Incomplete read of {s}, falling back to Jupiter only", .{config_path});
+            return self.loadJupiter(rpc_url, io);
+        }
 
         // Parse JSON
         const parsed = std.json.parseFromSlice(
