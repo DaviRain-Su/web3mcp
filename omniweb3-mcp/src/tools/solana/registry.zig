@@ -37,6 +37,9 @@ const batch_token_balances = @import("batch_token_balances.zig");
 // Real-time data streams (Phase 2 - WebSocket)
 const price_subscribe = @import("price_subscribe.zig");
 
+// Arbitrage detection (Phase 2 - Trading Strategy)
+const detect_arbitrage = @import("detect_arbitrage.zig");
+
 // =============================================================================
 // DeFi integrations - Jupiter (organized by API category)
 // =============================================================================
@@ -287,6 +290,13 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "price_subscribe",
         .description = "Subscribe to real-time price updates for DEX pools using WebSocket. Parameters: chain=solana, pool_address, network (optional), endpoint (optional), commitment (optional). Use cases: Trading bots, arbitrage detection, live portfolio tracking. Note: This demonstrates WebSocket infrastructure - production use requires background service.",
         .handler = price_subscribe.handle,
+    },
+
+    // Arbitrage detection (Phase 2 - Trading Strategy)
+    .{
+        .name = "detect_arbitrage",
+        .description = "Detect arbitrage opportunities across multiple DEXs by comparing prices. Parameters: chain=solana, quotes (array of price quotes from different DEXs, min 2), min_profit_pct (optional, default 0.5), max_slippage_bps (optional, default 50), include_gas_cost (optional, default true). Each quote requires: dex, input_mint, output_mint, input_amount, output_amount, price, fee_bps, slippage_bps, pool_address (optional). Returns sorted array of profitable opportunities with buy/sell DEX, prices, net profit, and confidence score. Use cases: Arbitrage trading bots, market analysis, price efficiency monitoring.",
+        .handler = detect_arbitrage.handle,
     },
 
     // Transaction operations
