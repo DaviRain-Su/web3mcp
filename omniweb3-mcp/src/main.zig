@@ -28,14 +28,23 @@ fn run(init: std.process.Init) !void {
     const rpc_url = init.environ_map.get("SOLANA_RPC_URL") orelse "https://api.mainnet-beta.solana.com";
     const enable_dynamic = init.environ_map.get("ENABLE_DYNAMIC_TOOLS");
 
+    std.log.info("Dynamic tools configuration: ENABLE_DYNAMIC_TOOLS={s}, SOLANA_RPC_URL={s}", .{
+        if (enable_dynamic) |v| v else "(not set, default=enabled)",
+        rpc_url,
+    });
+
     if (enable_dynamic == null or std.mem.eql(u8, enable_dynamic.?, "true")) {
         std.log.info("Loading dynamic tools from Jupiter IDL...", .{});
         dyn_registry.loadJupiter(rpc_url, &init.io) catch |err| {
-            std.log.warn("Failed to load Jupiter dynamic tools: {}", .{err});
-            std.log.warn("Continuing with static tools only...", .{});
+            std.log.err("Failed to load Jupiter dynamic tools: {}", .{err});
+            std.log.err("Continuing with static tools only...", .{});
+            std.log.err("Please check:", .{});
+            std.log.err("  1. IDL file exists at: idl_registry/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json", .{});
+            std.log.err("  2. Network connectivity to Solana FM API", .{});
+            std.log.err("  3. SOLANA_RPC_URL is valid: {s}", .{rpc_url});
         };
     } else {
-        std.log.info("Dynamic tools disabled via ENABLE_DYNAMIC_TOOLS=false", .{});
+        std.log.info("Dynamic tools disabled via ENABLE_DYNAMIC_TOOLS={s}", .{enable_dynamic.?});
     }
 
     const host = init.environ_map.get("HOST") orelse "0.0.0.0";
