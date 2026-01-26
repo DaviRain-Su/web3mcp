@@ -61,10 +61,12 @@ pub fn securePost(
         .response_writer = &out.writer,
         .extra_headers = headers[0..header_count],
     }) catch {
+        out.deinit();
         return error.FetchFailed;
     };
 
     if (fetch_result.status.class() != .success) {
+        out.deinit();
         return error.FetchFailed;
     }
 
@@ -100,10 +102,12 @@ pub fn secureGet(
         .response_writer = &out.writer,
         .extra_headers = extra_headers,
     }) catch {
+        out.deinit();
         return error.FetchFailed;
     };
 
     if (fetch_result.status.class() != .success) {
+        out.deinit();
         return error.FetchFailed;
     }
 
@@ -133,10 +137,12 @@ pub fn dflowGet(
         .response_writer = &out.writer,
         .extra_headers = &headers,
     }) catch {
+        out.deinit();
         return error.FetchFailed;
     };
 
     if (fetch_result.status.class() != .success) {
+        out.deinit();
         return error.FetchFailed;
     }
 
@@ -170,10 +176,12 @@ pub fn dflowPost(
         .response_writer = &out.writer,
         .extra_headers = &headers,
     }) catch {
+        out.deinit();
         return error.FetchFailed;
     };
 
     if (fetch_result.status.class() != .success) {
+        out.deinit();
         return error.FetchFailed;
     }
 

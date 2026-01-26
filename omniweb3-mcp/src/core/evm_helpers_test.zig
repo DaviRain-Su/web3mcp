@@ -223,7 +223,93 @@ test "parseWeiAmount - invalid format returns error" {
     try testing.expectError(error.InvalidCharacter, result);
 }
 
-// NOTE: jsonStringifyAlloc tests are skipped because evm_helpers.zig
-// has a bug where it uses defer out.deinit() before returning out.written(),
-// which causes use-after-free. This should be fixed in the production code
-// to use toOwnedSlice() like solana_helpers.zig does.
+// Test JSON stringification
+test "jsonStringifyAlloc - simple object" {
+    const allocator = testing.allocator;
+
+    const obj = .{
+        .name = "test",
+        .value = 42,
+    };
+
+    const json = try helpers.jsonStringifyAlloc(allocator, obj);
+    defer allocator.free(json);
+
+    // Should contain both fields
+    try testing.expect(std.mem.indexOf(u8, json, "\"name\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "\"test\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "\"value\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "42") != null);
+}
+
+test "jsonStringifyAlloc - empty tuple" {
+    const allocator = testing.allocator;
+
+    // Empty tuple is serialized as empty array in Zig
+    const obj = .{};
+    const json = try helpers.jsonStringifyAlloc(allocator, obj);
+    defer allocator.free(json);
+
+    try testing.expectEqualStrings("[]", json);
+}
+
+test "jsonStringifyAlloc - nested object" {
+    const allocator = testing.allocator;
+
+    const obj = .{
+        .outer = .{
+            .inner = "value",
+        },
+    };
+
+    const json = try helpers.jsonStringifyAlloc(allocator, obj);
+    defer allocator.free(json);
+
+    try testing.expect(std.mem.indexOf(u8, json, "\"outer\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "\"inner\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "\"value\"") != null);
+}
+
+test "jsonStringifyAlloc - array" {
+    const allocator = testing.allocator;
+
+    const arr = [_]u32{ 1, 2, 3 };
+    const json = try helpers.jsonStringifyAlloc(allocator, arr);
+    defer allocator.free(json);
+
+    try testing.expectEqualStrings("[1,2,3]", json);
+}
+
+test "jsonStringifyAlloc - null optional field omitted" {
+    const allocator = testing.allocator;
+
+    const obj = .{
+        .required = "value",
+        .optional = @as(?u32, null),
+    };
+
+    const json = try helpers.jsonStringifyAlloc(allocator, obj);
+    defer allocator.free(json);
+
+    // Should contain required field
+    try testing.expect(std.mem.indexOf(u8, json, "\"required\"") != null);
+    // Should NOT contain optional field (emit_null_optional_fields = false)
+    try testing.expect(std.mem.indexOf(u8, json, "\"optional\"") == null);
+}
+
+test "jsonStringifyAlloc - non-null optional field included" {
+    const allocator = testing.allocator;
+
+    const obj = .{
+        .required = "value",
+        .optional = @as(?u32, 123),
+    };
+
+    const json = try helpers.jsonStringifyAlloc(allocator, obj);
+    defer allocator.free(json);
+
+    // Should contain both fields
+    try testing.expect(std.mem.indexOf(u8, json, "\"required\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "\"optional\"") != null);
+    try testing.expect(std.mem.indexOf(u8, json, "123") != null);
+}

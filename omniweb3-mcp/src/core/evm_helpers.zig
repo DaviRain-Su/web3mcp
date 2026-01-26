@@ -75,7 +75,6 @@ pub fn parseHexDataAlloc(allocator: std.mem.Allocator, hex_str: []const u8) ![]u
 
 pub fn jsonStringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
-    defer out.deinit();
 
     var stringify: std.json.Stringify = .{
         .writer = &out.writer,
@@ -83,7 +82,7 @@ pub fn jsonStringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
     };
 
     try stringify.write(value);
-    return out.written();
+    return out.toOwnedSlice();
 }
 
 pub fn resolvePrivateKey(

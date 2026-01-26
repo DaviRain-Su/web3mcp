@@ -92,10 +92,12 @@ pub fn privyGet(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
         .response_writer = &out.writer,
         .extra_headers = &headers,
     }) catch {
+        out.deinit();
         return error.FetchFailed;
     };
 
     if (fetch_result.status.class() != .success) {
+        out.deinit();
         return error.FetchFailed;
     }
 
@@ -130,10 +132,12 @@ pub fn privyPost(allocator: std.mem.Allocator, path: []const u8, body: []const u
         .response_writer = &out.writer,
         .extra_headers = &headers,
     }) catch {
+        out.deinit();
         return error.FetchFailed;
     };
 
     if (fetch_result.status.class() != .success) {
+        out.deinit();
         return error.FetchFailed;
     }
 
