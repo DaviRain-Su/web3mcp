@@ -122,41 +122,73 @@ pub const DynamicToolRegistry = struct {
         try self.loadProgram(jupiter_program_id, rpc_url, io);
     }
 
-    /// Load multiple popular Solana programs
+    /// Load multiple Solana programs from configuration file
     pub fn loadSolanaPrograms(self: *DynamicToolRegistry, rpc_url: []const u8, io: *const std.Io) !void {
-        std.log.info("Loading popular Solana programs...", .{});
+        std.log.info("Loading Solana programs from configuration...", .{});
 
-        const programs = [_]struct { id: []const u8, name: []const u8 }{
-            // Jupiter v6 (DEX Aggregator)
-            .{ .id = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", .name = "Jupiter v6" },
+        // Read programs configuration
+        const config_path = "idl_registry/programs.json";
+        const config_file = std.fs.cwd().openFile(config_path, .{}) catch |err| {
+            std.log.warn("Failed to open {s}: {}, falling back to Jupiter only", .{ config_path, err });
+            return self.loadJupiter(rpc_url, io);
+        };
+        defer config_file.close();
 
-            // Metaplex Token Metadata (NFT Standard)
-            .{ .id = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s", .name = "Metaplex Token Metadata" },
+        const config_content = config_file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
+            std.log.warn("Failed to read {s}: {}, falling back to Jupiter only", .{ config_path, err });
+            return self.loadJupiter(rpc_url, io);
+        };
+        defer self.allocator.free(config_content);
 
-            // Raydium AMM v4 (DEX)
-            .{ .id = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", .name = "Raydium AMM v4" },
+        // Parse JSON
+        const parsed = std.json.parseFromSlice(
+            std.json.Value,
+            self.allocator,
+            config_content,
+            .{},
+        ) catch |err| {
+            std.log.warn("Failed to parse {s}: {}, falling back to Jupiter only", .{ config_path, err });
+            return self.loadJupiter(rpc_url, io);
+        };
+        defer parsed.deinit();
 
-            // Orca Whirlpool (DEX)
-            .{ .id = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", .name = "Orca Whirlpool" },
+        const config = parsed.value;
 
-            // Marinade Finance (Liquid Staking)
-            .{ .id = "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD", .name = "Marinade Finance" },
+        // Get programs array
+        const programs_array = config.object.get("solana_programs") orelse {
+            std.log.warn("No 'solana_programs' field in config, falling back to Jupiter only", .{});
+            return self.loadJupiter(rpc_url, io);
         };
 
         var loaded_count: usize = 0;
         var failed_count: usize = 0;
+        var skipped_count: usize = 0;
 
-        for (programs) |prog| {
-            std.log.info("Attempting to load {s}...", .{prog.name});
-            self.loadProgram(prog.id, rpc_url, io) catch |err| {
-                std.log.warn("Failed to load {s}: {}", .{ prog.name, err });
+        for (programs_array.array.items) |prog_value| {
+            const prog = prog_value.object;
+
+            // Check if enabled
+            const enabled = if (prog.get("enabled")) |e| e.bool else false;
+            if (!enabled) {
+                const display_name = if (prog.get("display_name")) |n| n.string else "unknown";
+                std.log.info("Skipping disabled program: {s}", .{display_name});
+                skipped_count += 1;
+                continue;
+            }
+
+            const program_id = prog.get("id").?.string;
+            const display_name = if (prog.get("display_name")) |n| n.string else program_id;
+
+            std.log.info("Attempting to load {s}...", .{display_name});
+            self.loadProgram(program_id, rpc_url, io) catch |err| {
+                std.log.warn("Failed to load {s}: {}", .{ display_name, err });
                 failed_count += 1;
                 continue;
             };
             loaded_count += 1;
         }
 
-        std.log.info("Loaded {} programs successfully, {} failed", .{ loaded_count, failed_count });
+        std.log.info("Programs: {} loaded, {} failed, {} skipped", .{ loaded_count, failed_count, skipped_count });
     }
 
     /// Register all dynamic tools with the MCP server
