@@ -380,7 +380,13 @@ pub const Server = struct {
             }
 
             // Add input schema
-            var schema_opt = buildToolInputSchema(self.allocator, entry.value_ptr.name);
+            // First check if tool has its own inputSchema (e.g., for dynamic tools)
+            var schema_opt = entry.value_ptr.inputSchema;
+            // Fall back to name-based schema for specific tools
+            if (schema_opt == null) {
+                schema_opt = buildToolInputSchema(self.allocator, entry.value_ptr.name);
+            }
+            // Last resort: derive from description
             if (schema_opt == null) {
                 if (entry.value_ptr.description) |desc| {
                     schema_opt = deriveSchemaFromDescription(self.allocator, desc);

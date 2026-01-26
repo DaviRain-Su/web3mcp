@@ -88,16 +88,22 @@ fn generateInputSchema(
         }
     }
 
+    std.log.info("Generated schema for {} parameters, {} required", .{ parameters.len, required_list.items.len });
+
     // Build InputSchema struct
-    return .{
+    const schema = mcp.types.InputSchema{
         .type = "object",
-        .properties = std.json.Value{ .object = properties },
+        .properties = if (properties.count() > 0) std.json.Value{ .object = properties } else null,
         .required = if (required_list.items.len > 0)
             try required_list.toOwnedSlice(allocator)
         else
             null,
         .description = null,
     };
+
+    std.log.info("Schema properties: {any}, required: {any}", .{ schema.properties != null, schema.required != null });
+
+    return schema;
 }
 
 /// Convert Type to JSON Schema
