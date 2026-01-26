@@ -119,4 +119,5 @@ test {
     _ = @import("tools/solana/defi/jupiter/constants_extra_test.zig");
     _ = @import("tools/solana/defi/jupiter/helpers_test.zig");
     _ = @import("tools/solana/defi/jupiter/batch/batch_swap_test.zig");
+    _ = @import("tools/solana/defi/jupiter/batch/batch_trigger_orders_test.zig");
 }
