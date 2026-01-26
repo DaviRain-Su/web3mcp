@@ -33,4 +33,24 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_cmd.addArgs(args);
     const run_step = b.step("run", "Run omniweb3-mcp");
     run_step.dependOn(&run_cmd.step);
+
+    // Test step (using main.zig tests)
+    const tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+
+    tests.root_module.addImport("mcp", mcp_dep.module("mcp"));
+    tests.root_module.addImport("solana_client", solana_client_dep.module("solana_client"));
+    tests.root_module.addImport("solana_sdk", solana_sdk_dep.module("solana_sdk"));
+    tests.root_module.addImport("zabi", zabi_dep.module("zabi"));
+    tests.root_module.addImport("httpz", httpz_dep.module("httpz"));
+
+    const run_tests = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_tests.step);
 }

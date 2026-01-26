@@ -133,7 +133,8 @@ pub const ServerSetup = struct {
     title: []const u8,
     description: []const u8,
     enable_logging: bool = true,
-    register: *const fn (*mcp.Server) anyerror!void,
+    register: *const fn (*mcp.Server, ?*anyopaque) anyerror!void,
+    dynamic_registry: ?*anyopaque = null,
 };
 
 pub const RunOptions = struct {
@@ -159,7 +160,7 @@ const Worker = struct {
         });
 
         if (setup.enable_logging) server.enableLogging();
-        try setup.register(server);
+        try setup.register(server, setup.dynamic_registry);
 
         const transport = HttpBridgeTransport.init(allocator);
         const transport_iface = transport.transport();

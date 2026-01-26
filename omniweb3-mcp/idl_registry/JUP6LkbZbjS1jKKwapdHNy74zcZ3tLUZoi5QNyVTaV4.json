@@ -1,0 +1,565 @@
+{
+  "version": "6.0.0",
+  "name": "jupiter",
+  "instructions": [
+    {
+      "name": "route",
+      "accounts": [
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userTransferAuthority",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "userSourceTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userDestinationTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "routePlan",
+          "type": {
+            "vec": {
+              "defined": "RoutePlanStep"
+            }
+          }
+        },
+        {
+          "name": "inAmount",
+          "type": "u64"
+        },
+        {
+          "name": "quotedOutAmount",
+          "type": "u64"
+        },
+        {
+          "name": "slippageBps",
+          "type": "u16"
+        },
+        {
+          "name": "platformFeeBps",
+          "type": "u8"
+        }
+      ],
+      "docs": [
+        "Route instruction for Jupiter aggregator v6",
+        "Executes a swap following a predefined route plan"
+      ]
+    },
+    {
+      "name": "sharedAccountsRoute",
+      "accounts": [
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "programAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userTransferAuthority",
+          "isMut": false,
+          "isSigner": true
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u8"
+        },
+        {
+          "name": "routePlan",
+          "type": {
+            "vec": {
+              "defined": "RoutePlanStep"
+            }
+          }
+        },
+        {
+          "name": "inAmount",
+          "type": "u64"
+        },
+        {
+          "name": "quotedOutAmount",
+          "type": "u64"
+        },
+        {
+          "name": "slippageBps",
+          "type": "u16"
+        },
+        {
+          "name": "platformFeeBps",
+          "type": "u8"
+        }
+      ],
+      "docs": [
+        "Shared accounts route for better capital efficiency",
+        "Uses pre-created token accounts to reduce transaction size"
+      ]
+    },
+    {
+      "name": "sharedAccountsRouteWithTokenLedger",
+      "accounts": [
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "programAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userTransferAuthority",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "tokenLedger",
+          "isMut": true,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u8"
+        },
+        {
+          "name": "routePlan",
+          "type": {
+            "vec": {
+              "defined": "RoutePlanStep"
+            }
+          }
+        },
+        {
+          "name": "quotedOutAmount",
+          "type": "u64"
+        },
+        {
+          "name": "slippageBps",
+          "type": "u16"
+        },
+        {
+          "name": "platformFeeBps",
+          "type": "u8"
+        }
+      ],
+      "docs": [
+        "Route with token ledger for tracking balances",
+        "Used for advanced routing strategies"
+      ]
+    },
+    {
+      "name": "exactOutRoute",
+      "accounts": [
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userTransferAuthority",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "userSourceTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userDestinationTokenAccount",
+          "isMut": true,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "routePlan",
+          "type": {
+            "vec": {
+              "defined": "RoutePlanStep"
+            }
+          }
+        },
+        {
+          "name": "outAmount",
+          "type": "u64"
+        },
+        {
+          "name": "quotedInAmount",
+          "type": "u64"
+        },
+        {
+          "name": "slippageBps",
+          "type": "u16"
+        },
+        {
+          "name": "platformFeeBps",
+          "type": "u8"
+        }
+      ],
+      "docs": [
+        "Exact output route - specify desired output amount",
+        "Useful for buying exact amounts of tokens"
+      ]
+    },
+    {
+      "name": "setTokenLedger",
+      "accounts": [
+        {
+          "name": "tokenLedger",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenAccount",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [],
+      "docs": [
+        "Initialize or update token ledger",
+        "Administrative instruction"
+      ]
+    },
+    {
+      "name": "createOpenOrders",
+      "accounts": [
+        {
+          "name": "openOrders",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "dexProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [],
+      "docs": [
+        "Create open orders account for Serum DEX",
+        "Required for Serum market interactions"
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "TokenLedger",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tokenAccount",
+            "type": "publicKey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "RoutePlanStep",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "swap",
+            "type": {
+              "defined": "Swap"
+            }
+          },
+          {
+            "name": "percent",
+            "type": "u8"
+          },
+          {
+            "name": "inputIndex",
+            "type": "u8"
+          },
+          {
+            "name": "outputIndex",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Swap",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Saber"
+          },
+          {
+            "name": "SaberAddDecimalsDeposit"
+          },
+          {
+            "name": "SaberAddDecimalsWithdraw"
+          },
+          {
+            "name": "TokenSwap"
+          },
+          {
+            "name": "Sencha"
+          },
+          {
+            "name": "Step"
+          },
+          {
+            "name": "Cropper"
+          },
+          {
+            "name": "Raydium"
+          },
+          {
+            "name": "Crema"
+          },
+          {
+            "name": "Lifinity"
+          },
+          {
+            "name": "Mercurial"
+          },
+          {
+            "name": "Cykura"
+          },
+          {
+            "name": "Serum",
+            "fields": [
+              {
+                "name": "side",
+                "type": {
+                  "defined": "Side"
+                }
+              }
+            ]
+          },
+          {
+            "name": "MarinadeDeposit"
+          },
+          {
+            "name": "MarinadeWithdraw"
+          },
+          {
+            "name": "Aldrin"
+          },
+          {
+            "name": "AldrinV2"
+          },
+          {
+            "name": "Whirlpool"
+          },
+          {
+            "name": "Invariant"
+          },
+          {
+            "name": "Meteora"
+          },
+          {
+            "name": "GooseFX"
+          },
+          {
+            "name": "DeltaFi"
+          },
+          {
+            "name": "Balansol"
+          },
+          {
+            "name": "MarcoPolo"
+          },
+          {
+            "name": "Dradex"
+          },
+          {
+            "name": "LifinityV2"
+          },
+          {
+            "name": "RaydiumClmm"
+          },
+          {
+            "name": "Openbook"
+          },
+          {
+            "name": "Phoenix"
+          },
+          {
+            "name": "Symmetry"
+          },
+          {
+            "name": "TokenSwapV2"
+          },
+          {
+            "name": "HeliumNetwork"
+          },
+          {
+            "name": "StakeDexStakeWrappedSol"
+          },
+          {
+            "name": "StakeDexSwapViaStake"
+          },
+          {
+            "name": "GooseFXV2"
+          },
+          {
+            "name": "Perps"
+          },
+          {
+            "name": "PerpsAddLiquidity"
+          },
+          {
+            "name": "PerpsRemoveLiquidity"
+          },
+          {
+            "name": "MeteoraMultiplyDLMM"
+          },
+          {
+            "name": "OpenBookV2"
+          },
+          {
+            "name": "RaydiumCLMMV2"
+          },
+          {
+            "name": "Clone"
+          },
+          {
+            "name": "CykuraV2"
+          },
+          {
+            "name": "SanctumS"
+          },
+          {
+            "name": "SanctumSAddLiquidity"
+          },
+          {
+            "name": "SanctumSRemoveLiquidity"
+          },
+          {
+            "name": "RaydiumCP"
+          },
+          {
+            "name": "WhirlpoolSwapV2"
+          },
+          {
+            "name": "OneIntro"
+          },
+          {
+            "name": "LifinityV3"
+          },
+          {
+            "name": "PumpdotfunWrappedBuy"
+          },
+          {
+            "name": "PumpdotfunWrappedSell"
+          },
+          {
+            "name": "FluxBeam"
+          },
+          {
+            "name": "StabbleStableSwap"
+          },
+          {
+            "name": "StabbleWeightedSwap"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Side",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Bid"
+          },
+          {
+            "name": "Ask"
+          }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "SlippageToleranceExceeded",
+      "msg": "Slippage tolerance exceeded"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidCalculation",
+      "msg": "Invalid calculation"
+    },
+    {
+      "code": 6002,
+      "name": "MissingPlatformFeeAccount",
+      "msg": "Missing platform fee account"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidSlippage",
+      "msg": "Invalid slippage value"
+    },
+    {
+      "code": 6004,
+      "name": "NotEnoughPercent",
+      "msg": "Not enough percent"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidRouteComposition",
+      "msg": "Invalid route composition"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidTokenLedger",
+      "msg": "Invalid token ledger"
+    },
+    {
+      "code": 6007,
+      "name": "TokenLedgerNotUpdated",
+      "msg": "Token ledger not updated"
+    }
+  ],
+  "metadata": {
+    "address": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "origin": "anchor",
+    "binaryVersion": "0.29.0",
+    "libVersion": "0.29.0"
+  }
+}
