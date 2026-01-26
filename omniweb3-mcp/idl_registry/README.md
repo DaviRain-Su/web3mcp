@@ -81,17 +81,44 @@ The IDL resolver will:
 1. First check for local file: `idl_registry/{PROGRAM_ID}.json`
 2. Fall back to Solana FM API if not found locally
 
-### Example Programs Configuration
+### Configured Programs
 
-Currently configured programs:
+**Current Status** (2026-01-26):
+- **Total Programs Configured**: 16
+- **Enabled**: 12 programs
+- **Disabled**: 4 programs (IDL not publicly available)
+- **Dynamic Tools Generated**: 637 instructions
 
-| Program | ID | Status | Tools |
-|---------|-----|--------|-------|
-| Jupiter v6 | `JUP6...` | ✅ Enabled | 6 tools |
-| Metaplex Token Metadata | `meta...` | ⏸️ Disabled | TBD |
-| Raydium AMM v4 | `675k...` | ⏸️ Disabled | TBD |
-| Orca Whirlpool | `whir...` | ⏸️ Disabled | TBD |
-| Marinade Finance | `MarB...` | ⏸️ Disabled | TBD |
+#### ✅ Enabled Programs (12)
+
+| # | Program | ID | Instructions | Category |
+|---|---------|-----|--------------|----------|
+| 1 | Jupiter v6 | `JUP6...` | 6 | DEX Aggregator |
+| 2 | Metaplex | `meta...` | 58 | NFT |
+| 3 | Orca Whirlpool | `whir...` | 58 | DEX |
+| 4 | Marinade | `MarB...` | 28 | Liquid Staking |
+| 5 | Drift | `dRif...` | 241 | Perpetuals |
+| 6 | Meteora DLMM | `LBUZ...` | 74 | DEX |
+| 7 | Meteora DAMM v2 | `cpam...` | 35 | DEX |
+| 8 | Meteora DAMM v1 | `Eo7W...` | 26 | DEX |
+| 9 | Meteora DBC | `dbci...` | 28 | Token Launch |
+| 10 | PumpFun | `6EF8...` | 27 | Token Launch |
+| 11 | Squads V4 | `SQDS...` | 31 | Multisig |
+| 12 | Raydium CLMM | `CAMM...` | 25 | DEX |
+| | **Total** | | **637** | |
+
+#### ❌ Disabled Programs (4)
+
+| Program | ID | Reason |
+|---------|-----|--------|
+| Raydium AMM v4 | `675k...` | Non-Anchor, legacy |
+| Kamino Lending | `KLen...` | IDL not publicly available |
+| Meteora M3M3 | `FEES...` | IDL not publicly available |
+| Sanctum S Controller | `5ocn...` | IDL not publicly available |
+
+**For detailed acquisition attempts and findings, see:**
+- [Manual IDL Guide](./MANUAL_IDL_GUIDE.md)
+- [IDL Acquisition Summary](/tmp/final_idl_summary.md)
 
 ### Environment Variables
 
@@ -155,3 +182,31 @@ jq '.' idl_registry/programs.json
 - [ ] Hot-reloading without server restart
 - [ ] IDL caching with TTL
 - [ ] Support for non-Anchor programs (native Solana programs)
+
+---
+
+## Related Documentation
+
+- [Manual IDL Acquisition Guide](./MANUAL_IDL_GUIDE.md) - Detailed guide for obtaining IDLs manually
+- [API Services Analysis](../docs/zh-CN/API_SERVICES_ANALYSIS.md) - Analysis of REST APIs provided by onchain programs
+- [Next Steps](../docs/zh-CN/NEXT_STEPS.md) - Roadmap and future plans
+- [Hybrid Architecture](../docs/zh-CN/HYBRID_ARCHITECTURE.md) - Overview of static + dynamic tool architecture
+
+---
+
+## Statistics
+
+**Growth Timeline**:
+- Initial (Phase 1): 171 tools (165 static + 6 dynamic from Jupiter only)
+- Current (Phase 2): ~802 tools (165 static + 637 dynamic from 12 programs)
+- **Growth**: +369% tools (+631 tools)
+
+**Programs by Category**:
+- DEX/AMM: 7 programs (356 instructions, 56%)
+- Perpetuals: 1 program (241 instructions, 38%)
+- NFT: 1 program (58 instructions, 9%)
+- Liquid Staking: 1 program (28 instructions, 4%)
+- Token Launch: 2 programs (55 instructions, 9%)
+- Multisig: 1 program (31 instructions, 5%)
+
+**Success Rate**: 12/16 programs successfully integrated (75%)
