@@ -1,0 +1,3626 @@
+{
+  "address": "save8RQVPMWNTzU18t3GBvBkN9hT7jsGjiCQ28FpD9H",
+  "metadata": {
+    "name": "bankineco",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "burn_for_yielding_gen",
+      "discriminator": [167, 22, 56, 95, 212, 15, 185, 218],
+      "accounts": [
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "bank_mint",
+          "writable": true
+        },
+        {
+          "name": "yielding_user_ta",
+          "writable": true
+        },
+        {
+          "name": "bank_mint_user_ta",
+          "writable": true
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_team_ata",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "yielding_mint_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_to_burn",
+          "type": "u64"
+        },
+        {
+          "name": "minimum_yielding_withdrawn",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "change_fees",
+      "discriminator": [64, 20, 248, 74, 96, 40, 95, 231],
+      "accounts": [
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "performance_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "minting_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "burning_fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "create_bank",
+      "discriminator": [109, 33, 246, 148, 209, 160, 169, 141],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "arg",
+                "path": "bank_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "bank_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "create_gen_oracle_account",
+      "discriminator": [209, 115, 30, 214, 80, 154, 93, 137],
+      "accounts": [
+        {
+          "name": "vault_creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "contract_init_price",
+          "type": "u64"
+        },
+        {
+          "name": "oracle_one",
+          "type": "pubkey"
+        },
+        {
+          "name": "oracle_two",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "create_gen_team_account",
+      "discriminator": [19, 232, 148, 22, 76, 27, 199, 241],
+      "accounts": [
+        {
+          "name": "vault_creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_team_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "team_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "yield_manager",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_gen_vault",
+      "discriminator": [20, 31, 141, 116, 117, 123, 227, 151],
+      "accounts": [
+        {
+          "name": "vault_creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "arg",
+                "path": "yielding_token_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_type",
+          "type": {
+            "defined": {
+              "name": "VaultType"
+            }
+          }
+        },
+        {
+          "name": "yielding_token_index",
+          "type": "u8"
+        },
+        {
+          "name": "mint_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "burn_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "performance_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "lending_platform",
+          "type": {
+            "option": {
+              "defined": {
+                "name": "LendingPlatform"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "deposit_in_lp",
+      "discriminator": [149, 73, 5, 160, 40, 98, 66, 112],
+      "accounts": [
+        {
+          "name": "yield_manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "init_marginfi_account",
+      "discriminator": [225, 212, 68, 233, 62, 96, 242, 103],
+      "accounts": [
+        {
+          "name": "yield_manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "team_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "account_index",
+          "type": "u16"
+        },
+        {
+          "name": "third_party_id",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "mint_w_yielding_gen",
+      "discriminator": [31, 100, 17, 215, 62, 12, 31, 2],
+      "accounts": [
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "bank_mint",
+          "writable": true
+        },
+        {
+          "name": "yielding_user_ta",
+          "writable": true
+        },
+        {
+          "name": "bank_mint_user_ta",
+          "writable": true
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_team_ata",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "yielding_mint_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_yielding_deposit",
+          "type": "u64"
+        },
+        {
+          "name": "min_bank_mint_minted",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "name_bank_manager",
+      "discriminator": [77, 204, 162, 85, 86, 181, 79, 200],
+      "accounts": [
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_manager",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "name_bank_risk_manager",
+      "discriminator": [52, 210, 175, 235, 176, 133, 200, 122],
+      "accounts": [
+        {
+          "name": "bank_state",
+          "writable": true
+        },
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "risk_manager",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_vault_config_details",
+      "discriminator": [94, 99, 5, 208, 172, 49, 86, 126],
+      "accounts": [
+        {
+          "name": "vault_creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "data",
+          "type": {
+            "defined": {
+              "name": "VaultConfigData"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "team_deposits_from_invest",
+      "discriminator": [237, 41, 29, 215, 187, 56, 237, 185],
+      "accounts": [
+        {
+          "name": "yield_manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yield_manager_ta",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "yield_manager"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "deposited_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "team_withdraws_fees",
+      "discriminator": [189, 55, 198, 43, 155, 47, 96, 10],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206,
+                  235, 121, 172, 28, 180, 133, 237, 95, 91, 55, 145, 58, 140,
+                  245, 133, 126, 255, 0, 169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "team_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "team_state"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206,
+                  235, 121, 172, 28, 180, 133, 237, 95, 91, 55, 145, 58, 140,
+                  245, 133, 126, 255, 0, 169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_ta",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "fee_type",
+          "type": {
+            "defined": {
+              "name": "FeeType"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "team_withdraws_to_invest",
+      "discriminator": [10, 151, 218, 67, 15, 149, 126, 251],
+      "accounts": [
+        {
+          "name": "yield_manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint"
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yield_manager_ta",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "yield_manager"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "withdrawal_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "trigger_bank_circuit_breaker",
+      "discriminator": [250, 236, 165, 211, 181, 241, 74, 84],
+      "accounts": [
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bank_manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "is_halted",
+          "type": "bool"
+        },
+        {
+          "name": "is_halted_deposit",
+          "type": "bool"
+        },
+        {
+          "name": "is_halted_withdrawal",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "trigger_vault_circuit_breaker",
+      "discriminator": [29, 3, 224, 104, 247, 145, 14, 188],
+      "accounts": [
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "is_halted",
+          "type": "bool"
+        },
+        {
+          "name": "is_halted_deposit",
+          "type": "bool"
+        },
+        {
+          "name": "is_halted_withdrawal",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "update_yielding_amount",
+      "discriminator": [148, 50, 173, 118, 153, 71, 25, 188],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true
+        },
+        {
+          "name": "yielding_mint",
+          "writable": true
+        },
+        {
+          "name": "signer_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "signer"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "team_state_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "team_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "push_all_pending_yield",
+          "type": "bool"
+        },
+        {
+          "name": "yield_to_push",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "new_start_marker_unix_seconds",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "synthetic_yield_push",
+          "type": {
+            "option": "bool"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_yielding_info",
+      "discriminator": [22, 206, 207, 204, 134, 135, 45, 183],
+      "accounts": [
+        {
+          "name": "oracle",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bank_mint"
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true
+        },
+        {
+          "name": "yielding_mint",
+          "writable": true
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_price",
+          "type": "u64"
+        },
+        {
+          "name": "start_marker_unix_seconds",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_yielding_price_gen",
+      "discriminator": [229, 137, 196, 95, 164, 248, 251, 139],
+      "accounts": [
+        {
+          "name": "oracle",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bank_mint"
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true
+        },
+        {
+          "name": "yielding_mint",
+          "writable": true
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "vault_reallocator",
+      "discriminator": [227, 170, 141, 7, 227, 237, 150, 16],
+      "accounts": [
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bank_mint",
+          "writable": true
+        },
+        {
+          "name": "source_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "source_yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_oracle_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_yielding_mint"
+        },
+        {
+          "name": "source_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "source_yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "destination_yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination_oracle_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination_team_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination_yielding_mint"
+        },
+        {
+          "name": "destination_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "destination_yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "manager_ta",
+          "docs": [
+            "The manager's token account for the destination mint (source of tokens to deposit)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "manager"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "destination_yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "decrement_amount",
+          "type": "u64"
+        },
+        {
+          "name": "increment_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "vault_transfer",
+      "discriminator": [211, 125, 3, 105, 45, 33, 227, 214],
+      "accounts": [
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_oracle_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_team_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              },
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination_oracle_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination_team_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_mint",
+          "writable": true
+        },
+        {
+          "name": "source_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "source_vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "destination_vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "yielding_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_from_lp",
+      "discriminator": [182, 255, 237, 26, 53, 53, 20, 167],
+      "accounts": [
+        {
+          "name": "yield_manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bank_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [66, 65, 78, 75]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 65, 85, 76, 84]
+              },
+              {
+                "kind": "account",
+                "path": "bank_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 79, 82, 65, 67, 76, 69, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "team_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [86, 84, 69, 65, 77, 65]
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yielding_vault_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_state"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "vault_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "BankState",
+      "discriminator": [16, 169, 126, 99, 35, 169, 73, 200]
+    },
+    {
+      "name": "OracleGenState",
+      "discriminator": [130, 253, 66, 122, 94, 135, 208, 214]
+    },
+    {
+      "name": "TeamGenState",
+      "discriminator": [30, 252, 138, 15, 198, 186, 51, 100]
+    },
+    {
+      "name": "VaultGenState",
+      "discriminator": [238, 187, 81, 47, 96, 228, 197, 55]
+    }
+  ],
+  "errors": [
+    {
+      "code": 14001,
+      "name": "Unauthorized",
+      "msg": "You are not authorized to perform this action."
+    },
+    {
+      "code": 14002,
+      "name": "InvalidBankMint",
+      "msg": "Invalid mint"
+    },
+    {
+      "code": 14003,
+      "name": "AccountingIssue",
+      "msg": "Accounting issue"
+    },
+    {
+      "code": 14004,
+      "name": "VaultAccountingIssue",
+      "msg": "Vault accounting issue"
+    },
+    {
+      "code": 14005,
+      "name": "BankAccountingIssue",
+      "msg": "Bank accounting issue"
+    },
+    {
+      "code": 14006,
+      "name": "OnchainAccountingIssue",
+      "msg": "Onchain accounting issue"
+    },
+    {
+      "code": 14007,
+      "name": "ExternalAccountingIssue",
+      "msg": "External accounting issue"
+    },
+    {
+      "code": 14008,
+      "name": "MintSlippage",
+      "msg": "Minting failed due to slippage."
+    },
+    {
+      "code": 14009,
+      "name": "BurningSlippage",
+      "msg": "Burning failed due to slippage."
+    },
+    {
+      "code": 14010,
+      "name": "TeamAccountAlreadyExists",
+      "msg": "Team account already exists"
+    },
+    {
+      "code": 14011,
+      "name": "OracleAccountAlreadyExists",
+      "msg": "Oracle account already exists"
+    },
+    {
+      "code": 14012,
+      "name": "StaleOracle",
+      "msg": "Stale oracle"
+    },
+    {
+      "code": 14013,
+      "name": "LocalSignificantPriceChange",
+      "msg": "Price change is too large locally"
+    },
+    {
+      "code": 14014,
+      "name": "SignificantPriceChange",
+      "msg": "Price change is too large"
+    },
+    {
+      "code": 14015,
+      "name": "RoundingImpact",
+      "msg": "Rounding impacts the protocol"
+    },
+    {
+      "code": 14016,
+      "name": "BankIsHalted",
+      "msg": "Bank is halted"
+    },
+    {
+      "code": 14017,
+      "name": "VaultIsHalted",
+      "msg": "Vault is halted"
+    },
+    {
+      "code": 14018,
+      "name": "ConversionOverflow",
+      "msg": "Conversion Overflow"
+    },
+    {
+      "code": 14019,
+      "name": "WrongVaultType",
+      "msg": "Vault type doesnt match"
+    },
+    {
+      "code": 14020,
+      "name": "InvalidArgument",
+      "msg": "Invalid argument"
+    },
+    {
+      "code": 14021,
+      "name": "UserSanityCheck",
+      "msg": "User Sanity Check"
+    },
+    {
+      "code": 14022,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 14023,
+      "name": "InvalidMarginFiAccount",
+      "msg": "Invalid MarginFi account - must be correct PDA for this vault"
+    },
+    {
+      "code": 14024,
+      "name": "InvalidStartMarker",
+      "msg": "Invalid start marker"
+    },
+    {
+      "code": 14025,
+      "name": "OracleUpdateOnEmptyReserve",
+      "msg": "Unable to push oracle update on an empty vault reserve"
+    },
+    {
+      "code": 14026,
+      "name": "InvalidRemainingAccountsLength",
+      "msg": "Invalid remaining accounts length"
+    },
+    {
+      "code": 14027,
+      "name": "WithdrawalExceedsBalance",
+      "msg": "Specified withdrawal exceeds available balance"
+    },
+    {
+      "code": 14028,
+      "name": "InsufficientPendingYield",
+      "msg": "Insufficient pending yield"
+    }
+  ],
+  "types": [
+    {
+      "name": "BankAccounting",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "yielding_tvl",
+            "type": "u64"
+          },
+          {
+            "name": "total_issued_supply",
+            "type": "u64"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u64", 14]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankConfig",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "bank_manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "risk_manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 5]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankMint",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "decimals",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 7]
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 8]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankState",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "bank_index",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 6]
+            }
+          },
+          {
+            "name": "config",
+            "type": {
+              "defined": {
+                "name": "BankConfig"
+              }
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "BankStatus"
+              }
+            }
+          },
+          {
+            "name": "accounting",
+            "type": {
+              "defined": {
+                "name": "BankAccounting"
+              }
+            }
+          },
+          {
+            "name": "mint",
+            "type": {
+              "defined": {
+                "name": "BankMint"
+              }
+            }
+          },
+          {
+            "name": "vaults",
+            "type": {
+              "defined": {
+                "name": "VaultManagement"
+              }
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 32]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BankStatus",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_halted",
+            "type": {
+              "defined": {
+                "name": "PodBool"
+              }
+            }
+          },
+          {
+            "name": "is_halted_deposit",
+            "type": {
+              "defined": {
+                "name": "PodBool"
+              }
+            }
+          },
+          {
+            "name": "is_halted_withdrawal",
+            "type": {
+              "defined": {
+                "name": "PodBool"
+              }
+            }
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 5]
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 4]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeeType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "MintBurn"
+          },
+          {
+            "name": "Performance"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LendingPlatform",
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Marginfi"
+          },
+          {
+            "name": "Kamino"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleConfig",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "price_max_ts_gap",
+            "type": "u64"
+          },
+          {
+            "name": "price_max_gap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "yielding_mint_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 5]
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 4]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleData",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oracle_registry",
+            "type": {
+              "array": ["pubkey", 8]
+            }
+          },
+          {
+            "name": "oracle_prices",
+            "type": {
+              "array": ["u64", 8]
+            }
+          },
+          {
+            "name": "oracle_pending_yield",
+            "type": {
+              "array": ["u64", 8]
+            }
+          },
+          {
+            "name": "oracle_veto",
+            "type": {
+              "array": ["u8", 8]
+            }
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 8]
+            }
+          },
+          {
+            "name": "oracle_last_ts",
+            "type": {
+              "array": ["u64", 8]
+            }
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": ["u64", 16]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleGenState",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "veto",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 6]
+            }
+          },
+          {
+            "name": "bank",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "config",
+            "type": {
+              "defined": {
+                "name": "OracleConfig"
+              }
+            }
+          },
+          {
+            "name": "data",
+            "type": {
+              "defined": {
+                "name": "OracleData"
+              }
+            }
+          },
+          {
+            "name": "result",
+            "type": {
+              "defined": {
+                "name": "OracleResult"
+              }
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 32]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleResult",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "yielding_token_price",
+            "type": "u64"
+          },
+          {
+            "name": "yielding_pending_amount",
+            "type": "u64"
+          },
+          {
+            "name": "update_ts",
+            "type": "u64"
+          },
+          {
+            "name": "start_marker_unix_seconds",
+            "type": "u64"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u64", 11]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PodBool",
+      "repr": {
+        "kind": "transparent"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": ["u8"]
+      }
+    },
+    {
+      "name": "TeamAccounting",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "net_yielding_to_deposit_back",
+            "type": "u64"
+          },
+          {
+            "name": "mint_burn_fees",
+            "type": "u64"
+          },
+          {
+            "name": "performance_fees",
+            "type": "u64"
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 15]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "TeamDetails",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bank",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "yielding_fees_ata",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_gatherer",
+            "type": "pubkey"
+          },
+          {
+            "name": "yield_manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": ["u64", 12]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "TeamGenState",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 7]
+            }
+          },
+          {
+            "name": "details",
+            "type": {
+              "defined": {
+                "name": "TeamDetails"
+              }
+            }
+          },
+          {
+            "name": "accounting",
+            "type": {
+              "defined": {
+                "name": "TeamAccounting"
+              }
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 32]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultAccounting",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "yielding_reserve_amount",
+            "type": "u64"
+          },
+          {
+            "name": "external_yielding_amount",
+            "type": "u64"
+          },
+          {
+            "name": "yielding_tvl_cap",
+            "type": "u64"
+          },
+          {
+            "name": "_legacy_padding1",
+            "type": "u64"
+          },
+          {
+            "name": "_legacy_padding2",
+            "type": "u64"
+          },
+          {
+            "name": "yielding_tvl",
+            "type": "u64"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": ["u64", 12]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultConfig",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "bank",
+            "type": "pubkey"
+          },
+          {
+            "name": "team_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_state",
+            "type": "pubkey"
+          },
+          {
+            "name": "risk_manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "yielding_token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "yielding_vault_ata",
+            "type": "pubkey"
+          },
+          {
+            "name": "yielding_mint_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 7]
+            }
+          },
+          {
+            "name": "fee_controller",
+            "type": "pubkey"
+          },
+          {
+            "name": "permissioned_users",
+            "type": {
+              "array": ["pubkey", 3]
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": "u16"
+          },
+          {
+            "name": "performance_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "minting_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "burning_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "lp_account_index",
+            "type": "u16"
+          },
+          {
+            "name": "lp_third_party_id",
+            "type": "u16"
+          },
+          {
+            "name": "lending_platform",
+            "type": {
+              "defined": {
+                "name": "LendingPlatform"
+              }
+            }
+          },
+          {
+            "name": "_padding4",
+            "type": {
+              "array": ["u8", 3]
+            }
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": ["u64", 11]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultConfigData",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "yield_manager",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "risk_manager",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "fee_controller",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "permissioned_users",
+            "type": {
+              "option": {
+                "array": ["pubkey", 3]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultGenState",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault_type",
+            "type": {
+              "defined": {
+                "name": "VaultType"
+              }
+            }
+          },
+          {
+            "name": "vault_index",
+            "type": "u8"
+          },
+          {
+            "name": "yielding_token_index",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 4]
+            }
+          },
+          {
+            "name": "config",
+            "type": {
+              "defined": {
+                "name": "VaultConfig"
+              }
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "VaultStatus"
+              }
+            }
+          },
+          {
+            "name": "accounting",
+            "type": {
+              "defined": {
+                "name": "VaultAccounting"
+              }
+            }
+          },
+          {
+            "name": "_padding2",
+            "type": {
+              "array": ["u64", 32]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultManagement",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "_legacy_padding1",
+            "type": {
+              "array": ["u64", 16]
+            }
+          },
+          {
+            "name": "_legacy_padding2",
+            "type": {
+              "array": ["i64", 16]
+            }
+          },
+          {
+            "name": "_legacy_padding3",
+            "type": {
+              "array": ["pubkey", 16]
+            }
+          },
+          {
+            "name": "new_index",
+            "type": "u8"
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 7]
+            }
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": ["u64", 12]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultStatus",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_halted",
+            "type": {
+              "defined": {
+                "name": "PodBool"
+              }
+            }
+          },
+          {
+            "name": "is_halted_deposit",
+            "type": {
+              "defined": {
+                "name": "PodBool"
+              }
+            }
+          },
+          {
+            "name": "is_halted_withdrawal",
+            "type": {
+              "defined": {
+                "name": "PodBool"
+              }
+            }
+          },
+          {
+            "name": "_padding1",
+            "type": {
+              "array": ["u8", 5]
+            }
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": ["u64", 12]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultType",
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "YieldBearing"
+          },
+          {
+            "name": "CollateralizedExternalYield"
+          },
+          {
+            "name": "UnCollateralizedExternalYield"
+          },
+          {
+            "name": "AtomicLending"
+          }
+        ]
+      }
+    }
+  ]
+}

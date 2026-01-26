@@ -105,6 +105,14 @@
       "description": "Jupiter Prediction Market - 12 instructions"
     },
     {
+      "id": "save8RQVPMWNTzU18t3GBvBkN9hT7jsGjiCQ28FpD9H",
+      "name": "bankineco",
+      "display_name": "Bankineco",
+      "category": "yield_vault",
+      "enabled": true,
+      "description": "DeFi yield vault and banking system - 23 instructions"
+    },
+    {
       "id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
       "name": "raydium_v4",
       "display_name": "Raydium AMM v4",
