@@ -558,8 +558,29 @@ pub const Server = struct {
 
         // Find the tool
         if (self.tools.get(tool_name)) |tool| {
+            // Inject tool_name into arguments for dynamic tool handlers
+            // This allows handlers to identify which tool is being called
+            var modified_arguments = arguments;
+            if (arguments) |args| {
+                if (args == .object) {
+                    // Clone the object and add _tool_name
+                    var args_obj = std.json.ObjectMap.init(self.allocator);
+                    var it = args.object.iterator();
+                    while (it.next()) |entry| {
+                        try args_obj.put(entry.key_ptr.*, entry.value_ptr.*);
+                    }
+                    try args_obj.put("_tool_name", .{ .string = tool_name });
+                    modified_arguments = .{ .object = args_obj };
+                }
+            } else {
+                // No arguments, create object with just tool_name
+                var args_obj = std.json.ObjectMap.init(self.allocator);
+                try args_obj.put("_tool_name", .{ .string = tool_name });
+                modified_arguments = .{ .object = args_obj };
+            }
+
             // Execute the tool
-            const tool_result = tool.handler(self.allocator, arguments) catch |err| {
+            const tool_result = tool.handler(self.allocator, modified_arguments) catch |err| {
                 // Return error result
                 var content_array = std.json.Array.init(self.allocator);
                 var text_obj = std.json.ObjectMap.init(self.allocator);

@@ -7,22 +7,23 @@ const std = @import("std");
 const mcp = @import("mcp");
 const chain_provider = @import("../../core/chain_provider.zig");
 const registry_mod = @import("./registry.zig");
+const solana_helpers = @import("../../core/solana_helpers.zig");
 
 const ChainProvider = chain_provider.ChainProvider;
 const FunctionCall = chain_provider.FunctionCall;
 const CallOptions = chain_provider.CallOptions;
 const DynamicToolRegistry = registry_mod.DynamicToolRegistry;
 
-/// Handle a dynamic tool call
+/// Handle a dynamic tool call (when tool name is known)
 ///
 /// This function:
 /// 1. Looks up the tool metadata
 /// 2. Extracts parameters from the MCP request
 /// 3. Builds the transaction using ChainProvider
 /// 4. Returns the unsigned transaction
-pub fn handleDynamicTool(
+pub fn handleDynamicToolWithName(
     allocator: std.mem.Allocator,
-    registry: *const DynamicToolRegistry,
+    registry: *DynamicToolRegistry,
     tool_name: []const u8,
     args: ?std.json.Value,
 ) mcp.tools.ToolError!mcp.tools.ToolResult {
@@ -38,8 +39,22 @@ pub fn handleDynamicTool(
         };
     };
 
+    return handleDynamicToolImpl(allocator, registry, dyn_tool, args);
+}
+
+/// Handle a dynamic tool call (legacy name)
+pub const handleDynamicTool = handleDynamicToolWithName;
+
+/// Implementation of dynamic tool handling
+fn handleDynamicToolImpl(
+    allocator: std.mem.Allocator,
+    registry: *DynamicToolRegistry,
+    dyn_tool: *const DynamicToolRegistry.DynamicTool,
+    args: ?std.json.Value,
+) mcp.tools.ToolError!mcp.tools.ToolResult {
+
     std.log.info("Handling dynamic tool: {s} (function: {s})", .{
-        tool_name,
+        dyn_tool.tool.name,
         dyn_tool.function_name,
     });
 
@@ -62,13 +77,13 @@ pub fn handleDynamicTool(
         .signer = signer,
         .args = args orelse std.json.Value{ .object = std.json.ObjectMap.init(allocator) },
         .options = .{
-            .value = mcp.tools.getInteger(args, "value") orelse 0,
-            .gas_limit = if (mcp.tools.getInteger(args, "gas_limit")) |g| @intCast(g) else null,
+            .value = if (mcp.tools.getInteger(args, "value")) |v| @intCast(v) else null,
+            .gas = if (mcp.tools.getInteger(args, "gas")) |g| @intCast(g) else null,
         },
     };
 
     // Get provider and build transaction
-    const provider = switch (dyn_tool.chain_type) {
+    var provider = switch (dyn_tool.chain_type) {
         .solana => blk: {
             if (registry.solana_provider) |sol_provider| {
                 break :blk sol_provider.asChainProvider();
@@ -93,7 +108,7 @@ pub fn handleDynamicTool(
     };
 
     // Build transaction
-    const tx = provider.buildTransaction(allocator, call) catch |err| {
+    const tx = (&provider).buildTransaction(allocator, call) catch |err| {
         const msg = try std.fmt.allocPrint(
             allocator,
             "Failed to build transaction: {}",
@@ -107,12 +122,16 @@ pub fn handleDynamicTool(
 
     // Format response
     var response_obj = std.json.ObjectMap.init(allocator);
-    errdefer response_obj.deinit(allocator);
+    errdefer response_obj.deinit();
 
     try response_obj.put("chain", std.json.Value{ .string = @tagName(tx.chain) });
-    try response_obj.put("from", std.json.Value{ .string = tx.from });
+    if (tx.from) |from| {
+        try response_obj.put("from", std.json.Value{ .string = from });
+    }
     try response_obj.put("to", std.json.Value{ .string = tx.to });
-    try response_obj.put("value", std.json.Value{ .integer = @intCast(tx.value) });
+    if (tx.value) |val| {
+        try response_obj.put("value", std.json.Value{ .integer = @intCast(val) });
+    }
 
     // Encode transaction data as base64
     const b64_encoder = std.base64.standard.Encoder;
@@ -127,11 +146,14 @@ pub fn handleDynamicTool(
     try response_obj.put("metadata", tx.metadata);
 
     const response = std.json.Value{ .object = response_obj };
-    const response_str = try std.json.stringifyAlloc(
-        allocator,
-        response,
-        .{ .whitespace = .indent_2 },
-    );
+    const response_str = solana_helpers.jsonStringifyAlloc(allocator, response) catch {
+        return mcp.tools.errorResult(
+            allocator,
+            "Failed to serialize transaction response",
+        ) catch {
+            return mcp.tools.ToolError.ExecutionFailed;
+        };
+    };
 
     return mcp.tools.textResult(allocator, response_str);
 }
