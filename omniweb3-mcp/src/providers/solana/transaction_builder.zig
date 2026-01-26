@@ -261,11 +261,11 @@ test "computeDiscriminator" {
 
 test "serializePrimitive u64" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
     const value = std.json.Value{ .integer = 1000 };
-    try serializePrimitive(&buffer, value, .u64);
+    try serializePrimitive(allocator, &buffer, value, .u64);
 
     // Should be 8 bytes (little-endian)
     try std.testing.expectEqual(@as(usize, 8), buffer.items.len);
@@ -277,11 +277,11 @@ test "serializePrimitive u64" {
 
 test "serializePrimitive string" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
     const value = std.json.Value{ .string = "hello" };
-    try serializePrimitive(&buffer, value, .string);
+    try serializePrimitive(allocator, &buffer, value, .string);
 
     // Should be 4 bytes (length) + 5 bytes (string)
     try std.testing.expectEqual(@as(usize, 9), buffer.items.len);

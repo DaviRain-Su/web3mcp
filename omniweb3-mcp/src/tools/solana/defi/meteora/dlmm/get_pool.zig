@@ -62,23 +62,13 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const data = account_info.?.data;
 
-    // Parse account data (basic structure extraction)
-    // DLMM LbPair layout:
-    // - 8 bytes: discriminator
-    // - parameters struct
-    // - mints and reserves
-
-    if (data.len < 200) {
-        return helpers.errorResult(allocator, "Pool account data too small");
-    }
-
-    // Extract key fields from account data
-    // Note: This is a simplified extraction - production code would use proper borsh deserialization
-    const active_id = std.mem.readInt(i32, data[8..12], .little);
-    const bin_step = std.mem.readInt(u16, data[12..14], .little);
+    // Parse account data using helper function
+    const pool_basics = helpers.extractDlmmPoolBasics(data) orelse {
+        return helpers.errorResult(allocator, "Pool account data too small or invalid");
+    };
 
     // Calculate current price from active bin
-    const current_price = constants.getPriceFromBinId(active_id, bin_step);
+    const current_price = constants.getPriceFromBinId(pool_basics.active_id, pool_basics.bin_step);
 
     // Build response
     const Response = struct {
@@ -96,11 +86,11 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const response = Response{
         .address = pool_address_str,
-        .program_id = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
-        .active_bin_id = active_id,
-        .bin_step = bin_step,
+        .program_id = constants.PROGRAM_IDS.DLMM,
+        .active_bin_id = pool_basics.active_id,
+        .bin_step = pool_basics.bin_step,
         .current_price = current_price,
-        .fee_bps = 25, // Default base fee, actual fee is dynamic
+        .fee_bps = pool_basics.protocol_fee_bps,
         .data_len = data.len,
         .network = network,
     };

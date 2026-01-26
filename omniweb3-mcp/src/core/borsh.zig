@@ -28,10 +28,10 @@ pub fn serializeInto(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), v
     const type_info = @typeInfo(T);
 
     switch (type_info) {
-        .Bool => try serializeBool(allocator, buffer, value),
-        .Int => try serializeInt(allocator, buffer, value),
-        .Float => try serializeFloat(allocator, buffer, value),
-        .Pointer => |ptr_info| {
+        .bool => try serializeBool(allocator, buffer, value),
+        .int => try serializeInt(allocator, buffer, value),
+        .float => try serializeFloat(allocator, buffer, value),
+        .pointer => |ptr_info| {
             switch (ptr_info.size) {
                 .Slice => {
                     if (ptr_info.child == u8) {
@@ -45,16 +45,16 @@ pub fn serializeInto(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), v
                 else => @compileError("Unsupported pointer type"),
             }
         },
-        .Array => |array_info| {
+        .array => |array_info| {
             if (array_info.child == u8) {
                 try serializeBytes(allocator, buffer, &value);
             } else {
                 try serializeArray(allocator, buffer, &value);
             }
         },
-        .Struct => try serializeStruct(allocator, buffer, value),
-        .Optional => try serializeOptional(allocator, buffer, value),
-        .Enum => try serializeEnum(allocator, buffer, value),
+        .@"struct" => try serializeStruct(allocator, buffer, value),
+        .optional => try serializeOptional(allocator, buffer, value),
+        .@"enum" => try serializeEnum(allocator, buffer, value),
         else => @compileError("Unsupported type for Borsh serialization: " ++ @typeName(T)),
     }
 }
@@ -116,7 +116,7 @@ fn serializeArray(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), valu
 /// Serialize struct (fields in declaration order)
 fn serializeStruct(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
-    const fields = @typeInfo(T).Struct.fields;
+    const fields = @typeInfo(T).@"struct".fields;
 
     inline for (fields) |field| {
         const field_value = @field(value, field.name);
@@ -151,10 +151,10 @@ fn deserializeFrom(comptime T: type, allocator: std.mem.Allocator, data: []const
     const type_info = @typeInfo(T);
 
     switch (type_info) {
-        .Bool => return try deserializeBool(data, offset),
-        .Int => return try deserializeInt(T, data, offset),
-        .Float => return try deserializeFloat(T, data, offset),
-        .Pointer => |ptr_info| {
+        .bool => return try deserializeBool(data, offset),
+        .int => return try deserializeInt(T, data, offset),
+        .float => return try deserializeFloat(T, data, offset),
+        .pointer => |ptr_info| {
             switch (ptr_info.size) {
                 .Slice => {
                     if (ptr_info.child == u8) {
@@ -166,9 +166,9 @@ fn deserializeFrom(comptime T: type, allocator: std.mem.Allocator, data: []const
                 else => @compileError("Unsupported pointer type"),
             }
         },
-        .Struct => return try deserializeStruct(T, allocator, data, offset),
-        .Optional => return try deserializeOptional(T, allocator, data, offset),
-        .Enum => return try deserializeEnum(T, data, offset),
+        .@"struct" => return try deserializeStruct(T, allocator, data, offset),
+        .optional => return try deserializeOptional(T, allocator, data, offset),
+        .@"enum" => return try deserializeEnum(T, data, offset),
         else => @compileError("Unsupported type for Borsh deserialization: " ++ @typeName(T)),
     }
 }
@@ -231,7 +231,7 @@ fn deserializeArray(comptime Child: type, allocator: std.mem.Allocator, data: []
 
 fn deserializeStruct(comptime T: type, allocator: std.mem.Allocator, data: []const u8, offset: *usize) !T {
     var result: T = undefined;
-    const fields = @typeInfo(T).Struct.fields;
+    const fields = @typeInfo(T).@"struct".fields;
 
     inline for (fields) |field| {
         @field(result, field.name) = try deserializeFrom(field.type, allocator, data, offset);
@@ -244,7 +244,7 @@ fn deserializeOptional(comptime T: type, allocator: std.mem.Allocator, data: []c
     const has_value = try deserializeBool(data, offset);
 
     if (has_value) {
-        const Child = @typeInfo(T).Optional.child;
+        const Child = @typeInfo(T).optional.child;
         return try deserializeFrom(Child, allocator, data, offset);
     } else {
         return null;

@@ -78,16 +78,13 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     }
 
     const data = account_info.?.data;
-    if (data.len == 0) {
-        return helpers.errorResult(allocator, "Pool account has no data");
-    }
 
-    if (data.len < 200) {
-        return helpers.errorResult(allocator, "Pool account data too small");
-    }
+    const pool_basics = helpers.extractDlmmPoolBasics(data) orelse {
+        return helpers.errorResult(allocator, "Pool account data too small or invalid");
+    };
 
-    const active_id = std.mem.readInt(i32, data[8..12], .little);
-    const bin_step = std.mem.readInt(u16, data[12..14], .little);
+    const active_id = pool_basics.active_id;
+    const bin_step = pool_basics.bin_step;
 
     // Calculate swap quote (simplified)
     // In production, this would iterate through bins and calculate exact output
@@ -105,8 +102,19 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     // Apply slippage for minimum output
     const min_output = helpers.applySlippage(estimated_output, slippage_bps, true);
 
-    // Estimate price impact (simplified)
-    const price_impact: f64 = 0.001; // 0.1% placeholder
+    // Estimate price impact based on swap size
+    // Price impact ≈ (amount_in / typical_liquidity) * sensitivity_factor
+    // For DLMM, bin liquidity affects impact. Using simplified estimation:
+    // - Small swaps (<1000 base units): ~0.01-0.1%
+    // - Medium swaps (1000-100000): ~0.1-1%
+    // - Large swaps (>100000): ~1-5%
+    const price_impact: f64 = blk: {
+        const amount_f = @as(f64, @floatFromInt(amount));
+        const impact_factor = @log10(amount_f + 1.0) / 10.0; // Logarithmic scaling
+        const base_impact = impact_factor * 0.005; // 0.5% per order of magnitude
+        const clamped_impact = @min(base_impact, 0.15); // Cap at 15%
+        break :blk @max(clamped_impact, 0.0001); // Minimum 0.01%
+    };
 
     const Response = struct {
         pool: []const u8,

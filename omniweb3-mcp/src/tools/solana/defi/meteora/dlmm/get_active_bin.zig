@@ -53,13 +53,13 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     const data = account_info.?.data;
 
-    if (data.len < 200) {
-        return helpers.errorResult(allocator, "Pool account data too small");
-    }
+    const pool_basics = helpers.extractDlmmPoolBasics(data) orelse {
+        return helpers.errorResult(allocator, "Pool account data too small or invalid");
+    };
 
     // Extract active bin info
-    const active_id = std.mem.readInt(i32, data[8..12], .little);
-    const bin_step = std.mem.readInt(u16, data[12..14], .little);
+    const active_id = pool_basics.active_id;
+    const bin_step = pool_basics.bin_step;
 
     const price = constants.getPriceFromBinId(active_id, bin_step);
 

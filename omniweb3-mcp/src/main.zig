@@ -82,3 +82,25 @@ fn parseWorkers(value: []const u8) !usize {
     if (workers == 0) return error.InvalidWorkers;
     return if (workers > 64) 64 else workers;
 }
+
+// Test imports
+test {
+    // Import all modules with test blocks to include them in test builds
+
+    // Core modules
+    _ = @import("core/borsh.zig");
+
+    // Solana provider modules
+    _ = @import("providers/solana/idl_resolver.zig");
+    _ = @import("providers/solana/provider.zig");
+    _ = @import("providers/solana/tool_generator.zig");
+    _ = @import("providers/solana/transaction_builder.zig");
+
+    // Tool registry modules
+    _ = @import("tools/dynamic/registry.zig");
+    _ = @import("tools/registry.zig");
+
+    // Meteora modules
+    _ = @import("tools/solana/defi/meteora/constants.zig");
+    _ = @import("tools/solana/defi/meteora/helpers_test.zig");
+}

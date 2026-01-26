@@ -167,7 +167,10 @@ test "SolanaProvider init and deinit" {
     const allocator = std.testing.allocator;
     const rpc_url = "https://api.mainnet-beta.solana.com";
 
-    const provider = try SolanaProvider.init(allocator, rpc_url);
+    // Create minimal IO for testing
+    var io: std.Io = undefined;
+
+    const provider = try SolanaProvider.init(allocator, rpc_url, &io);
     defer provider.deinit();
 
     const chain_provider_interface = provider.asChainProvider();
