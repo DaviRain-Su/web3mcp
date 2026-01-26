@@ -70,11 +70,11 @@ fn testBorsh(allocator: std.mem.Allocator) !void {
 
     // Test integer serialization
     {
-        var buffer = std.ArrayList(u8).init(allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(allocator);
 
         const value: u64 = 1000000;
-        try serializeInt(&buffer, value);
+        try serializeInt(allocator, &buffer, value);
 
         if (buffer.items.len != 8) {
             return error.InvalidSerializationLength;
@@ -90,11 +90,11 @@ fn testBorsh(allocator: std.mem.Allocator) !void {
 
     // Test string serialization
     {
-        var buffer = std.ArrayList(u8).init(allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(allocator);
 
         const value = "Hello, Borsh!";
-        try serializeString(&buffer, value);
+        try serializeString(allocator, &buffer, value);
 
         // Should be 4 bytes (length) + string length
         const expected_len = 4 + value.len;
@@ -112,16 +112,16 @@ fn testBorsh(allocator: std.mem.Allocator) !void {
 
     // Test boolean serialization
     {
-        var buffer = std.ArrayList(u8).init(allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(allocator);
 
-        try serializeBool(&buffer, true);
+        try serializeBool(allocator, &buffer, true);
         if (buffer.items.len != 1 or buffer.items[0] != 1) {
             return error.InvalidBoolSerialization;
         }
 
         buffer.clearRetainingCapacity();
-        try serializeBool(&buffer, false);
+        try serializeBool(allocator, &buffer, false);
         if (buffer.items.len != 1 or buffer.items[0] != 0) {
             return error.InvalidBoolSerialization;
         }
@@ -132,21 +132,21 @@ fn testBorsh(allocator: std.mem.Allocator) !void {
     std.debug.print("  ✓ Borsh serialization working correctly\n\n", .{});
 }
 
-fn serializeInt(buffer: *std.ArrayList(u8), value: anytype) !void {
+fn serializeInt(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
-    const type_info = @typeInfo(T).Int;
+    const type_info = @typeInfo(T).int;
     const bytes = @divExact(type_info.bits, 8);
 
     var int_bytes: [16]u8 = undefined;
     std.mem.writeInt(T, int_bytes[0..bytes], value, .little);
-    try buffer.appendSlice(int_bytes[0..bytes]);
+    try buffer.appendSlice(allocator, int_bytes[0..bytes]);
 }
 
-fn serializeString(buffer: *std.ArrayList(u8), value: []const u8) !void {
-    try serializeInt(buffer, @as(u32, @intCast(value.len)));
-    try buffer.appendSlice(value);
+fn serializeString(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: []const u8) !void {
+    try serializeInt(allocator, buffer, @as(u32, @intCast(value.len)));
+    try buffer.appendSlice(allocator, value);
 }
 
-fn serializeBool(buffer: *std.ArrayList(u8), value: bool) !void {
-    try buffer.append(if (value) 1 else 0);
+fn serializeBool(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: bool) !void {
+    try buffer.append(allocator, if (value) 1 else 0);
 }

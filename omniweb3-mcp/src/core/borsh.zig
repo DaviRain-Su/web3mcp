@@ -67,7 +67,7 @@ pub fn serializeBool(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), v
 /// Serialize integer (little-endian)
 pub fn serializeInt(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
-    const type_info = @typeInfo(T).Int;
+    const type_info = @typeInfo(T).int;
     const bytes = @divExact(type_info.bits, 8);
 
     var int_bytes: [16]u8 = undefined;
@@ -181,7 +181,7 @@ fn deserializeBool(data: []const u8, offset: *usize) !bool {
 }
 
 fn deserializeInt(comptime T: type, data: []const u8, offset: *usize) !T {
-    const bytes = @divExact(@typeInfo(T).Int.bits, 8);
+    const bytes = @divExact(@typeInfo(T).int.bits, 8);
     if (offset.* + bytes > data.len) return error.BufferTooSmall;
 
     const value = std.mem.readInt(T, data[offset.*..][0..bytes], .little);
