@@ -34,15 +34,17 @@ fn run(init: std.process.Init) !void {
     });
 
     if (enable_dynamic == null or std.mem.eql(u8, enable_dynamic.?, "true")) {
-        std.log.info("Loading dynamic tools from Jupiter IDL...", .{});
-        dyn_registry.loadJupiter(rpc_url, &init.io) catch |err| {
-            std.log.err("Failed to load Jupiter dynamic tools: {}", .{err});
+        std.log.info("Loading dynamic tools from Solana programs...", .{});
+        dyn_registry.loadSolanaPrograms(rpc_url, &init.io) catch |err| {
+            std.log.err("Failed to load Solana dynamic tools: {}", .{err});
             std.log.err("Continuing with static tools only...", .{});
             std.log.err("Please check:", .{});
-            std.log.err("  1. IDL file exists at: idl_registry/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4.json", .{});
+            std.log.err("  1. IDL files exist in idl_registry/", .{});
             std.log.err("  2. Network connectivity to Solana FM API", .{});
             std.log.err("  3. SOLANA_RPC_URL is valid: {s}", .{rpc_url});
         };
+
+        std.log.info("Dynamic tools: {}", .{dyn_registry.toolCount()});
     } else {
         std.log.info("Dynamic tools disabled via ENABLE_DYNAMIC_TOOLS={s}", .{enable_dynamic.?});
     }
