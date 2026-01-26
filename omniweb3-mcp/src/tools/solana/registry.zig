@@ -40,6 +40,9 @@ const jupiter_swap = @import("defi/jupiter/swap/swap.zig");
 const jupiter_execute_swap = @import("defi/jupiter/swap/execute_swap.zig");
 const get_jupiter_program_labels = @import("defi/jupiter/swap/get_program_labels.zig");
 
+// Jupiter Batch API (Phase 2)
+const jupiter_batch_swap = @import("defi/jupiter/batch/batch_swap.zig");
+
 // Jupiter Price API
 const get_jupiter_price = @import("defi/jupiter/price/get_price.zig");
 
@@ -460,6 +463,13 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "jupiter_execute_swap",
         .description = "Execute complete Jupiter swap (quote + build + sign + send). Parameters: input_mint, output_mint, amount, wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), slippage_bps (optional), network (optional), sponsor (optional, privy only)",
         .handler = jupiter_execute_swap.handle,
+    },
+
+    // DeFi - Jupiter Batch Operations (Phase 2)
+    .{
+        .name = "jupiter_batch_swap",
+        .description = "Execute multiple swaps in batch. Parameters: swaps (array of {input_mint, output_mint, amount}), wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), slippage_bps (optional), network (optional), sponsor (optional, privy only), fail_fast (optional, stop on first error). Max 10 swaps per batch. Returns array of results with signatures or errors for each swap.",
+        .handler = jupiter_batch_swap.handle,
     },
 
     // DeFi - Jupiter Ultra (Write)
