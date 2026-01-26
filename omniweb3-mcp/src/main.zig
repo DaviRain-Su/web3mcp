@@ -120,4 +120,7 @@ test {
     _ = @import("tools/solana/defi/jupiter/helpers_test.zig");
     _ = @import("tools/solana/defi/jupiter/batch/batch_swap_test.zig");
     _ = @import("tools/solana/defi/jupiter/batch/batch_trigger_orders_test.zig");
+
+    // Trading strategies
+    _ = @import("tools/solana/strategies/grid_trading_test.zig");
 }

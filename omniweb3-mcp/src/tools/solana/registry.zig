@@ -44,6 +44,9 @@ const get_jupiter_program_labels = @import("defi/jupiter/swap/get_program_labels
 const jupiter_batch_swap = @import("defi/jupiter/batch/batch_swap.zig");
 const jupiter_batch_trigger_orders = @import("defi/jupiter/batch/batch_trigger_orders.zig");
 
+// Trading Strategies (Phase 2)
+const grid_trading = @import("strategies/grid_trading.zig");
+
 // Jupiter Price API
 const get_jupiter_price = @import("defi/jupiter/price/get_price.zig");
 
@@ -1009,6 +1012,15 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "meteora_m3m3_get_user_balance",
         .description = "Get user M3M3 staked balance and claimable fees. Parameters: pool_address, user, network (optional), endpoint (optional)",
         .handler = meteora_m3m3_get_user_balance.handle,
+    },
+
+    // =========================================================================
+    // Trading Strategies (Phase 2)
+    // =========================================================================
+    .{
+        .name = "jupiter_create_grid_strategy",
+        .description = "Create automated grid trading strategy. Calculates price levels and creates all limit orders in batch. Parameters: input_mint, output_mint, lower_price, upper_price, grid_levels (2-20), total_amount, current_price, strategy (arithmetic/geometric, optional), wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), network (optional), sponsor (optional), endpoint (optional). Returns grid configuration and order creation results.",
+        .handler = grid_trading.handle,
     },
 };
 
