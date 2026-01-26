@@ -13,18 +13,18 @@ pub fn generateTools(
     allocator: std.mem.Allocator,
     meta: *const ContractMeta,
 ) ![]mcp.tools.Tool {
-    var tools = std.ArrayList(mcp.tools.Tool).init(allocator);
-    errdefer tools.deinit();
+    var tools: std.ArrayList(mcp.tools.Tool) = .empty;
+    errdefer tools.deinit(allocator);
 
     const program_name = meta.name orelse "program";
 
     // Generate one tool for each function
     for (meta.functions) |func| {
         const tool = try generateToolForFunction(allocator, program_name, meta.address, func);
-        try tools.append(tool);
+        try tools.append(allocator, tool);
     }
 
-    return tools.toOwnedSlice();
+    return tools.toOwnedSlice(allocator);
 }
 
 /// Generate a single MCP tool for a function
@@ -75,7 +75,7 @@ fn generateInputSchema(
     parameters: []const Parameter,
 ) !std.json.Value {
     var properties = std.json.ObjectMap.init(allocator);
-    var required = std.ArrayList(std.json.Value).init(allocator);
+    var required: std.ArrayList(std.json.Value) = .empty;
 
     // Add parameters to schema
     for (parameters) |param| {
@@ -84,7 +84,7 @@ fn generateInputSchema(
 
         // Add to required list if not optional
         if (!param.optional) {
-            try required.append(std.json.Value{ .string = param.name });
+            try required.append(allocator, std.json.Value{ .string = param.name });
         }
     }
 
@@ -94,7 +94,7 @@ fn generateInputSchema(
     try schema.put("properties", std.json.Value{ .object = properties });
 
     if (required.items.len > 0) {
-        try schema.put("required", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try required.toOwnedSlice()) });
+        try schema.put("required", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try required.toOwnedSlice(allocator)) });
     }
 
     return std.json.Value{ .object = schema };
@@ -117,32 +117,32 @@ fn typeToJsonSchema(allocator: std.mem.Allocator, param_type: Type) !std.json.Va
             var inner_schema = try typeToJsonSchema(allocator, inner_type.*);
 
             // Wrap in anyOf: [inner_schema, null]
-            var any_of = std.ArrayList(std.json.Value).init(allocator);
-            try any_of.append(inner_schema);
+            var any_of: std.ArrayList(std.json.Value) = .empty;
+            try any_of.append(allocator, inner_schema);
 
             var null_schema = std.json.ObjectMap.init(allocator);
             try null_schema.put("type", std.json.Value{ .string = "null" });
-            try any_of.append(std.json.Value{ .object = null_schema });
+            try any_of.append(allocator, std.json.Value{ .object = null_schema });
 
             var schema = std.json.ObjectMap.init(allocator);
-            try schema.put("anyOf", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try any_of.toOwnedSlice()) });
+            try schema.put("anyOf", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try any_of.toOwnedSlice(allocator)) });
 
             return std.json.Value{ .object = schema };
         },
         .struct_type => |fields| {
             var properties = std.json.ObjectMap.init(allocator);
-            var required = std.ArrayList(std.json.Value).init(allocator);
+            var required: std.ArrayList(std.json.Value) = .empty;
 
             for (fields) |field| {
                 try properties.put(field.name, try typeToJsonSchema(allocator, field.type));
-                try required.append(std.json.Value{ .string = field.name });
+                try required.append(allocator, std.json.Value{ .string = field.name });
             }
 
             var schema = std.json.ObjectMap.init(allocator);
             try schema.put("type", std.json.Value{ .string = "object" });
             try schema.put("properties", std.json.Value{ .object = properties });
             if (required.items.len > 0) {
-                try schema.put("required", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try required.toOwnedSlice()) });
+                try schema.put("required", std.json.Value{ .array = std.json.Array.fromOwnedSlice(allocator, try required.toOwnedSlice(allocator)) });
             }
 
             return std.json.Value{ .object = schema };
@@ -237,7 +237,7 @@ test "generateInputSchema for simple function" {
     };
 
     const schema = try generateInputSchema(allocator, &params);
-    defer schema.object.deinit();
+    defer schema.object.deinit(allocator);
 
     // Verify schema structure
     try std.testing.expect(schema.object.get("type") != null);
@@ -253,12 +253,12 @@ test "primitiveToJsonSchema" {
     const allocator = std.testing.allocator;
 
     const u64_schema = try primitiveToJsonSchema(allocator, .u64);
-    defer u64_schema.object.deinit();
+    defer u64_schema.object.deinit(allocator);
 
     try std.testing.expectEqualStrings("integer", u64_schema.object.get("type").?.string);
 
     const pubkey_schema = try primitiveToJsonSchema(allocator, .pubkey);
-    defer pubkey_schema.object.deinit();
+    defer pubkey_schema.object.deinit(allocator);
 
     try std.testing.expectEqualStrings("string", pubkey_schema.object.get("type").?.string);
     try std.testing.expect(pubkey_schema.object.get("description") != null);

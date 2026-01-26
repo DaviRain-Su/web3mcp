@@ -15,31 +15,31 @@ pub const BorshError = error{
 
 /// Serialize a value to Borsh format
 pub fn serialize(allocator: std.mem.Allocator, value: anytype) ![]u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
-    errdefer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    errdefer buffer.deinit(allocator);
 
-    try serializeInto(&buffer, value);
-    return buffer.toOwnedSlice();
+    try serializeInto(allocator, &buffer, value);
+    return buffer.toOwnedSlice(allocator);
 }
 
 /// Serialize a value into an existing ArrayList
-pub fn serializeInto(buffer: *std.ArrayList(u8), value: anytype) !void {
+pub fn serializeInto(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
     switch (type_info) {
-        .Bool => try serializeBool(buffer, value),
-        .Int => try serializeInt(buffer, value),
-        .Float => try serializeFloat(buffer, value),
+        .Bool => try serializeBool(allocator, buffer, value),
+        .Int => try serializeInt(allocator, buffer, value),
+        .Float => try serializeFloat(allocator, buffer, value),
         .Pointer => |ptr_info| {
             switch (ptr_info.size) {
                 .Slice => {
                     if (ptr_info.child == u8) {
                         // Byte array
-                        try serializeBytes(buffer, value);
+                        try serializeBytes(allocator, buffer, value);
                     } else {
                         // Array of other types
-                        try serializeArray(buffer, value);
+                        try serializeArray(allocator, buffer, value);
                     }
                 },
                 else => @compileError("Unsupported pointer type"),
@@ -47,97 +47,97 @@ pub fn serializeInto(buffer: *std.ArrayList(u8), value: anytype) !void {
         },
         .Array => |array_info| {
             if (array_info.child == u8) {
-                try serializeBytes(buffer, &value);
+                try serializeBytes(allocator, buffer, &value);
             } else {
-                try serializeArray(buffer, &value);
+                try serializeArray(allocator, buffer, &value);
             }
         },
-        .Struct => try serializeStruct(buffer, value),
-        .Optional => try serializeOptional(buffer, value),
-        .Enum => try serializeEnum(buffer, value),
+        .Struct => try serializeStruct(allocator, buffer, value),
+        .Optional => try serializeOptional(allocator, buffer, value),
+        .Enum => try serializeEnum(allocator, buffer, value),
         else => @compileError("Unsupported type for Borsh serialization: " ++ @typeName(T)),
     }
 }
 
 /// Serialize boolean (1 byte: 0 or 1)
-fn serializeBool(buffer: *std.ArrayList(u8), value: bool) !void {
-    try buffer.append(if (value) 1 else 0);
+pub fn serializeBool(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: bool) !void {
+    try buffer.append(allocator, if (value) 1 else 0);
 }
 
 /// Serialize integer (little-endian)
-fn serializeInt(buffer: *std.ArrayList(u8), value: anytype) !void {
+pub fn serializeInt(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
     const type_info = @typeInfo(T).Int;
     const bytes = @divExact(type_info.bits, 8);
 
     var int_bytes: [16]u8 = undefined;
     std.mem.writeInt(T, int_bytes[0..bytes], value, .little);
-    try buffer.appendSlice(int_bytes[0..bytes]);
+    try buffer.appendSlice(allocator, int_bytes[0..bytes]);
 }
 
 /// Serialize float (little-endian)
-fn serializeFloat(buffer: *std.ArrayList(u8), value: anytype) !void {
+fn serializeFloat(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
     const bytes = @sizeOf(T);
 
     var float_bytes: [8]u8 = undefined;
     @memcpy(float_bytes[0..bytes], std.mem.asBytes(&value));
-    try buffer.appendSlice(float_bytes[0..bytes]);
+    try buffer.appendSlice(allocator, float_bytes[0..bytes]);
 }
 
 /// Serialize string (length prefix + UTF-8 bytes)
-pub fn serializeString(buffer: *std.ArrayList(u8), value: []const u8) !void {
+pub fn serializeString(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: []const u8) !void {
     // Length prefix (u32 little-endian)
-    try serializeInt(buffer, @as(u32, @intCast(value.len)));
+    try serializeInt(allocator, buffer, @as(u32, @intCast(value.len)));
     // String bytes
-    try buffer.appendSlice(value);
+    try buffer.appendSlice(allocator, value);
 }
 
 /// Serialize bytes (length prefix + raw bytes)
-fn serializeBytes(buffer: *std.ArrayList(u8), value: []const u8) !void {
+fn serializeBytes(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: []const u8) !void {
     // Length prefix (u32 little-endian)
-    try serializeInt(buffer, @as(u32, @intCast(value.len)));
+    try serializeInt(allocator, buffer, @as(u32, @intCast(value.len)));
     // Raw bytes
-    try buffer.appendSlice(value);
+    try buffer.appendSlice(allocator, value);
 }
 
 /// Serialize array (length prefix + elements)
-fn serializeArray(buffer: *std.ArrayList(u8), value: anytype) !void {
+fn serializeArray(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const len = value.len;
     // Length prefix (u32 little-endian)
-    try serializeInt(buffer, @as(u32, @intCast(len)));
+    try serializeInt(allocator, buffer, @as(u32, @intCast(len)));
 
     // Serialize each element
     for (value) |item| {
-        try serializeInto(buffer, item);
+        try serializeInto(allocator, buffer, item);
     }
 }
 
 /// Serialize struct (fields in declaration order)
-fn serializeStruct(buffer: *std.ArrayList(u8), value: anytype) !void {
+fn serializeStruct(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const T = @TypeOf(value);
     const fields = @typeInfo(T).Struct.fields;
 
     inline for (fields) |field| {
         const field_value = @field(value, field.name);
-        try serializeInto(buffer, field_value);
+        try serializeInto(allocator, buffer, field_value);
     }
 }
 
 /// Serialize optional (0 for None, 1 + value for Some)
-fn serializeOptional(buffer: *std.ArrayList(u8), value: anytype) !void {
+fn serializeOptional(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     if (value) |val| {
-        try buffer.append(1);
-        try serializeInto(buffer, val);
+        try buffer.append(allocator, 1);
+        try serializeInto(allocator, buffer, val);
     } else {
-        try buffer.append(0);
+        try buffer.append(allocator, 0);
     }
 }
 
 /// Serialize enum (u8 discriminator)
-fn serializeEnum(buffer: *std.ArrayList(u8), value: anytype) !void {
+fn serializeEnum(allocator: std.mem.Allocator, buffer: *std.ArrayList(u8), value: anytype) !void {
     const int_value = @intFromEnum(value);
-    try serializeInt(buffer, @as(u8, @intCast(int_value)));
+    try serializeInt(allocator, buffer, @as(u8, @intCast(int_value)));
 }
 
 /// Deserialize a value from Borsh format
@@ -296,10 +296,10 @@ test "serialize/deserialize string" {
     const allocator = std.testing.allocator;
 
     const value = "Hello, Borsh!";
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try serializeString(&buffer, value);
+    try serializeString(allocator, &buffer, value);
 
     // Should be 4 bytes (length) + 13 bytes (string)
     try std.testing.expectEqual(@as(usize, 17), buffer.items.len);

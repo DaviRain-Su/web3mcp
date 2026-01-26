@@ -58,7 +58,7 @@ fn findFunction(meta: *const ContractMeta, function_name: []const u8) !*const Fu
 
 /// Compute Anchor instruction discriminator
 /// Discriminator = first 8 bytes of SHA256("global:function_name")
-fn computeDiscriminator(allocator: std.mem.Allocator, function_name: []const u8) ![8]u8 {
+pub fn computeDiscriminator(allocator: std.mem.Allocator, function_name: []const u8) ![8]u8 {
     // Build the string "global:function_name"
     const discriminator_str = try std.fmt.allocPrint(
         allocator,
@@ -86,8 +86,8 @@ fn serializeArguments(
     // For now, we'll implement a simple version that handles basic types
     // A full implementation would need to recursively serialize based on the function's parameter types
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    errdefer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    errdefer buffer.deinit(allocator);
 
     // If args is an object, serialize each parameter in order
     if (args == .object) {
@@ -99,43 +99,44 @@ fn serializeArguments(
                     return error.MissingRequiredParameter;
                 }
                 // For optional parameters, serialize as None (0 byte)
-                try buffer.append(0);
+                try buffer.append(allocator, 0);
             }
         }
     }
 
-    return buffer.toOwnedSlice();
+    return buffer.toOwnedSlice(allocator);
 }
 
 /// Serialize a single parameter based on its type
 fn serializeParameter(
+    allocator: std.mem.Allocator,
     buffer: *std.ArrayList(u8),
     value: std.json.Value,
     param_type: chain_provider.Type,
 ) !void {
     switch (param_type) {
         .primitive => |prim| {
-            try serializePrimitive(buffer, value, prim);
+            try serializePrimitive(allocator, buffer, value, prim);
         },
         .array => |inner_type| {
             // Serialize array length (u32)
             if (value != .array) return error.TypeMismatch;
             const len = value.array.items.len;
-            try borsh.serializeInt(buffer, @as(u32, @intCast(len)));
+            try borsh.serializeInt(allocator, buffer, @as(u32, @intCast(len)));
 
             // Serialize each element
             for (value.array.items) |item| {
-                try serializeParameter(buffer, item, inner_type.*);
+                try serializeParameter(allocator, buffer, item, inner_type.*);
             }
         },
         .option => |inner_type| {
             if (value == .null) {
                 // None: serialize as 0
-                try buffer.append(0);
+                try buffer.append(allocator, 0);
             } else {
                 // Some: serialize as 1 + value
-                try buffer.append(1);
-                try serializeParameter(buffer, value, inner_type.*);
+                try buffer.append(allocator, 1);
+                try serializeParameter(allocator, buffer, value, inner_type.*);
             }
         },
         .struct_type => |fields| {
@@ -144,7 +145,7 @@ fn serializeParameter(
 
             for (fields) |field| {
                 if (value.object.get(field.name)) |field_value| {
-                    try serializeParameter(buffer, field_value, field.type);
+                    try serializeParameter(allocator, buffer, field_value, field.type);
                 } else {
                     return error.MissingStructField;
                 }
@@ -160,6 +161,7 @@ fn serializeParameter(
 
 /// Serialize primitive value
 fn serializePrimitive(
+    allocator: std.mem.Allocator,
     buffer: *std.ArrayList(u8),
     value: std.json.Value,
     prim: chain_provider.PrimitiveType,
@@ -167,47 +169,47 @@ fn serializePrimitive(
     switch (prim) {
         .u8 => {
             const val = try jsonToInt(u8, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .u16 => {
             const val = try jsonToInt(u16, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .u32 => {
             const val = try jsonToInt(u32, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .u64 => {
             const val = try jsonToInt(u64, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .u128 => {
             const val = try jsonToInt(u128, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .i8 => {
             const val = try jsonToInt(i8, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .i16 => {
             const val = try jsonToInt(i16, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .i32 => {
             const val = try jsonToInt(i32, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .i64 => {
             const val = try jsonToInt(i64, value);
-            try borsh.serializeInt(buffer, val);
+            try borsh.serializeInt(allocator, buffer, val);
         },
         .bool => {
             const val = if (value == .bool) value.bool else return error.TypeMismatch;
-            try borsh.serializeBool(buffer, val);
+            try borsh.serializeBool(allocator, buffer, val);
         },
         .string => {
             const val = if (value == .string) value.string else return error.TypeMismatch;
-            try borsh.serializeString(buffer, val);
+            try borsh.serializeString(allocator, buffer, val);
         },
         .pubkey, .address => {
             // Public keys and addresses are stored as strings in JSON
@@ -216,12 +218,12 @@ fn serializePrimitive(
 
             // For now, just serialize the string
             // A full implementation would decode base58 (pubkey) or hex (address)
-            try borsh.serializeString(buffer, val);
+            try borsh.serializeString(allocator, buffer, val);
         },
         .bytes => {
             // Bytes are typically base64 or hex encoded in JSON
             const val = if (value == .string) value.string else return error.TypeMismatch;
-            try borsh.serializeString(buffer, val);
+            try borsh.serializeString(allocator, buffer, val);
         },
         else => {
             return error.UnsupportedPrimitiveType;

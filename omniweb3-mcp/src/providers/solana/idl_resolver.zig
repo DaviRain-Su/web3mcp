@@ -147,50 +147,50 @@ pub const IdlResolver = struct {
             null;
 
         // Parse instructions -> Functions
-        var functions = std.ArrayList(Function).init(allocator);
+        var functions: std.ArrayList(Function) = .empty;
         errdefer {
             for (functions.items) |*func| {
                 func.deinit(allocator);
             }
-            functions.deinit();
+            functions.deinit(allocator);
         }
 
         if (idl.object.get("instructions")) |instructions| {
             for (instructions.array.items) |instr| {
                 const func = try parseInstruction(allocator, instr);
-                try functions.append(func);
+                try functions.append(allocator, func);
             }
         }
 
         // Parse accounts -> TypeDefs
-        var types = std.ArrayList(TypeDef).init(allocator);
+        var types: std.ArrayList(TypeDef) = .empty;
         errdefer {
             for (types.items) |*type_def| {
                 type_def.deinit(allocator);
             }
-            types.deinit();
+            types.deinit(allocator);
         }
 
         if (idl.object.get("accounts")) |accounts| {
             for (accounts.array.items) |account| {
                 const type_def = try parseAccountType(allocator, account);
-                try types.append(type_def);
+                try types.append(allocator, type_def);
             }
         }
 
         // Parse events
-        var events = std.ArrayList(Event).init(allocator);
+        var events: std.ArrayList(Event) = .empty;
         errdefer {
             for (events.items) |*event| {
                 event.deinit(allocator);
             }
-            events.deinit();
+            events.deinit(allocator);
         }
 
         if (idl.object.get("events")) |event_list| {
             for (event_list.array.items) |event| {
                 const parsed_event = try parseEvent(allocator, event);
-                try events.append(parsed_event);
+                try events.append(allocator, parsed_event);
             }
         }
 
@@ -199,9 +199,9 @@ pub const IdlResolver = struct {
             .address = try allocator.dupe(u8, program_id),
             .name = name,
             .version = version,
-            .functions = try functions.toOwnedSlice(),
-            .types = try types.toOwnedSlice(),
-            .events = try events.toOwnedSlice(),
+            .functions = try functions.toOwnedSlice(allocator),
+            .types = try types.toOwnedSlice(allocator),
+            .events = try events.toOwnedSlice(allocator),
             .raw = idl,
         };
     }
@@ -220,18 +220,18 @@ pub const IdlResolver = struct {
             null;
 
         // Parse args -> inputs
-        var inputs = std.ArrayList(Parameter).init(allocator);
+        var inputs: std.ArrayList(Parameter) = .empty;
         errdefer {
             for (inputs.items) |*param| {
                 param.deinit(allocator);
             }
-            inputs.deinit();
+            inputs.deinit(allocator);
         }
 
         if (instr.object.get("args")) |args| {
             for (args.array.items) |arg| {
                 const param = try parseParameter(allocator, arg);
-                try inputs.append(param);
+                try inputs.append(allocator, param);
             }
         }
 
@@ -244,7 +244,7 @@ pub const IdlResolver = struct {
         return Function{
             .name = name,
             .description = description,
-            .inputs = try inputs.toOwnedSlice(),
+            .inputs = try inputs.toOwnedSlice(allocator),
             .outputs = outputs,
             .mutability = mutability,
         };
@@ -315,12 +315,12 @@ pub const IdlResolver = struct {
         const name = try allocator.dupe(u8, account_json.object.get("name").?.string);
 
         // Parse type fields
-        var fields = std.ArrayList(chain_provider.Field).init(allocator);
+        var fields: std.ArrayList(chain_provider.Field) = .empty;
         errdefer {
             for (fields.items) |*field| {
                 field.deinit(allocator);
             }
-            fields.deinit();
+            fields.deinit(allocator);
         }
 
         if (account_json.object.get("type")) |type_obj| {
@@ -329,7 +329,7 @@ pub const IdlResolver = struct {
                     const field_name = try allocator.dupe(u8, field_json.object.get("name").?.string);
                     const field_type = try parseType(allocator, field_json.object.get("type").?);
 
-                    try fields.append(.{
+                    try fields.append(allocator, .{
                         .name = field_name,
                         .type = field_type,
                     });
@@ -339,7 +339,7 @@ pub const IdlResolver = struct {
 
         return TypeDef{
             .name = name,
-            .kind = .{ .struct_def = try fields.toOwnedSlice() },
+            .kind = .{ .struct_def = try fields.toOwnedSlice(allocator) },
         };
     }
 
@@ -347,12 +347,12 @@ pub const IdlResolver = struct {
     fn parseEvent(allocator: std.mem.Allocator, event_json: std.json.Value) !Event {
         const name = try allocator.dupe(u8, event_json.object.get("name").?.string);
 
-        var fields = std.ArrayList(chain_provider.Field).init(allocator);
+        var fields: std.ArrayList(chain_provider.Field) = .empty;
         errdefer {
             for (fields.items) |*field| {
                 field.deinit(allocator);
             }
-            fields.deinit();
+            fields.deinit(allocator);
         }
 
         if (event_json.object.get("fields")) |field_list| {
@@ -369,7 +369,7 @@ pub const IdlResolver = struct {
 
         return Event{
             .name = name,
-            .fields = try fields.toOwnedSlice(),
+            .fields = try fields.toOwnedSlice(allocator),
         };
     }
 };
