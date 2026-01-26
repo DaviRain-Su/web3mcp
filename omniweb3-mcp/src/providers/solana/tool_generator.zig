@@ -114,7 +114,7 @@ fn typeToJsonSchema(allocator: std.mem.Allocator, param_type: Type) !std.json.Va
         },
         .option => |inner_type| {
             // Optional types allow null
-            var inner_schema = try typeToJsonSchema(allocator, inner_type.*);
+            const inner_schema = try typeToJsonSchema(allocator, inner_type.*);
 
             // Wrap in anyOf: [inner_schema, null]
             var any_of: std.ArrayList(std.json.Value) = .empty;
