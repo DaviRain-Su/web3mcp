@@ -171,22 +171,35 @@
 
 ### 🎯 实施计划
 
-#### 阶段 1: 关键 API (第 1 周)
+#### ~~阶段 1: Jupiter APIs~~ ✅ 已完成
+
+~~优先级: ⭐⭐⭐ 关键~~ → **已完成** ✅
+
+**Jupiter APIs**: ✅ 已完全实现
+- ✅ 静态工具: 47 个 (Swap, Price, Trigger, Ultra, Tokens, Portfolio, Recurring, Lend, Send, Studio)
+- ✅ 动态工具: 6 个 (从 IDL)
+- ✅ 总计: 53 个 Jupiter 工具
+- ✅ API 覆盖率: 98% (47/48 端点)
+- ✅ 使用正确的 API: `https://api.jup.ag` (无需担心 lite-api 弃用)
+
+**工具位置**: `src/tools/solana/defi/jupiter/`
+**详细分析**: `/tmp/jupiter_api_coverage.md`
+
+#### 阶段 1: 关键 API (第 1 周) ← 新起点
 优先级: ⭐⭐⭐ 关键
 
-**Jupiter APIs** (~8 工具):
-- Swap API: Quote, Swap, Swap Instructions
-- Price API: 代币价格查询
-- Trigger API: 限价订单 (CreateOrder, Execute, Cancel)
+**Raydium API** (~10 工具):
+- Compute: swap-base-in, swap-base-out
+- Pools: 流动性和仓位数据
+- Mint: 代币列表和价格
 
 **实施步骤**:
 ```bash
-# 创建 Jupiter API 静态工具
-mkdir -p src/tools/static/jupiter
-# - swap_api.zig (Quote, Swap, Instructions)
-# - price_api.zig (Price queries)
-# - trigger_api.zig (Limit orders)
-# - token_api.zig (Token lists)
+# 创建 Raydium API 静态工具
+mkdir -p src/tools/static/raydium
+# - compute_api.zig (Swap calculations)
+# - pools_api.zig (Pool data)
+# - mint_api.zig (Token data)
 
 # 更新工具注册
 # 在 src/tools/registry.zig 中注册新工具
@@ -197,9 +210,10 @@ mkdir -p src/tools/static/jupiter
 #### 阶段 2: 高优先级 API (第 2 周)
 优先级: ⭐⭐⭐ 高
 
-**Raydium + Meteora DLMM APIs** (~25 工具):
-- Raydium: Compute, Pools, Mint 数据
-- Meteora: Pairs, Positions, Analytics
+**Meteora DLMM API** (~20 工具):
+- Pairs: 交易对管理 (11 端点)
+- Positions: 仓位管理 (7 端点)
+- Protocol: 协议指标
 
 **预计时间**: 5-7 天
 
@@ -207,9 +221,9 @@ mkdir -p src/tools/static/jupiter
 优先级: ⭐⭐ 中等
 
 **Metaplex + Drift + Orca APIs** (~35 工具):
-- Metaplex DAS: 资产查询、搜索
-- Drift: 市场数据、DLOB
-- Orca: 池/仓位管理
+- Metaplex DAS: 资产查询、搜索 (~15 工具)
+- Drift: 市场数据、DLOB (~10 工具)
+- Orca: 池/仓位管理 (~10 工具)
 
 **预计时间**: 5-7 天
 
@@ -217,9 +231,9 @@ mkdir -p src/tools/static/jupiter
 优先级: ⭐ 中低
 
 **Marinade + Squads + PumpFun APIs** (~25 工具):
-- Marinade: 质押操作
-- Squads: 多签管理
-- PumpFun: 可选第三方支持
+- Marinade: 质押操作 (~8 工具)
+- Squads: 多签管理 (~12 工具)
+- PumpFun: 可选第三方支持 (~5 工具)
 
 **预计时间**: 3-5 天
 
@@ -254,11 +268,19 @@ src/tools/static/
 └── pumpfun/      (Third-party APIs)
 ```
 
-### 📈 预期成果
+### 📈 预期成果 (更新)
 
-**当前状态**: 802 工具 (165 静态 + 637 动态)
-**完成 Phase 2.5 后**: ~895 工具 (258 静态 + 637 动态)
-**增长**: +93 静态工具 (+11.6%)
+**当前状态**: ~849 工具
+- 静态: 212 (165 通用 + 47 Jupiter)
+- 动态: 637
+
+**完成 Phase 2.5 后**: ~939 工具
+- 静态: ~302 (212 当前 + ~90 待实现)
+- 动态: 637
+
+**增长**: +90 静态工具 (+10.6%)
+
+**Jupiter 已完成**: ✅ 53 工具无需新增
 
 ---
 
@@ -644,25 +666,30 @@ vim src/main.zig
 
 ## 当前优先级和下一步行动 🚀
 
-### 立即行动 (本周)
+### 立即行动 (本周) - 更新
 
-**Phase 2.5 - 阶段 1: Jupiter API 集成** ⭐⭐⭐
-1. 实施 Jupiter Swap API (Quote, Swap, Instructions) - 3 个工具
-2. 实施 Jupiter Price API - 1 个工具
-3. 实施 Jupiter Trigger API (限价订单) - 4 个工具
+~~**Phase 2.5 - 阶段 1: Jupiter API 集成**~~ ✅ **已完成**
+- ✅ Jupiter: 53 个工具已实现
+- ✅ 无需额外开发
+
+**Phase 2.5 - 阶段 1 (新): Raydium API 集成** ⭐⭐⭐
+1. 实施 Raydium Compute API (Swap 计算) - 2-3 个工具
+2. 实施 Raydium Pools API (流动性数据) - 4-5 个工具
+3. 实施 Raydium Mint API (代币数据) - 3-4 个工具
 4. 测试和文档
 
 **预计时间**: 3-5 天
-**预期工具数**: 171 → 179 工具
+**预期工具数**: ~849 → ~859 工具
 
 ### 短期计划 (2-4 周)
 
 **Phase 2.5 - 阶段 2-4: 其他 API 集成**
-- 周 2: Raydium + Meteora DLMM (~25 工具)
+- 周 1: Raydium (~10 工具)
+- 周 2: Meteora DLMM (~20 工具)
 - 周 3: Metaplex + Drift + Orca (~35 工具)
 - 周 4: Marinade + Squads (~20 工具)
 
-**最终目标**: ~895 工具
+**最终目标**: ~939 工具
 
 ### 长期规划 (Phase 3+)
 
