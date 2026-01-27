@@ -36,7 +36,7 @@ pub const DynamicToolRegistry = struct {
     /// A dynamically generated tool with its metadata
     pub const DynamicTool = struct {
         tool: mcp.tools.Tool,
-        meta: *const ContractMeta,
+        meta: ?*const ContractMeta, // Optional: used for Solana, not needed for EVM
         function_name: []const u8,
         chain_type: chain_provider.ChainType,
     };
@@ -307,23 +307,70 @@ pub const DynamicToolRegistry = struct {
             }
 
             const chain = contract.get("chain").?.string;
+            const chain_id = @as(u64, @intCast(contract.get("chain_id").?.integer));
+            const address = contract.get("address").?.string;
             const name = contract.get("name").?.string;
             const display_name = if (contract.get("display_name")) |n| n.string else name;
+            const category = if (contract.get("category")) |c| c.string else "unknown";
+            const description = if (contract.get("description")) |d| d.string else "";
 
             std.log.info("Attempting to load {s} on {s}...", .{ display_name, chain });
 
             // Get or create EVM provider for this chain (will be used later for transaction building)
             _ = try self.getOrCreateEvmProvider(chain);
 
-            // TODO: Complete EVM contract tool generation
-            // This requires:
-            // 1. Loading ABI from abi_registry/{name}.json
-            // 2. Creating ContractMeta from ABI + contract info
-            // 3. Generating tools using tool_generator.generateTools
-            // 4. Storing tools with proper metadata
-            //
-            // For now, skip to avoid compilation errors
-            std.log.info("EVM contract {s} on {s} loaded (tool generation pending)", .{ display_name, chain });
+            // Build ABI file path
+            var abi_path_buf: [256]u8 = undefined;
+            const abi_path = try std.fmt.bufPrint(&abi_path_buf, "abi_registry/{s}.json", .{name});
+
+            // Load ABI from file
+            const abi = abi_resolver.loadAbi(
+                self.allocator,
+                io,
+                abi_path,
+            ) catch |err| {
+                std.log.warn("Failed to load ABI for {s}: {}", .{ name, err });
+                continue;
+            };
+
+            // Create contract metadata
+            const contract_meta = abi_resolver.ContractMetadata{
+                .chain = chain,
+                .chain_id = chain_id,
+                .address = address,
+                .name = name,
+                .display_name = display_name,
+                .category = category,
+                .enabled = true,
+                .description = description,
+            };
+
+            // Generate MCP tools from ABI
+            const generated_tools = tool_generator.generateTools(
+                self.allocator,
+                &contract_meta,
+                &abi,
+            ) catch |err| {
+                std.log.warn("Failed to generate tools for {s}: {}", .{ name, err });
+                continue;
+            };
+
+            std.log.info("Generated {} tools for {s}", .{ generated_tools.len, display_name });
+
+            // Store tools with metadata
+            // Note: For EVM contracts, we don't have a traditional ContractMeta like Solana
+            // EVM tools are self-contained and don't need the ContractMeta reference
+            for (generated_tools) |tool| {
+                std.log.debug("  - {s}", .{tool.name});
+
+                try self.tools.append(self.allocator, .{
+                    .tool = tool,
+                    .meta = null, // EVM tools don't use ContractMeta
+                    .function_name = "", // Function name is encoded in the tool name
+                    .chain_type = .evm,
+                });
+            }
+
             loaded_count += 1;
         }
 

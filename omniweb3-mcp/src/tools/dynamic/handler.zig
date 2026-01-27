@@ -70,9 +70,24 @@ fn handleDynamicToolImpl(
         };
     };
 
+    // Extract contract address
+    // For Solana: use meta.address
+    // For EVM: contract address should be passed as parameter or encoded in tool
+    const contract_address = if (dyn_tool.meta) |meta|
+        meta.address
+    else
+        mcp.tools.getString(args, "contract") orelse {
+            return mcp.tools.errorResult(
+                allocator,
+                "Missing contract address (EVM tools require 'contract' parameter)",
+            ) catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
+        };
+
     // Build function call
     const call = FunctionCall{
-        .contract = dyn_tool.meta.address,
+        .contract = contract_address,
         .function = dyn_tool.function_name,
         .signer = signer,
         .args = args orelse std.json.Value{ .object = std.json.ObjectMap.init(allocator) },
