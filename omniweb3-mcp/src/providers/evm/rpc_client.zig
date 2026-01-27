@@ -6,6 +6,7 @@
 const std = @import("std");
 const chains = @import("chains.zig");
 const evm_runtime = @import("../../core/evm_runtime.zig");
+const evm_helpers = @import("../../core/evm_helpers.zig");
 
 /// JSON-RPC request
 const JsonRpcRequest = struct {
@@ -84,9 +85,18 @@ pub const EvmRpcClient = struct {
         };
 
         // Serialize request
-        var request_buf: std.ArrayList(u8) = .{};
-        defer request_buf.deinit(self.allocator);
-        try std.json.stringify(request, .{}, request_buf.writer(self.allocator));
+        const request_value = std.json.Value{
+            .object = blk: {
+                var obj = std.json.ObjectMap.init(self.allocator);
+                try obj.put("jsonrpc", .{ .string = request.jsonrpc });
+                try obj.put("id", .{ .integer = @intCast(request.id) });
+                try obj.put("method", .{ .string = request.method });
+                try obj.put("params", request.params);
+                break :blk obj;
+            },
+        };
+        const request_json = try evm_helpers.jsonStringifyAlloc(self.allocator, request_value);
+        defer self.allocator.free(request_json);
 
         // Make HTTP POST request
         var client = std.http.Client{ .allocator = self.allocator, .io = evm_runtime.io() };
@@ -102,7 +112,7 @@ pub const EvmRpcClient = struct {
         const fetch_result = client.fetch(.{
             .location = .{ .url = self.rpc_url },
             .method = .POST,
-            .payload = request_buf.items,
+            .payload = request_json,
             .response_writer = &response_buf.writer,
             .extra_headers = &headers,
         }) catch |err| {
@@ -150,8 +160,8 @@ pub const EvmRpcClient = struct {
 
     /// eth_chainId - Returns the chain ID
     pub fn ethChainId(self: *EvmRpcClient) !u64 {
-        var params_array = std.json.Array.empty;
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_chainId", params);
@@ -165,8 +175,8 @@ pub const EvmRpcClient = struct {
 
     /// eth_blockNumber - Returns the current block number
     pub fn ethBlockNumber(self: *EvmRpcClient) !u64 {
-        var params_array = std.json.Array.empty;
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_blockNumber", params);
@@ -184,10 +194,10 @@ pub const EvmRpcClient = struct {
         address: []const u8,
         block_tag: BlockTag,
     ) ![]const u8 {
-        var params_array = std.json.Array.empty;
-        try params_array.append(self.allocator, .{ .string = address });
-        try params_array.append(self.allocator, .{ .string = block_tag.toString() });
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        try params_array.append( .{ .string = address });
+        try params_array.append( .{ .string = block_tag.toString() });
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_getBalance", params);
@@ -206,10 +216,10 @@ pub const EvmRpcClient = struct {
         address: []const u8,
         block_tag: BlockTag,
     ) !u64 {
-        var params_array = std.json.Array.empty;
-        try params_array.append(self.allocator, .{ .string = address });
-        try params_array.append(self.allocator, .{ .string = block_tag.toString() });
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        try params_array.append( .{ .string = address });
+        try params_array.append( .{ .string = block_tag.toString() });
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_getTransactionCount", params);
@@ -223,8 +233,8 @@ pub const EvmRpcClient = struct {
 
     /// eth_gasPrice - Returns the current gas price in wei (as hex string)
     pub fn ethGasPrice(self: *EvmRpcClient) ![]const u8 {
-        var params_array = std.json.Array.empty;
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_gasPrice", params);
@@ -241,12 +251,12 @@ pub const EvmRpcClient = struct {
         self: *EvmRpcClient,
         transaction: TransactionRequest,
     ) !u64 {
-        var params_array = std.json.Array.empty;
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        defer params_array.deinit();
 
         // Serialize transaction to JSON object
         const tx_obj = try serializeTransactionRequest(self.allocator, transaction);
-        try params_array.append(self.allocator, .{ .object = tx_obj });
+        try params_array.append( .{ .object = tx_obj });
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_estimateGas", params);
@@ -264,13 +274,13 @@ pub const EvmRpcClient = struct {
         transaction: TransactionRequest,
         block_tag: BlockTag,
     ) ![]const u8 {
-        var params_array = std.json.Array.empty;
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        defer params_array.deinit();
 
         // Serialize transaction to JSON object
         const tx_obj = try serializeTransactionRequest(self.allocator, transaction);
-        try params_array.append(self.allocator, .{ .object = tx_obj });
-        try params_array.append(self.allocator, .{ .string = block_tag.toString() });
+        try params_array.append( .{ .object = tx_obj });
+        try params_array.append( .{ .string = block_tag.toString() });
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_call", params);
@@ -287,9 +297,9 @@ pub const EvmRpcClient = struct {
         self: *EvmRpcClient,
         signed_tx: []const u8,
     ) ![]const u8 {
-        var params_array = std.json.Array.empty;
-        try params_array.append(self.allocator, .{ .string = signed_tx });
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        try params_array.append( .{ .string = signed_tx });
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_sendRawTransaction", params);
@@ -306,9 +316,9 @@ pub const EvmRpcClient = struct {
         self: *EvmRpcClient,
         tx_hash: []const u8,
     ) !?TransactionReceipt {
-        var params_array = std.json.Array.empty;
-        try params_array.append(self.allocator, .{ .string = tx_hash });
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        try params_array.append( .{ .string = tx_hash });
+        defer params_array.deinit();
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_getTransactionReceipt", params);
@@ -359,14 +369,14 @@ pub const EvmRpcClient = struct {
         block_number: u64,
         include_transactions: bool,
     ) !?Block {
-        var params_array = std.json.Array.empty;
-        defer params_array.deinit(self.allocator);
+        var params_array = std.json.Array.init(self.allocator);
+        defer params_array.deinit();
 
         const block_hex = try std.fmt.allocPrint(self.allocator, "0x{x}", .{block_number});
         defer self.allocator.free(block_hex);
 
-        try params_array.append(self.allocator, .{ .string = block_hex });
-        try params_array.append(self.allocator, .{ .bool = include_transactions });
+        try params_array.append( .{ .string = block_hex });
+        try params_array.append( .{ .bool = include_transactions });
 
         const params = std.json.Value{ .array = params_array };
         const result = try self.call("eth_getBlockByNumber", params);

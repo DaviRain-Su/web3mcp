@@ -141,7 +141,7 @@ pub const EvmProvider = struct {
         ctx: *anyopaque,
         allocator: std.mem.Allocator,
         meta: *const chain_provider.ContractMeta,
-    ) anyerror![]const @import("mcp").tools.Tool {
+    ) anyerror![]@import("mcp").tools.Tool {
         _ = ctx;
         _ = allocator;
         _ = meta;
@@ -183,13 +183,20 @@ pub const EvmProvider = struct {
         }
 
         // Build transaction request
+        // Convert value from u128 to hex string if present
+        const value_str = if (call.options.value) |v| blk: {
+            const hex = try std.fmt.allocPrint(allocator, "0x{x}", .{v});
+            break :blk hex;
+        } else null;
+        defer if (value_str) |s| allocator.free(s);
+
         const tx_options = transaction_builder.TransactionOptions{
             .from = call.signer,
             .gas = call.options.gas,
-            .value = call.options.value,
+            .value = value_str,
         };
 
-        const tx_request = try self.tx_builder.buildTransaction(
+        const tx_request = try self.tx_builder.buildFunctionCallTransaction(
             contract_address,
             target_function.?,
             call.args,
@@ -197,7 +204,7 @@ pub const EvmProvider = struct {
         );
 
         // Convert to Transaction format
-        const tx_data = try allocator.dupe(u8, tx_request.data);
+        const tx_data = try allocator.dupe(u8, tx_request.data.?);
 
         // Create metadata JSON
         var metadata_obj = std.json.ObjectMap.init(allocator);
@@ -213,7 +220,7 @@ pub const EvmProvider = struct {
         return Transaction{
             .chain = .evm,
             .from = tx_request.from,
-            .to = tx_request.to,
+            .to = tx_request.to.?,
             .value = if (tx_request.value) |v| @intCast(std.fmt.parseInt(u64, v, 0) catch 0) else null,
             .data = tx_data,
             .metadata = std.json.Value{ .object = metadata_obj },
@@ -232,10 +239,6 @@ pub const EvmProvider = struct {
                 // Get ETH balance
                 const balance = try self.rpc_client.ethGetBalance(query.address, .latest);
                 return try allocator.dupe(u8, balance);
-            },
-            .contract_data => {
-                // Call contract view function (requires more params in query)
-                return error.NotImplemented;
             },
             else => {
                 return error.UnsupportedQueryType;
