@@ -39,6 +39,7 @@ pub const DynamicToolRegistry = struct {
         meta: ?*const ContractMeta, // Optional: used for Solana, not needed for EVM
         function_name: []const u8,
         chain_type: chain_provider.ChainType,
+        contract_address: ?[]const u8 = null, // For EVM: contract address to find ABI
     };
 
     pub fn init(allocator: std.mem.Allocator) DynamicToolRegistry {
@@ -317,7 +318,7 @@ pub const DynamicToolRegistry = struct {
             std.log.info("Attempting to load {s} on {s}...", .{ display_name, chain });
 
             // Get or create EVM provider for this chain (will be used later for transaction building)
-            _ = try self.getOrCreateEvmProvider(chain);
+            const provider = try self.getOrCreateEvmProvider(chain);
 
             // Build ABI file path: abi_registry/{chain}/{name}.json
             var abi_path_buf: [256]u8 = undefined;
@@ -332,6 +333,12 @@ pub const DynamicToolRegistry = struct {
                 std.log.warn("Failed to load ABI for {s}: {}", .{ name, err });
                 continue;
             };
+
+            // Store ABI in provider cache for runtime transaction building
+            // Duplicate the address key for the cache
+            const address_key = try self.allocator.dupe(u8, address);
+            try provider.abi_cache.put(address_key, abi);
+            std.log.debug("Cached ABI for contract {s} at {s}", .{ name, address });
 
             // Create contract metadata
             const contract_meta = abi_resolver.ContractMetadata{
@@ -363,11 +370,27 @@ pub const DynamicToolRegistry = struct {
             for (generated_tools) |tool| {
                 std.log.debug("  - {s}", .{tool.name});
 
+                // Extract function name from tool name: {chain}_{contract}_{function}
+                // Find the last underscore to get the function name
+                const function_name = blk: {
+                    var last_underscore_idx: ?usize = null;
+                    for (tool.name, 0..) |c, i| {
+                        if (c == '_') {
+                            last_underscore_idx = i;
+                        }
+                    }
+                    if (last_underscore_idx) |idx| {
+                        break :blk tool.name[idx + 1 ..];
+                    }
+                    break :blk "";
+                };
+
                 try self.tools.append(self.allocator, .{
                     .tool = tool,
                     .meta = null, // EVM tools don't use ContractMeta
-                    .function_name = "", // Function name is encoded in the tool name
+                    .function_name = function_name,
                     .chain_type = .evm,
+                    .contract_address = address, // Store contract address for ABI lookup
                 });
             }
 

@@ -72,14 +72,16 @@ fn handleDynamicToolImpl(
 
     // Extract contract address
     // For Solana: use meta.address
-    // For EVM: contract address should be passed as parameter or encoded in tool
+    // For EVM: use contract_address from DynamicTool
     const contract_address = if (dyn_tool.meta) |meta|
         meta.address
+    else if (dyn_tool.contract_address) |addr|
+        addr
     else
         mcp.tools.getString(args, "contract") orelse {
             return mcp.tools.errorResult(
                 allocator,
-                "Missing contract address (EVM tools require 'contract' parameter)",
+                "Missing contract address",
             ) catch {
                 return mcp.tools.ToolError.InvalidArguments;
             };
@@ -106,6 +108,25 @@ fn handleDynamicToolImpl(
             return mcp.tools.errorResult(
                 allocator,
                 "Solana provider not initialized",
+            ) catch {
+                return mcp.tools.ToolError.InvalidArguments;
+            };
+        },
+        .evm => blk: {
+            // Extract chain from contract address or use metadata
+            // For EVM, we need to find the right provider
+            // The contract address should tell us which chain to use
+
+            // For now, try to find any EVM provider
+            // TODO: Improve chain detection from contract metadata
+            var iter = registry.evm_providers.iterator();
+            if (iter.next()) |entry| {
+                break :blk entry.value_ptr.*.asChainProvider();
+            }
+
+            return mcp.tools.errorResult(
+                allocator,
+                "No EVM provider initialized",
             ) catch {
                 return mcp.tools.ToolError.InvalidArguments;
             };
