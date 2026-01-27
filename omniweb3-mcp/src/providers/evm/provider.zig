@@ -5,6 +5,8 @@ const transaction_builder = @import("./transaction_builder.zig");
 const abi_resolver = @import("./abi_resolver.zig");
 const tool_generator = @import("./tool_generator.zig");
 const gas_oracle = @import("./gas_oracle.zig");
+const batch_builder = @import("./batch_builder.zig");
+const multisig = @import("./multisig.zig");
 const chain_provider = @import("../../core/chain_provider.zig");
 
 const ChainProvider = chain_provider.ChainProvider;
@@ -17,6 +19,16 @@ pub const GasOracle = gas_oracle.GasOracle;
 pub const GasPrice = gas_oracle.GasPrice;
 pub const GasEstimate = gas_oracle.GasEstimate;
 pub const GasTier = gas_oracle.GasTier;
+
+// Re-export batch_builder module for external use
+pub const BatchBuilder = batch_builder.BatchBuilder;
+pub const BatchTransaction = batch_builder.BatchTransaction;
+
+// Re-export multisig module for external use
+pub const MultiSigBuilder = multisig.MultiSigBuilder;
+pub const SafeTransaction = multisig.SafeTransaction;
+pub const SafeInfo = multisig.SafeInfo;
+pub const Operation = multisig.Operation;
 
 /// EVM-specific provider implementation (supports Ethereum, BSC, Polygon, etc.)
 ///
