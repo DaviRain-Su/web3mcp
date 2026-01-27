@@ -136,4 +136,5 @@ test {
     _ = @import("providers/evm/chains.zig");
     _ = @import("providers/evm/rpc_client.zig");
     _ = @import("providers/evm/transaction_builder.zig");
+    _ = @import("providers/evm/provider.zig");
 }
