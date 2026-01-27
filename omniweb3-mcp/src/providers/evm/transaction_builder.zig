@@ -147,7 +147,7 @@ pub const TransactionBuilder = struct {
         self: TransactionBuilder,
         param_type: []const u8,
         value: std.json.Value,
-    ) ![]const u8 {
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
         // Address: 20 bytes, left-padded to 32 bytes
         if (std.mem.eql(u8, param_type, "address")) {
             if (value != .string) return error.InvalidParameterType;
@@ -205,9 +205,118 @@ pub const TransactionBuilder = struct {
             return try self.encodeDynamicBytes(value.string);
         }
 
-        // Unsupported type for now (arrays, tuples, etc.)
+        // Array types: type[] or type[N]
+        if (std.mem.endsWith(u8, param_type, "]")) {
+            if (value != .array) return error.InvalidParameterType;
+            return try self.encodeArray(param_type, value.array);
+        }
+
+        // Unsupported type for now (tuples, etc.)
         std.log.warn("Unsupported parameter type: {s}", .{param_type});
         return error.UnsupportedParameterType;
+    }
+
+    /// Encode array parameter (dynamic or fixed size)
+    fn encodeArray(
+        self: TransactionBuilder,
+        param_type: []const u8,
+        array: std.json.Array,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        // Find the bracket to separate element type from array notation
+        const bracket_pos = std.mem.indexOf(u8, param_type, "[") orelse return error.InvalidArrayType;
+        const element_type = param_type[0..bracket_pos];
+        const array_spec = param_type[bracket_pos..];
+
+        // Check if fixed or dynamic size
+        const is_dynamic = std.mem.eql(u8, array_spec, "[]");
+
+        if (is_dynamic) {
+            return try self.encodeDynamicArray(element_type, array);
+        } else {
+            // Fixed size array: type[N]
+            return try self.encodeFixedArray(element_type, array);
+        }
+    }
+
+    /// Encode dynamic array: length + elements
+    fn encodeDynamicArray(
+        self: TransactionBuilder,
+        element_type: []const u8,
+        array: std.json.Array,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        // Encode length as uint256
+        const length = array.items.len;
+        const length_encoded = try self.encodeUint256(length);
+        defer self.allocator.free(length_encoded);
+
+        // Encode each element
+        var encoded_elements: std.ArrayList([]const u8) = .{};
+        defer {
+            for (encoded_elements.items) |elem| {
+                self.allocator.free(elem);
+            }
+            encoded_elements.deinit(self.allocator);
+        }
+
+        for (array.items) |item| {
+            const encoded = try self.encodeParameter(element_type, item);
+            try encoded_elements.append(self.allocator, encoded);
+        }
+
+        // Calculate total size
+        var total_len: usize = 64; // Length prefix (32 bytes = 64 hex chars)
+        for (encoded_elements.items) |elem| {
+            total_len += elem.len;
+        }
+
+        // Concatenate: length + all elements
+        var result = try self.allocator.alloc(u8, total_len);
+        @memcpy(result[0..64], length_encoded);
+
+        var offset: usize = 64;
+        for (encoded_elements.items) |elem| {
+            @memcpy(result[offset..][0..elem.len], elem);
+            offset += elem.len;
+        }
+
+        return result;
+    }
+
+    /// Encode fixed size array: just elements (no length prefix)
+    fn encodeFixedArray(
+        self: TransactionBuilder,
+        element_type: []const u8,
+        array: std.json.Array,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        // Encode each element
+        var encoded_elements: std.ArrayList([]const u8) = .{};
+        defer {
+            for (encoded_elements.items) |elem| {
+                self.allocator.free(elem);
+            }
+            encoded_elements.deinit(self.allocator);
+        }
+
+        for (array.items) |item| {
+            const encoded = try self.encodeParameter(element_type, item);
+            try encoded_elements.append(self.allocator, encoded);
+        }
+
+        // Calculate total size
+        var total_len: usize = 0;
+        for (encoded_elements.items) |elem| {
+            total_len += elem.len;
+        }
+
+        // Concatenate all elements
+        var result = try self.allocator.alloc(u8, total_len);
+        var offset: usize = 0;
+        for (encoded_elements.items) |elem| {
+            @memcpy(result[offset..][0..elem.len], elem);
+            offset += elem.len;
+        }
+
+        return result;
     }
 
     /// Encode address (20 bytes, left-padded to 32 bytes as hex)
@@ -586,6 +695,68 @@ test "encodeFunctionCall basic" {
 
     // Should start with balanceOf selector: 0x70a08231
     try testing.expect(std.mem.startsWith(u8, data[2..], "70a08231"));
+}
+
+test "encode dynamic array" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    // Create array of addresses
+    var array = std.json.Array.init(allocator);
+    defer array.deinit();
+    try array.append(std.json.Value{ .string = "0x0000000000000000000000000000000000000001" });
+    try array.append(std.json.Value{ .string = "0x0000000000000000000000000000000000000002" });
+
+    const encoded = try builder.encodeDynamicArray("address", array);
+    defer allocator.free(encoded);
+
+    // Length should be: 64 (length) + 64*2 (two addresses) = 192 hex chars
+    try testing.expectEqual(@as(usize, 192), encoded.len);
+
+    // First 64 chars should be length (2 in hex, padded)
+    // 0000000000000000000000000000000000000000000000000000000000000002
+    try testing.expect(std.mem.endsWith(u8, encoded[0..64], "0000000000000000000000000000000000000000000000000000000000000002"));
+}
+
+test "encode fixed array" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    // Create array of uint256
+    var array = std.json.Array.init(allocator);
+    defer array.deinit();
+    try array.append(std.json.Value{ .integer = 100 });
+    try array.append(std.json.Value{ .integer = 200 });
+
+    const encoded = try builder.encodeFixedArray("uint256", array);
+    defer allocator.free(encoded);
+
+    // Should be 64*2 = 128 hex chars (no length prefix for fixed arrays)
+    try testing.expectEqual(@as(usize, 128), encoded.len);
+
+    // First element: 100 (0x64)
+    try testing.expect(std.mem.endsWith(u8, encoded[0..64], "0000000000000000000000000000000000000000000000000000000000000064"));
+
+    // Second element: 200 (0xc8)
+    try testing.expect(std.mem.endsWith(u8, encoded[64..128], "00000000000000000000000000000000000000000000000000000000000000c8"));
+}
+
+test "encode array parameter from JSON" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    // Test dynamic array: address[]
+    var array = std.json.Array.init(allocator);
+    defer array.deinit();
+    try array.append(std.json.Value{ .string = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb4" });
+    try array.append(std.json.Value{ .string = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" });
+
+    const value = std.json.Value{ .array = array };
+    const encoded = try builder.encodeParameter("address[]", value);
+    defer allocator.free(encoded);
+
+    // Should have length prefix + 2 addresses = 64 + 128 = 192
+    try testing.expectEqual(@as(usize, 192), encoded.len);
 }
 
 test "buildTransferTransaction" {
