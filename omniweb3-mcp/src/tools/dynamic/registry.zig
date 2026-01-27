@@ -319,9 +319,9 @@ pub const DynamicToolRegistry = struct {
             // Get or create EVM provider for this chain (will be used later for transaction building)
             _ = try self.getOrCreateEvmProvider(chain);
 
-            // Build ABI file path
+            // Build ABI file path: abi_registry/{chain}/{name}.json
             var abi_path_buf: [256]u8 = undefined;
-            const abi_path = try std.fmt.bufPrint(&abi_path_buf, "abi_registry/{s}.json", .{name});
+            const abi_path = try std.fmt.bufPrint(&abi_path_buf, "abi_registry/{s}/{s}.json", .{ chain, name });
 
             // Load ABI from file
             const abi = abi_resolver.loadAbi(

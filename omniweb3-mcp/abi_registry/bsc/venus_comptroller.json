@@ -1,0 +1,92 @@
+[
+  {
+    "constant": false,
+    "inputs": [{"name": "vTokens", "type": "address[]"}],
+    "name": "enterMarkets",
+    "outputs": [{"name": "", "type": "uint256[]"}],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [{"name": "vTokenAddress", "type": "address"}],
+    "name": "exitMarket",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {"name": "account", "type": "address"},
+      {"name": "vToken", "type": "address"}
+    ],
+    "name": "checkMembership",
+    "outputs": [{"name": "", "type": "bool"}],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [{"name": "account", "type": "address"}],
+    "name": "getAssetsIn",
+    "outputs": [{"name": "", "type": "address[]"}],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [{"name": "account", "type": "address"}],
+    "name": "getAccountLiquidity",
+    "outputs": [
+      {"name": "error", "type": "uint256"},
+      {"name": "liquidity", "type": "uint256"},
+      {"name": "shortfall", "type": "uint256"}
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [{"name": "vToken", "type": "address"}],
+    "name": "markets",
+    "outputs": [
+      {"name": "isListed", "type": "bool"},
+      {"name": "collateralFactorMantissa", "type": "uint256"}
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {"name": "vToken", "type": "address"},
+      {"name": "borrower", "type": "address"},
+      {"name": "borrowAmount", "type": "uint256"}
+    ],
+    "name": "borrowAllowed",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {"name": "vToken", "type": "address"},
+      {"name": "minter", "type": "address"},
+      {"name": "mintAmount", "type": "uint256"}
+    ],
+    "name": "mintAllowed",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]

@@ -6,6 +6,7 @@
 const std = @import("std");
 const abi_resolver = @import("abi_resolver.zig");
 const rpc_client = @import("rpc_client.zig");
+const zabi = @import("zabi");
 
 const AbiFunction = abi_resolver.AbiFunction;
 const AbiParam = abi_resolver.AbiParam;
@@ -58,12 +59,14 @@ pub const TransactionBuilder = struct {
         function: *const AbiFunction,
         params: std.json.Value,
     ) ![]const u8 {
-        _ = params; // TODO: Implement parameter encoding
-
         // Get function selector
         const selector = try self.calculateFunctionSelector(function);
 
-        // Start with selector
+        // Encode parameters
+        const encoded_params = try self.encodeParameters(function.inputs, params);
+        defer self.allocator.free(encoded_params);
+
+        // Build final data: 0x + selector_hex + params_hex
         var data: std.ArrayList(u8) = .{};
         errdefer data.deinit(self.allocator);
 
@@ -77,10 +80,249 @@ pub const TransactionBuilder = struct {
             try data.append(self.allocator, hex_chars[byte & 0x0F]);
         }
 
-        // TODO: Encode and append parameters using zabi encoding library
-        // For now, just return selector
+        // Add encoded parameters (already in hex)
+        try data.appendSlice(self.allocator, encoded_params);
 
         return data.toOwnedSlice(self.allocator);
+    }
+
+    /// Encode parameters according to ABI specification
+    fn encodeParameters(
+        self: TransactionBuilder,
+        params_spec: []const AbiParam,
+        params_json: std.json.Value,
+    ) ![]const u8 {
+        // If no parameters, return empty string
+        if (params_spec.len == 0) {
+            return try self.allocator.dupe(u8, "");
+        }
+
+        // Build array of encoded values (each 32 bytes)
+        var encoded_parts: std.ArrayList([]const u8) = .{};
+        defer {
+            for (encoded_parts.items) |part| {
+                self.allocator.free(part);
+            }
+            encoded_parts.deinit(self.allocator);
+        }
+
+        // Extract parameters from JSON (either object with named params or array)
+        const params_obj = if (params_json == .object)
+            params_json.object
+        else
+            null;
+
+        for (params_spec, 0..) |param_spec, i| {
+            // Get parameter value from JSON
+            const param_value = if (params_obj) |obj|
+                obj.get(param_spec.name) orelse return error.MissingParameter
+            else if (params_json == .array and i < params_json.array.items.len)
+                params_json.array.items[i]
+            else
+                return error.MissingParameter;
+
+            // Encode based on type
+            const encoded = try self.encodeParameter(param_spec.type, param_value);
+            try encoded_parts.append(self.allocator, encoded);
+        }
+
+        // Concatenate all encoded parts
+        var total_len: usize = 0;
+        for (encoded_parts.items) |part| {
+            total_len += part.len;
+        }
+
+        var result = try self.allocator.alloc(u8, total_len);
+        var offset: usize = 0;
+        for (encoded_parts.items) |part| {
+            @memcpy(result[offset..][0..part.len], part);
+            offset += part.len;
+        }
+
+        return result;
+    }
+
+    /// Encode a single parameter value
+    fn encodeParameter(
+        self: TransactionBuilder,
+        param_type: []const u8,
+        value: std.json.Value,
+    ) ![]const u8 {
+        // Address: 20 bytes, left-padded to 32 bytes
+        if (std.mem.eql(u8, param_type, "address")) {
+            if (value != .string) return error.InvalidParameterType;
+            return try self.encodeAddress(value.string);
+        }
+
+        // Unsigned integers: uint8 to uint256
+        if (std.mem.startsWith(u8, param_type, "uint")) {
+            const num_value = switch (value) {
+                .integer => |i| @as(u256, @intCast(i)),
+                .string => |s| try std.fmt.parseInt(u256, s, 10),
+                else => return error.InvalidParameterType,
+            };
+            return try self.encodeUint256(num_value);
+        }
+
+        // Signed integers: int8 to int256
+        if (std.mem.startsWith(u8, param_type, "int")) {
+            const num_value = switch (value) {
+                .integer => |i| @as(i256, @intCast(i)),
+                .string => |s| try std.fmt.parseInt(i256, s, 10),
+                else => return error.InvalidParameterType,
+            };
+            return try self.encodeInt256(num_value);
+        }
+
+        // Boolean: 0 or 1, padded to 32 bytes
+        if (std.mem.eql(u8, param_type, "bool")) {
+            if (value != .bool) return error.InvalidParameterType;
+            return try self.encodeBool(value.bool);
+        }
+
+        // Fixed-size bytes: bytes1 to bytes32
+        if (std.mem.startsWith(u8, param_type, "bytes") and param_type.len > 5) {
+            const size_str = param_type[5..];
+            const size = std.fmt.parseInt(u8, size_str, 10) catch {
+                // Dynamic bytes type, handle below
+                if (value != .string) return error.InvalidParameterType;
+                return try self.encodeDynamicBytes(value.string);
+            };
+            if (size >= 1 and size <= 32) {
+                if (value != .string) return error.InvalidParameterType;
+                return try self.encodeFixedBytes(value.string, size);
+            }
+        }
+
+        // Dynamic types (string, bytes, arrays) - simplified for now
+        if (std.mem.eql(u8, param_type, "string")) {
+            if (value != .string) return error.InvalidParameterType;
+            return try self.encodeString(value.string);
+        }
+
+        if (std.mem.eql(u8, param_type, "bytes")) {
+            if (value != .string) return error.InvalidParameterType;
+            return try self.encodeDynamicBytes(value.string);
+        }
+
+        // Unsupported type for now (arrays, tuples, etc.)
+        std.log.warn("Unsupported parameter type: {s}", .{param_type});
+        return error.UnsupportedParameterType;
+    }
+
+    /// Encode address (20 bytes, left-padded to 32 bytes as hex)
+    fn encodeAddress(self: TransactionBuilder, address: []const u8) ![]const u8 {
+        // Remove 0x prefix if present
+        const addr = if (std.mem.startsWith(u8, address, "0x"))
+            address[2..]
+        else
+            address;
+
+        // Validate length (should be 40 hex chars = 20 bytes)
+        if (addr.len != 40) return error.InvalidAddress;
+
+        // Left-pad to 64 hex chars (32 bytes)
+        var result = try self.allocator.alloc(u8, 64);
+        @memset(result[0..24], '0'); // 24 zeros = 12 bytes padding
+        @memcpy(result[24..64], addr[0..40]);
+
+        return result;
+    }
+
+    /// Encode uint256 (32 bytes, big-endian hex)
+    fn encodeUint256(self: TransactionBuilder, value: u256) ![]const u8 {
+        var result = try self.allocator.alloc(u8, 64); // 32 bytes = 64 hex chars
+
+        // Convert to big-endian bytes
+        var bytes: [32]u8 = undefined;
+        std.mem.writeInt(u256, &bytes, value, .big);
+
+        // Convert to hex
+        const hex_chars = "0123456789abcdef";
+        for (bytes, 0..) |byte, i| {
+            result[i * 2] = hex_chars[byte >> 4];
+            result[i * 2 + 1] = hex_chars[byte & 0x0F];
+        }
+
+        return result;
+    }
+
+    /// Encode int256 (32 bytes, big-endian hex, two's complement)
+    fn encodeInt256(self: TransactionBuilder, value: i256) ![]const u8 {
+        // Convert signed to unsigned (two's complement representation)
+        const unsigned: u256 = @bitCast(value);
+        return try self.encodeUint256(unsigned);
+    }
+
+    /// Encode boolean (1 or 0, padded to 32 bytes)
+    fn encodeBool(self: TransactionBuilder, value: bool) ![]const u8 {
+        const num: u256 = if (value) 1 else 0;
+        return try self.encodeUint256(num);
+    }
+
+    /// Encode fixed-size bytes (right-padded to 32 bytes)
+    fn encodeFixedBytes(self: TransactionBuilder, hex_str: []const u8, size: u8) ![]const u8 {
+        _ = size;
+
+        // Remove 0x prefix if present
+        const hex = if (std.mem.startsWith(u8, hex_str, "0x"))
+            hex_str[2..]
+        else
+            hex_str;
+
+        // Right-pad to 64 hex chars (32 bytes)
+        var result = try self.allocator.alloc(u8, 64);
+        const copy_len = @min(hex.len, 64);
+        @memcpy(result[0..copy_len], hex[0..copy_len]);
+        if (copy_len < 64) {
+            @memset(result[copy_len..64], '0'); // Right-pad with zeros
+        }
+
+        return result;
+    }
+
+    /// Encode dynamic bytes (length + data, both padded)
+    fn encodeDynamicBytes(self: TransactionBuilder, hex_str: []const u8) ![]const u8 {
+        // Remove 0x prefix if present
+        const hex = if (std.mem.startsWith(u8, hex_str, "0x"))
+            hex_str[2..]
+        else
+            hex_str;
+
+        // Calculate length in bytes
+        const byte_len = hex.len / 2;
+
+        // Encode length as uint256
+        const length_encoded = try self.encodeUint256(byte_len);
+        defer self.allocator.free(length_encoded);
+
+        // Pad data to multiple of 32 bytes
+        const padded_len = ((byte_len + 31) / 32) * 32;
+        const hex_padded_len = padded_len * 2;
+
+        var result = try self.allocator.alloc(u8, 64 + hex_padded_len);
+        @memcpy(result[0..64], length_encoded);
+        @memcpy(result[64..][0..hex.len], hex);
+        if (hex.len < hex_padded_len) {
+            @memset(result[64 + hex.len ..], '0'); // Right-pad with zeros
+        }
+
+        return result;
+    }
+
+    /// Encode string (same as dynamic bytes, but UTF-8 encoded first)
+    fn encodeString(self: TransactionBuilder, str: []const u8) ![]const u8 {
+        // Convert string to hex
+        var hex = try self.allocator.alloc(u8, str.len * 2);
+        defer self.allocator.free(hex);
+
+        const hex_chars = "0123456789abcdef";
+        for (str, 0..) |byte, i| {
+            hex[i * 2] = hex_chars[byte >> 4];
+            hex[i * 2 + 1] = hex_chars[byte & 0x0F];
+        }
+
+        return try self.encodeDynamicBytes(hex);
     }
 
     /// Build transaction request for contract function call
@@ -325,7 +567,13 @@ test "encodeFunctionCall basic" {
         .payable = false,
     };
 
-    const params = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    // Create params object with account parameter
+    var params_obj = std.json.ObjectMap.init(allocator);
+    defer params_obj.deinit();
+    try params_obj.put("account", std.json.Value{
+        .string = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb4",
+    });
+    const params = std.json.Value{ .object = params_obj };
 
     const data = try builder.encodeFunctionCall(&function, params);
     defer allocator.free(data);
@@ -333,8 +581,11 @@ test "encodeFunctionCall basic" {
     // Should start with "0x"
     try testing.expect(std.mem.startsWith(u8, data, "0x"));
 
-    // Should have at least selector (4 bytes = 8 hex chars + "0x" = 10 chars)
-    try testing.expect(data.len >= 10);
+    // Should have selector (8 hex) + address parameter (64 hex) = 72 hex + "0x" = 74 chars
+    try testing.expect(data.len >= 74);
+
+    // Should start with balanceOf selector: 0x70a08231
+    try testing.expect(std.mem.startsWith(u8, data[2..], "70a08231"));
 }
 
 test "buildTransferTransaction" {

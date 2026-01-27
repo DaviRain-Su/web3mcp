@@ -69,6 +69,116 @@
       "category": "token",
       "enabled": true,
       "description": "CAKE governance and rewards token"
+    },
+    {
+      "chain": "ethereum",
+      "chain_id": 1,
+      "address": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+      "name": "uniswap_router_v2",
+      "display_name": "Uniswap V2 Router",
+      "category": "dex",
+      "enabled": true,
+      "description": "Uniswap V2 Router - swap, liquidity management"
+    },
+    {
+      "chain": "ethereum",
+      "chain_id": 1,
+      "address": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+      "name": "uniswap_factory_v2",
+      "display_name": "Uniswap V2 Factory",
+      "category": "dex",
+      "enabled": true,
+      "description": "Uniswap V2 Factory - pair creation and management"
+    },
+    {
+      "chain": "ethereum",
+      "chain_id": 1,
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "name": "weth",
+      "display_name": "Wrapped Ether",
+      "category": "token",
+      "enabled": true,
+      "description": "WETH ERC20 token - deposit, withdraw, transfer"
+    },
+    {
+      "chain": "ethereum",
+      "chain_id": 1,
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "name": "usdc",
+      "display_name": "USD Coin",
+      "category": "token",
+      "enabled": true,
+      "description": "USDC stablecoin ERC20 token"
+    },
+    {
+      "chain": "ethereum",
+      "chain_id": 1,
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "name": "usdt",
+      "display_name": "Tether USD",
+      "category": "token",
+      "enabled": true,
+      "description": "USDT stablecoin on Ethereum"
+    },
+    {
+      "chain": "ethereum",
+      "chain_id": 1,
+      "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      "name": "aave_pool_v3",
+      "display_name": "Aave V3 Pool",
+      "category": "lending",
+      "enabled": true,
+      "description": "Aave V3 Pool - supply, borrow, withdraw, repay"
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "address": "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff",
+      "name": "quickswap_router",
+      "display_name": "QuickSwap Router",
+      "category": "dex",
+      "enabled": true,
+      "description": "QuickSwap Router - swap, liquidity management"
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "address": "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32",
+      "name": "quickswap_factory",
+      "display_name": "QuickSwap Factory",
+      "category": "dex",
+      "enabled": true,
+      "description": "QuickSwap Factory - pair creation and management"
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "address": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+      "name": "wmatic",
+      "display_name": "Wrapped MATIC",
+      "category": "token",
+      "enabled": true,
+      "description": "WMATIC ERC20 token - deposit, withdraw, transfer"
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "name": "usdc_polygon",
+      "display_name": "USD Coin (Polygon)",
+      "category": "token",
+      "enabled": true,
+      "description": "USDC stablecoin on Polygon"
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "address": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+      "name": "usdt_polygon",
+      "display_name": "Tether USD (Polygon)",
+      "category": "token",
+      "enabled": true,
+      "description": "USDT stablecoin on Polygon"
     }
   ]
 }
