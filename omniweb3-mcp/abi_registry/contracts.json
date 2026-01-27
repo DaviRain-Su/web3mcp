@@ -1,0 +1,74 @@
+{
+  "evm_contracts": [
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+      "name": "pancakeswap_router_v2",
+      "display_name": "PancakeSwap Router V2",
+      "category": "dex",
+      "enabled": true,
+      "description": "PancakeSwap V2 Router - swap, liquidity management"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
+      "name": "pancakeswap_factory_v2",
+      "display_name": "PancakeSwap Factory V2",
+      "category": "dex",
+      "enabled": true,
+      "description": "PancakeSwap V2 Factory - pair creation and management"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "name": "wbnb",
+      "display_name": "Wrapped BNB",
+      "category": "token",
+      "enabled": true,
+      "description": "WBNB ERC20 token - deposit, withdraw, transfer"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+      "name": "busd",
+      "display_name": "Binance USD",
+      "category": "token",
+      "enabled": true,
+      "description": "BUSD stablecoin ERC20 token"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0x55d398326f99059fF775485246999027B3197955",
+      "name": "usdt_bsc",
+      "display_name": "Tether USD (BSC)",
+      "category": "token",
+      "enabled": true,
+      "description": "USDT stablecoin on BSC"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0xfD36E2c2a6789Db23113685031d7F16329158384",
+      "name": "venus_comptroller",
+      "display_name": "Venus Comptroller",
+      "category": "lending",
+      "enabled": true,
+      "description": "Venus Protocol comptroller - lending, borrowing, collateral"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 56,
+      "address": "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
+      "name": "cake_token",
+      "display_name": "PancakeSwap Token (CAKE)",
+      "category": "token",
+      "enabled": true,
+      "description": "CAKE governance and rewards token"
+    }
+  ]
+}

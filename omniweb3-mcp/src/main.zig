@@ -127,4 +127,10 @@ test {
 
     // Trading strategies
     _ = @import("tools/solana/strategies/grid_trading_test.zig");
+
+    // EVM provider modules
+    _ = @import("providers/evm/abi_resolver.zig");
+    _ = @import("providers/evm/abi_resolver_test.zig");
+    _ = @import("providers/evm/tool_generator.zig");
+    _ = @import("providers/evm/tool_generator_test.zig");
 }
