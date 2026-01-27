@@ -40,6 +40,7 @@ pub const DynamicToolRegistry = struct {
         function_name: []const u8,
         chain_type: chain_provider.ChainType,
         contract_address: ?[]const u8 = null, // For EVM: contract address to find ABI
+        chain_name: ?[]const u8 = null, // For EVM: chain name (bsc, ethereum, polygon)
     };
 
     pub fn init(allocator: std.mem.Allocator) DynamicToolRegistry {
@@ -391,6 +392,7 @@ pub const DynamicToolRegistry = struct {
                     .function_name = function_name,
                     .chain_type = .evm,
                     .contract_address = address, // Store contract address for ABI lookup
+                    .chain_name = chain, // Store chain name for provider lookup
                 });
             }
 

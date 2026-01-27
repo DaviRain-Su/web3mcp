@@ -113,23 +113,31 @@ fn handleDynamicToolImpl(
             };
         },
         .evm => blk: {
-            // Extract chain from contract address or use metadata
-            // For EVM, we need to find the right provider
-            // The contract address should tell us which chain to use
-
-            // For now, try to find any EVM provider
-            // TODO: Improve chain detection from contract metadata
-            var iter = registry.evm_providers.iterator();
-            if (iter.next()) |entry| {
-                break :blk entry.value_ptr.*.asChainProvider();
-            }
-
-            return mcp.tools.errorResult(
-                allocator,
-                "No EVM provider initialized",
-            ) catch {
-                return mcp.tools.ToolError.InvalidArguments;
+            // Get the specific EVM provider for this chain
+            const chain_name = dyn_tool.chain_name orelse {
+                std.log.err("EVM tool missing chain_name: {s}", .{dyn_tool.tool.name});
+                return mcp.tools.errorResult(
+                    allocator,
+                    "EVM tool missing chain information",
+                ) catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
             };
+
+            // Lookup provider by chain name
+            const provider = registry.evm_providers.get(chain_name) orelse {
+                const msg = try std.fmt.allocPrint(
+                    allocator,
+                    "EVM provider not found for chain: {s}",
+                    .{chain_name},
+                );
+                return mcp.tools.errorResult(allocator, msg) catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            };
+
+            std.log.debug("Using EVM provider for chain: {s}", .{chain_name});
+            break :blk provider.asChainProvider();
         },
         else => {
             const msg = try std.fmt.allocPrint(
