@@ -4,12 +4,19 @@ const rpc_client = @import("./rpc_client.zig");
 const transaction_builder = @import("./transaction_builder.zig");
 const abi_resolver = @import("./abi_resolver.zig");
 const tool_generator = @import("./tool_generator.zig");
+const gas_oracle = @import("./gas_oracle.zig");
 const chain_provider = @import("../../core/chain_provider.zig");
 
 const ChainProvider = chain_provider.ChainProvider;
 const FunctionCall = chain_provider.FunctionCall;
 const Transaction = chain_provider.Transaction;
 const DataQuery = chain_provider.DataQuery;
+
+// Re-export gas_oracle module for external use
+pub const GasOracle = gas_oracle.GasOracle;
+pub const GasPrice = gas_oracle.GasPrice;
+pub const GasEstimate = gas_oracle.GasEstimate;
+pub const GasTier = gas_oracle.GasTier;
 
 /// EVM-specific provider implementation (supports Ethereum, BSC, Polygon, etc.)
 ///

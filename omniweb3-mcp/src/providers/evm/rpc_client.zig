@@ -345,6 +345,106 @@ pub const EvmRpcClient = struct {
             const to_str = if (obj.get("to")) |t| if (t == .string) t.string else null else null;
             const contract_addr = if (obj.get("contractAddress")) |ca| if (ca == .string) ca.string else null else null;
 
+            // Parse logs array
+            const logs = if (obj.get("logs")) |logs_value| blk: {
+                if (logs_value == .array) {
+                    const logs_array = logs_value.array;
+                    var parsed_logs = try self.allocator.alloc(Log, logs_array.items.len);
+                    errdefer self.allocator.free(parsed_logs);
+
+                    for (logs_array.items, 0..) |log_value, i| {
+                        if (log_value != .object) {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        }
+
+                        const log_obj = log_value.object;
+                        const log_addr = if (log_obj.get("address")) |a| a.string else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+                        const log_data = if (log_obj.get("data")) |d| d.string else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+                        const log_tx_hash = if (log_obj.get("transactionHash")) |th| th.string else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+                        const log_block_hash = if (log_obj.get("blockHash")) |bh| bh.string else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+
+                        const log_block_num = if (log_obj.get("blockNumber")) |bn| try parseHexU64(bn.string) else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+                        const log_tx_index = if (log_obj.get("transactionIndex")) |ti| try parseHexU64(ti.string) else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+                        const log_index = if (log_obj.get("logIndex")) |li| try parseHexU64(li.string) else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+                        const removed = if (log_obj.get("removed")) |r| r.bool else false;
+
+                        // Parse topics array
+                        const topics = if (log_obj.get("topics")) |topics_value| topic_blk: {
+                            if (topics_value == .array) {
+                                const topics_array = topics_value.array;
+                                var parsed_topics = try self.allocator.alloc([]const u8, topics_array.items.len);
+                                errdefer {
+                                    for (parsed_topics[0..i]) |topic| {
+                                        self.allocator.free(topic);
+                                    }
+                                    self.allocator.free(parsed_topics);
+                                    self.allocator.free(parsed_logs);
+                                }
+
+                                for (topics_array.items, 0..) |topic_value, topic_idx| {
+                                    if (topic_value == .string) {
+                                        parsed_topics[topic_idx] = try self.allocator.dupe(u8, topic_value.string);
+                                    } else {
+                                        for (parsed_topics[0..topic_idx]) |topic| {
+                                            self.allocator.free(topic);
+                                        }
+                                        self.allocator.free(parsed_topics);
+                                        self.allocator.free(parsed_logs);
+                                        return error.InvalidReceipt;
+                                    }
+                                }
+
+                                break :topic_blk parsed_topics;
+                            } else {
+                                self.allocator.free(parsed_logs);
+                                return error.InvalidReceipt;
+                            }
+                        } else {
+                            self.allocator.free(parsed_logs);
+                            return error.InvalidReceipt;
+                        };
+
+                        parsed_logs[i] = Log{
+                            .address = try self.allocator.dupe(u8, log_addr),
+                            .topics = topics,
+                            .data = try self.allocator.dupe(u8, log_data),
+                            .blockNumber = log_block_num,
+                            .transactionHash = try self.allocator.dupe(u8, log_tx_hash),
+                            .transactionIndex = log_tx_index,
+                            .blockHash = try self.allocator.dupe(u8, log_block_hash),
+                            .logIndex = log_index,
+                            .removed = removed,
+                        };
+                    }
+
+                    break :blk parsed_logs;
+                } else {
+                    break :blk &[_]Log{};
+                }
+            } else &[_]Log{};
+
             return TransactionReceipt{
                 .transactionHash = try self.allocator.dupe(u8, tx_hash_str),
                 .transactionIndex = tx_index,
@@ -356,7 +456,7 @@ pub const EvmRpcClient = struct {
                 .gasUsed = gas_used,
                 .contractAddress = if (contract_addr) |ca| try self.allocator.dupe(u8, ca) else null,
                 .status = status,
-                .logs = &[_]Log{}, // TODO: Parse logs array
+                .logs = logs,
             };
         }
 
@@ -402,6 +502,54 @@ pub const EvmRpcClient = struct {
             else
                 null;
 
+            // Parse transactions array
+            const transactions = if (obj.get("transactions")) |txs_value| blk: {
+                if (txs_value == .array) {
+                    const txs_array = txs_value.array;
+                    var parsed_txs = try self.allocator.alloc([]const u8, txs_array.items.len);
+                    errdefer self.allocator.free(parsed_txs);
+
+                    for (txs_array.items, 0..) |tx_value, i| {
+                        // When include_transactions=false, each item is a string (tx hash)
+                        // When include_transactions=true, each item is an object (full tx)
+                        // We only handle the hash case for now
+                        if (tx_value == .string) {
+                            parsed_txs[i] = try self.allocator.dupe(u8, tx_value.string);
+                        } else if (tx_value == .object) {
+                            // For full transaction objects, extract the hash
+                            const tx_obj = tx_value.object;
+                            if (tx_obj.get("hash")) |hash| {
+                                if (hash == .string) {
+                                    parsed_txs[i] = try self.allocator.dupe(u8, hash.string);
+                                } else {
+                                    for (parsed_txs[0..i]) |tx| {
+                                        self.allocator.free(tx);
+                                    }
+                                    self.allocator.free(parsed_txs);
+                                    return error.InvalidBlock;
+                                }
+                            } else {
+                                for (parsed_txs[0..i]) |tx| {
+                                    self.allocator.free(tx);
+                                }
+                                self.allocator.free(parsed_txs);
+                                return error.InvalidBlock;
+                            }
+                        } else {
+                            for (parsed_txs[0..i]) |tx| {
+                                self.allocator.free(tx);
+                            }
+                            self.allocator.free(parsed_txs);
+                            return error.InvalidBlock;
+                        }
+                    }
+
+                    break :blk parsed_txs;
+                } else {
+                    break :blk &[_][]const u8{};
+                }
+            } else &[_][]const u8{};
+
             return Block{
                 .number = number,
                 .hash = try self.allocator.dupe(u8, hash_str),
@@ -410,7 +558,7 @@ pub const EvmRpcClient = struct {
                 .gasLimit = gas_limit,
                 .gasUsed = gas_used,
                 .baseFeePerGas = base_fee,
-                .transactions = "", // TODO: Parse transactions array
+                .transactions = transactions,
             };
         }
 
@@ -509,7 +657,19 @@ pub const TransactionReceipt = struct {
         allocator.free(self.from);
         if (self.to) |to| allocator.free(to);
         if (self.contractAddress) |ca| allocator.free(ca);
-        // Note: logs array cleanup not implemented yet
+
+        // Free logs array
+        for (self.logs) |log| {
+            allocator.free(log.address);
+            for (log.topics) |topic| {
+                allocator.free(topic);
+            }
+            allocator.free(log.topics);
+            allocator.free(log.data);
+            allocator.free(log.transactionHash);
+            allocator.free(log.blockHash);
+        }
+        allocator.free(self.logs);
     }
 };
 
@@ -535,14 +695,19 @@ pub const Block = struct {
     gasLimit: u64,
     gasUsed: u64,
     baseFeePerGas: ?[]const u8,
-    transactions: []const u8, // Array of tx hashes or full txs
+    transactions: [][]const u8, // Array of tx hashes (when include_transactions=false)
 
     /// Free allocated fields
     pub fn deinit(self: Block, allocator: std.mem.Allocator) void {
         allocator.free(self.hash);
         allocator.free(self.parentHash);
         if (self.baseFeePerGas) |fee| allocator.free(fee);
-        // Note: transactions array cleanup not implemented yet
+
+        // Free transactions array
+        for (self.transactions) |tx_hash| {
+            allocator.free(tx_hash);
+        }
+        allocator.free(self.transactions);
     }
 };
 
