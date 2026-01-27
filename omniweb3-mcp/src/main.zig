@@ -133,4 +133,7 @@ test {
     _ = @import("providers/evm/abi_resolver_test.zig");
     _ = @import("providers/evm/tool_generator.zig");
     _ = @import("providers/evm/tool_generator_test.zig");
+    _ = @import("providers/evm/chains.zig");
+    _ = @import("providers/evm/rpc_client.zig");
+    _ = @import("providers/evm/transaction_builder.zig");
 }
