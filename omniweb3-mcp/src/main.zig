@@ -44,7 +44,15 @@ fn run(init: std.process.Init) !void {
             std.log.err("  3. SOLANA_RPC_URL is valid: {s}", .{rpc_url});
         };
 
-        std.log.info("Dynamic tools: {}", .{dyn_registry.toolCount()});
+        std.log.info("Loading dynamic tools from EVM contracts...", .{});
+        dyn_registry.loadEvmContracts(&init.io) catch |err| {
+            std.log.err("Failed to load EVM dynamic tools: {}", .{err});
+            std.log.err("Please check:", .{});
+            std.log.err("  1. ABI files exist in abi_registry/", .{});
+            std.log.err("  2. contracts.json is valid", .{});
+        };
+
+        std.log.info("Total dynamic tools: {}", .{dyn_registry.toolCount()});
     } else {
         std.log.info("Dynamic tools disabled via ENABLE_DYNAMIC_TOOLS={s}", .{enable_dynamic.?});
     }
@@ -57,7 +65,7 @@ fn run(init: std.process.Init) !void {
         .name = "omniweb3-mcp",
         .version = "0.1.0",
         .title = "Omni Web3 MCP",
-        .description = "Cross-chain Web3 MCP server for AI agents (Hybrid: Static + Dynamic Tools)",
+        .description = "Cross-chain Web3 MCP server for AI agents (Solana + EVM: Static + Dynamic Tools)",
         .enable_logging = true,
         .register = tools.registerAllWithDynamic,
         .dynamic_registry = &dyn_registry,

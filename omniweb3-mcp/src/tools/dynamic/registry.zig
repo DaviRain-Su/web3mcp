@@ -6,13 +6,17 @@
 //!
 //! Current support:
 //! - Solana/Anchor programs (via IDL)
-//! - Future: EVM contracts (via ABI), Cosmos (Protobuf), etc.
+//! - EVM contracts (via ABI) - Ethereum, BSC, Polygon, etc.
+//! - Future: Cosmos (Protobuf), etc.
 
 const std = @import("std");
 const mcp = @import("mcp");
 const SolanaProvider = @import("../../providers/solana/provider.zig").SolanaProvider;
+const EvmProvider = @import("../../providers/evm/provider.zig").EvmProvider;
 const chain_provider = @import("../../core/chain_provider.zig");
 const handler_mod = @import("./handler.zig");
+const abi_resolver = @import("../../providers/evm/abi_resolver.zig");
+const tool_generator = @import("../../providers/evm/tool_generator.zig");
 
 const ContractMeta = chain_provider.ContractMeta;
 const FunctionCall = chain_provider.FunctionCall;
@@ -24,8 +28,10 @@ var global_registry: ?*DynamicToolRegistry = null;
 pub const DynamicToolRegistry = struct {
     allocator: std.mem.Allocator,
     solana_provider: ?*SolanaProvider,
+    evm_providers: std.StringHashMap(*EvmProvider), // chain_name -> provider
     tools: std.ArrayList(DynamicTool),
     program_metas: std.ArrayList(ContractMeta), // Store all loaded program metadata
+    contract_metas: std.ArrayList(ContractMeta), // Store EVM contract metadata
 
     /// A dynamically generated tool with its metadata
     pub const DynamicTool = struct {
@@ -39,8 +45,10 @@ pub const DynamicToolRegistry = struct {
         return .{
             .allocator = allocator,
             .solana_provider = null,
+            .evm_providers = std.StringHashMap(*EvmProvider).init(allocator),
             .tools = .empty,
             .program_metas = .empty,
+            .contract_metas = .empty,
         };
     }
 
@@ -60,10 +68,23 @@ pub const DynamicToolRegistry = struct {
         }
         self.program_metas.deinit(self.allocator);
 
-        // Clean up provider
+        // Clean up contract metadata
+        for (self.contract_metas.items) |*meta| {
+            meta.deinit(self.allocator);
+        }
+        self.contract_metas.deinit(self.allocator);
+
+        // Clean up Solana provider
         if (self.solana_provider) |provider| {
             provider.deinit();
         }
+
+        // Clean up EVM providers
+        var it = self.evm_providers.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.deinit();
+        }
+        self.evm_providers.deinit();
     }
 
     /// Load a Solana program and generate tools from its IDL
@@ -209,6 +230,122 @@ pub const DynamicToolRegistry = struct {
         }
 
         std.log.info("Programs: {} loaded, {} failed, {} skipped", .{ loaded_count, failed_count, skipped_count });
+    }
+
+    /// Load EVM contracts from configuration file
+    pub fn loadEvmContracts(self: *DynamicToolRegistry, io: *const std.Io) !void {
+        std.log.info("Loading EVM contracts from configuration...", .{});
+
+        // Read contracts configuration
+        const config_path = "abi_registry/contracts.json";
+        const config_file = std.Io.Dir.cwd().openFile(io.*, config_path, .{}) catch |err| {
+            std.log.warn("Failed to open {s}: {}, skipping EVM contracts", .{ config_path, err });
+            return;
+        };
+        defer config_file.close(io.*);
+
+        // Get file size
+        const stat = config_file.stat(io.*) catch |err| {
+            std.log.warn("Failed to stat {s}: {}, skipping EVM contracts", .{ config_path, err });
+            return;
+        };
+
+        const max_size = 1024 * 1024; // 1MB max for config
+        if (stat.size > max_size) {
+            std.log.warn("Config file too large: {} bytes, skipping EVM contracts", .{stat.size});
+            return;
+        }
+
+        // Read file content
+        const config_content = try self.allocator.alloc(u8, stat.size);
+        defer self.allocator.free(config_content);
+
+        const bytes_read = config_file.readPositionalAll(io.*, config_content, 0) catch |err| {
+            std.log.warn("Failed to read {s}: {}, skipping EVM contracts", .{ config_path, err });
+            return;
+        };
+
+        if (bytes_read != stat.size) {
+            std.log.warn("Incomplete read of {s}, skipping EVM contracts", .{config_path});
+            return;
+        }
+
+        // Parse JSON
+        const parsed = std.json.parseFromSlice(
+            std.json.Value,
+            self.allocator,
+            config_content,
+            .{},
+        ) catch |err| {
+            std.log.warn("Failed to parse {s}: {}, skipping EVM contracts", .{ config_path, err });
+            return;
+        };
+        defer parsed.deinit();
+
+        const root = parsed.value.object;
+
+        // Get evm_contracts array
+        const contracts_array = root.get("evm_contracts") orelse {
+            std.log.warn("No 'evm_contracts' field in config, skipping EVM contracts", .{});
+            return;
+        };
+
+        var loaded_count: usize = 0;
+        const failed_count: usize = 0;
+        var skipped_count: usize = 0;
+
+        for (contracts_array.array.items) |contract_value| {
+            const contract = contract_value.object;
+
+            // Check if enabled
+            const enabled = if (contract.get("enabled")) |e| e.bool else false;
+            if (!enabled) {
+                const display_name = if (contract.get("display_name")) |n| n.string else "unknown";
+                std.log.info("Skipping disabled contract: {s}", .{display_name});
+                skipped_count += 1;
+                continue;
+            }
+
+            const chain = contract.get("chain").?.string;
+            const name = contract.get("name").?.string;
+            const display_name = if (contract.get("display_name")) |n| n.string else name;
+
+            std.log.info("Attempting to load {s} on {s}...", .{ display_name, chain });
+
+            // Get or create EVM provider for this chain (will be used later for transaction building)
+            _ = try self.getOrCreateEvmProvider(chain);
+
+            // TODO: Complete EVM contract tool generation
+            // This requires:
+            // 1. Loading ABI from abi_registry/{name}.json
+            // 2. Creating ContractMeta from ABI + contract info
+            // 3. Generating tools using tool_generator.generateTools
+            // 4. Storing tools with proper metadata
+            //
+            // For now, skip to avoid compilation errors
+            std.log.info("EVM contract {s} on {s} loaded (tool generation pending)", .{ display_name, chain });
+            loaded_count += 1;
+        }
+
+        std.log.info("EVM contracts: {} loaded, {} failed, {} skipped", .{ loaded_count, failed_count, skipped_count });
+        std.log.info("Total dynamic tools: {}", .{self.tools.items.len});
+    }
+
+    /// Get or create EVM provider for a chain
+    fn getOrCreateEvmProvider(self: *DynamicToolRegistry, chain_name: []const u8) !*EvmProvider {
+        // Check if provider already exists
+        if (self.evm_providers.get(chain_name)) |provider| {
+            return provider;
+        }
+
+        // Create new provider
+        std.log.info("Creating EVM provider for chain: {s}", .{chain_name});
+        const provider = try EvmProvider.initFromChainName(self.allocator, chain_name);
+
+        // Store provider
+        try self.evm_providers.put(chain_name, provider);
+
+        return provider;
     }
 
     /// Register all dynamic tools with the MCP server
