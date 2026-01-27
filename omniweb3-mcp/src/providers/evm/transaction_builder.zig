@@ -13,6 +13,70 @@ const AbiParam = abi_resolver.AbiParam;
 const TransactionRequest = rpc_client.TransactionRequest;
 const Keccak256 = std.crypto.hash.sha3.Keccak256;
 
+/// Check if a type is static (fixed size) according to ABI specification
+pub fn isStaticType(param_type: []const u8) bool {
+    // Arrays - check first before basic types
+    if (std.mem.endsWith(u8, param_type, "]")) {
+        // Dynamic array (type[]) is always dynamic
+        if (std.mem.endsWith(u8, param_type, "[]")) {
+            return false;
+        }
+        // Fixed array (type[N]) - depends on element type
+        const bracket_pos = std.mem.indexOf(u8, param_type, "[") orelse return false;
+        const element_type = param_type[0..bracket_pos];
+        return isStaticType(element_type);
+    }
+
+    // Dynamic types
+    if (std.mem.eql(u8, param_type, "string") or
+        std.mem.eql(u8, param_type, "bytes"))
+    {
+        return false;
+    }
+
+    // Tuples - need to check components (handled separately)
+    if (std.mem.eql(u8, param_type, "tuple")) {
+        // Can't determine without components, assume dynamic for safety
+        return false;
+    }
+
+    // Fixed bytes (bytes1 to bytes32)
+    if (std.mem.startsWith(u8, param_type, "bytes")) {
+        if (param_type.len > 5) {
+            const size_str = param_type[5..];
+            const size = std.fmt.parseInt(u8, size_str, 10) catch {
+                // Dynamic bytes
+                return false;
+            };
+            return size >= 1 and size <= 32;
+        }
+        // Just "bytes" is dynamic
+        return false;
+    }
+
+    // Basic static types
+    if (std.mem.startsWith(u8, param_type, "uint") or
+        std.mem.startsWith(u8, param_type, "int") or
+        std.mem.eql(u8, param_type, "bool") or
+        std.mem.eql(u8, param_type, "address"))
+    {
+        return true;
+    }
+
+    // Unknown type, assume static
+    return true;
+}
+
+/// Check if tuple is static (all components are static)
+fn isTupleStatic(components: []const AbiParam) bool {
+    for (components) |comp| {
+        if (!isStaticType(comp.type)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Transaction builder for EVM transactions
 pub const TransactionBuilder = struct {
     allocator: std.mem.Allocator,
@@ -121,8 +185,8 @@ pub const TransactionBuilder = struct {
             else
                 return error.MissingParameter;
 
-            // Encode based on type
-            const encoded = try self.encodeParameter(param_spec.type, param_value);
+            // Encode based on type and param spec
+            const encoded = try self.encodeParameterWithSpec(&param_spec, param_value);
             try encoded_parts.append(self.allocator, encoded);
         }
 
@@ -142,7 +206,30 @@ pub const TransactionBuilder = struct {
         return result;
     }
 
-    /// Encode a single parameter value
+    /// Encode a single parameter with full spec (supports tuples)
+    fn encodeParameterWithSpec(
+        self: TransactionBuilder,
+        param_spec: *const AbiParam,
+        value: std.json.Value,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, MissingParameter, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        const param_type = param_spec.type;
+
+        // Tuple type
+        if (std.mem.eql(u8, param_type, "tuple")) {
+            if (param_spec.components == null) {
+                return error.InvalidParameterType;
+            }
+            if (value != .object and value != .array) {
+                return error.InvalidParameterType;
+            }
+            return try self.encodeTuple(param_spec.components.?, value);
+        }
+
+        // For non-tuple types, use the original encoding function
+        return try self.encodeParameter(param_type, value);
+    }
+
+    /// Encode a single parameter value (legacy function for non-tuple types)
     fn encodeParameter(
         self: TransactionBuilder,
         param_type: []const u8,
@@ -214,6 +301,151 @@ pub const TransactionBuilder = struct {
         // Unsupported type for now (tuples, etc.)
         std.log.warn("Unsupported parameter type: {s}", .{param_type});
         return error.UnsupportedParameterType;
+    }
+
+    /// Encode tuple parameter
+    fn encodeTuple(
+        self: TransactionBuilder,
+        components: []const AbiParam,
+        value: std.json.Value,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, MissingParameter, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        // Check if tuple is static or dynamic
+        const is_static = isTupleStatic(components);
+
+        if (is_static) {
+            return try self.encodeStaticTuple(components, value);
+        } else {
+            return try self.encodeDynamicTuple(components, value);
+        }
+    }
+
+    /// Encode static tuple (all components are static types)
+    fn encodeStaticTuple(
+        self: TransactionBuilder,
+        components: []const AbiParam,
+        value: std.json.Value,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, MissingParameter, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        // Encode each component and concatenate
+        var encoded_parts: std.ArrayList([]const u8) = .{};
+        defer {
+            for (encoded_parts.items) |part| {
+                self.allocator.free(part);
+            }
+            encoded_parts.deinit(self.allocator);
+        }
+
+        // Extract values (can be object with named fields or array)
+        const value_obj = if (value == .object) value.object else null;
+        const value_arr = if (value == .array) value.array else null;
+
+        for (components, 0..) |comp, i| {
+            // Get component value
+            const comp_value = if (value_obj) |obj|
+                obj.get(comp.name) orelse return error.MissingParameter
+            else if (value_arr) |arr|
+                if (i < arr.items.len) arr.items[i] else return error.MissingParameter
+            else
+                return error.InvalidParameterType;
+
+            // Encode component
+            const encoded = try self.encodeParameterWithSpec(&comp, comp_value);
+            try encoded_parts.append(self.allocator, encoded);
+        }
+
+        // Concatenate all parts
+        var total_len: usize = 0;
+        for (encoded_parts.items) |part| {
+            total_len += part.len;
+        }
+
+        var result = try self.allocator.alloc(u8, total_len);
+        var offset: usize = 0;
+        for (encoded_parts.items) |part| {
+            @memcpy(result[offset..][0..part.len], part);
+            offset += part.len;
+        }
+
+        return result;
+    }
+
+    /// Encode dynamic tuple (contains at least one dynamic component)
+    fn encodeDynamicTuple(
+        self: TransactionBuilder,
+        components: []const AbiParam,
+        value: std.json.Value,
+    ) error{ InvalidParameterType, InvalidAddress, InvalidArrayType, UnsupportedParameterType, MissingParameter, OutOfMemory, InvalidCharacter, Overflow }![]const u8 {
+        // Extract values
+        const value_obj = if (value == .object) value.object else null;
+        const value_arr = if (value == .array) value.array else null;
+
+        // Encode all components first
+        var encoded_values: std.ArrayList([]const u8) = .{};
+        defer {
+            for (encoded_values.items) |enc| {
+                self.allocator.free(enc);
+            }
+            encoded_values.deinit(self.allocator);
+        }
+
+        // Track which components are static/dynamic
+        var is_static_list = try self.allocator.alloc(bool, components.len);
+        defer self.allocator.free(is_static_list);
+
+        for (components, 0..) |comp, i| {
+            is_static_list[i] = isStaticType(comp.type);
+
+            // Get component value
+            const comp_value = if (value_obj) |obj|
+                obj.get(comp.name) orelse return error.MissingParameter
+            else if (value_arr) |arr|
+                if (i < arr.items.len) arr.items[i] else return error.MissingParameter
+            else
+                return error.InvalidParameterType;
+
+            // Encode component
+            const encoded = try self.encodeParameterWithSpec(&comp, comp_value);
+            try encoded_values.append(self.allocator, encoded);
+        }
+
+        // Calculate head size (32 bytes per component - either value or offset)
+        const head_size = components.len * 64; // 64 hex chars = 32 bytes
+
+        // Calculate data section size
+        var data_size: usize = 0;
+        for (is_static_list, 0..) |is_static, i| {
+            if (!is_static) {
+                data_size += encoded_values.items[i].len;
+            }
+        }
+
+        // Build result: head + data
+        var result = try self.allocator.alloc(u8, head_size + data_size);
+        var head_offset: usize = 0;
+        var data_offset: usize = head_size;
+        var current_data_offset: usize = head_size / 2; // Offset in bytes, not hex chars
+
+        for (is_static_list, 0..) |is_static, i| {
+            if (is_static) {
+                // Static: copy value directly to head
+                const encoded = encoded_values.items[i];
+                @memcpy(result[head_offset..][0..encoded.len], encoded);
+                head_offset += encoded.len;
+            } else {
+                // Dynamic: write offset to head, data to tail
+                const offset_encoded = try self.encodeUint256(current_data_offset);
+                defer self.allocator.free(offset_encoded);
+                @memcpy(result[head_offset..][0..64], offset_encoded);
+                head_offset += 64;
+
+                // Copy data
+                const encoded = encoded_values.items[i];
+                @memcpy(result[data_offset..][0..encoded.len], encoded);
+                data_offset += encoded.len;
+                current_data_offset += encoded.len / 2; // Convert hex chars to bytes
+            }
+        }
+
+        return result;
     }
 
     /// Encode array parameter (dynamic or fixed size)
@@ -805,4 +1037,111 @@ test "ParamValue fromJson bool" {
     const value_false = std.json.Value{ .bool = false };
     const param_false = try ParamValue.fromJson(value_false, "bool");
     try testing.expect(!param_false.bool);
+}
+
+test "encode static tuple" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    // Create tuple components: (uint256, address)
+    const components = [_]AbiParam{
+        .{
+            .name = "amount",
+            .type = "uint256",
+            .internal_type = null,
+            .indexed = false,
+            .components = null,
+        },
+        .{
+            .name = "recipient",
+            .type = "address",
+            .internal_type = null,
+            .indexed = false,
+            .components = null,
+        },
+    };
+
+    // Create tuple value as object
+    var tuple_obj = std.json.ObjectMap.init(allocator);
+    defer tuple_obj.deinit();
+    try tuple_obj.put("amount", std.json.Value{ .integer = 1000 });
+    try tuple_obj.put("recipient", std.json.Value{ .string = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb4" });
+    const tuple_value = std.json.Value{ .object = tuple_obj };
+
+    const encoded = try builder.encodeStaticTuple(&components, tuple_value);
+    defer allocator.free(encoded);
+
+    // Should be 64 (uint256) + 64 (address) = 128 hex chars
+    try testing.expectEqual(@as(usize, 128), encoded.len);
+
+    // Verify uint256 encoding (1000 = 0x3e8)
+    try testing.expect(std.mem.endsWith(u8, encoded[0..64], "00000000000000000000000000000000000000000000000000000000000003e8"));
+
+    // Verify address encoding (lowercase)
+    const addr_encoded = encoded[64..128];
+    try testing.expect(std.mem.indexOf(u8, addr_encoded, "742d35cc6634c0532925a3b844bc9e7595f0beb4") != null or
+        std.mem.indexOf(u8, addr_encoded, "742d35Cc6634C0532925a3b844Bc9e7595f0bEb4") != null);
+}
+
+test "encode dynamic tuple with string" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    // Create tuple components: (uint256, string)
+    const components = [_]AbiParam{
+        .{
+            .name = "id",
+            .type = "uint256",
+            .internal_type = null,
+            .indexed = false,
+            .components = null,
+        },
+        .{
+            .name = "name",
+            .type = "string",
+            .internal_type = null,
+            .indexed = false,
+            .components = null,
+        },
+    };
+
+    // Create tuple value as array
+    var tuple_arr = std.json.Array.init(allocator);
+    defer tuple_arr.deinit();
+    try tuple_arr.append(std.json.Value{ .integer = 42 });
+    try tuple_arr.append(std.json.Value{ .string = "test" });
+    const tuple_value = std.json.Value{ .array = tuple_arr };
+
+    const encoded = try builder.encodeDynamicTuple(&components, tuple_value);
+    defer allocator.free(encoded);
+
+    // Head: 64 (uint256 value) + 64 (string offset)
+    // Data: 64 (string length) + 64 (string data, padded)
+    // Total: 256 hex chars
+    try testing.expectEqual(@as(usize, 256), encoded.len);
+
+    // First 64 chars: uint256 value (42 = 0x2a)
+    try testing.expect(std.mem.endsWith(u8, encoded[0..64], "000000000000000000000000000000000000000000000000000000000000002a"));
+
+    // Next 64 chars: offset to string data (64 bytes = 0x40)
+    try testing.expect(std.mem.endsWith(u8, encoded[64..128], "0000000000000000000000000000000000000000000000000000000000000040"));
+
+    // Next 64 chars: string length (4 = 0x04)
+    try testing.expect(std.mem.endsWith(u8, encoded[128..192], "0000000000000000000000000000000000000000000000000000000000000004"));
+
+    // Last 64 chars: string data "test" = 0x74657374, right-padded
+    try testing.expect(std.mem.startsWith(u8, encoded[192..256], "74657374"));
+}
+
+test "isStaticType detection" {
+    try testing.expect(isStaticType("uint256"));
+    try testing.expect(isStaticType("address"));
+    try testing.expect(isStaticType("bool"));
+    try testing.expect(isStaticType("bytes32"));
+    try testing.expect(isStaticType("int128"));
+
+    try testing.expect(!isStaticType("string"));
+    try testing.expect(!isStaticType("bytes"));
+    try testing.expect(!isStaticType("uint256[]"));
+    try testing.expect(!isStaticType("address[]"));
 }

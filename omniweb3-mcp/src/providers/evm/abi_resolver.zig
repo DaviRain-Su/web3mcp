@@ -13,6 +13,7 @@ pub const AbiParam = struct {
     type: []const u8,
     internal_type: ?[]const u8 = null,
     indexed: bool = false, // For events
+    components: ?[]const AbiParam = null, // For tuple types
 };
 
 /// ABI function definition
@@ -346,11 +347,18 @@ fn parseParams(
         const internal_type = if (obj.get("internalType")) |it| it.string else null;
         const indexed = if (obj.get("indexed")) |idx| idx.bool else false;
 
+        // Parse components for tuple types
+        const components = if (obj.get("components")) |comp|
+            try parseParams(allocator, comp.array)
+        else
+            null;
+
         try result.append(allocator, AbiParam{
             .name = try allocator.dupe(u8, name),
             .type = try allocator.dupe(u8, param_type),
             .internal_type = if (internal_type) |it| try allocator.dupe(u8, it) else null,
             .indexed = indexed,
+            .components = components,
         });
     }
 

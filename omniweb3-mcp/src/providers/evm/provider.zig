@@ -61,15 +61,11 @@ pub const EvmProvider = struct {
             for (entry.value_ptr.functions) |func| {
                 self.allocator.free(func.name);
                 for (func.inputs) |param| {
-                    self.allocator.free(param.name);
-                    self.allocator.free(param.type);
-                    if (param.internal_type) |it| self.allocator.free(it);
+                    freeAbiParam(self.allocator, param);
                 }
                 self.allocator.free(func.inputs);
                 for (func.outputs) |param| {
-                    self.allocator.free(param.name);
-                    self.allocator.free(param.type);
-                    if (param.internal_type) |it| self.allocator.free(it);
+                    freeAbiParam(self.allocator, param);
                 }
                 self.allocator.free(func.outputs);
             }
@@ -78,9 +74,7 @@ pub const EvmProvider = struct {
             for (entry.value_ptr.events) |event| {
                 self.allocator.free(event.name);
                 for (event.inputs) |param| {
-                    self.allocator.free(param.name);
-                    self.allocator.free(param.type);
-                    if (param.internal_type) |it| self.allocator.free(it);
+                    freeAbiParam(self.allocator, param);
                 }
                 self.allocator.free(event.inputs);
             }
@@ -92,6 +86,19 @@ pub const EvmProvider = struct {
         self.abi_cache.deinit();
 
         self.allocator.destroy(self);
+    }
+
+    /// Recursively free AbiParam and its components
+    fn freeAbiParam(allocator: std.mem.Allocator, param: abi_resolver.AbiParam) void {
+        allocator.free(param.name);
+        allocator.free(param.type);
+        if (param.internal_type) |it| allocator.free(it);
+        if (param.components) |comps| {
+            for (comps) |comp| {
+                freeAbiParam(allocator, comp);
+            }
+            allocator.free(comps);
+        }
     }
 
     /// Convert to ChainProvider interface
