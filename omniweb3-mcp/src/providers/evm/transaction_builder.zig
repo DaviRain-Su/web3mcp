@@ -10,6 +10,7 @@ const rpc_client = @import("rpc_client.zig");
 const AbiFunction = abi_resolver.AbiFunction;
 const AbiParam = abi_resolver.AbiParam;
 const TransactionRequest = rpc_client.TransactionRequest;
+const Keccak256 = std.crypto.hash.sha3.Keccak256;
 
 /// Transaction builder for EVM transactions
 pub const TransactionBuilder = struct {
@@ -41,13 +42,14 @@ pub const TransactionBuilder = struct {
         }
         try signature.append(self.allocator, ')');
 
-        // Calculate keccak256 hash
-        // TODO: Use zabi crypto library for keccak256
-        // For now, return placeholder
         std.log.debug("Function signature: {s}", .{signature.items});
 
-        // Placeholder - will be replaced with actual keccak256
-        return [4]u8{ 0xa9, 0x05, 0x9c, 0xbb }; // transfer(address,uint256)
+        // Calculate keccak256 hash
+        var hashed: [Keccak256.digest_length]u8 = undefined;
+        Keccak256.hash(signature.items, &hashed, .{});
+
+        // Return first 4 bytes as function selector
+        return hashed[0..4].*;
     }
 
     /// Encode function call data (selector + encoded parameters)
@@ -253,8 +255,59 @@ test "calculateFunctionSelector" {
     const selector = try builder.calculateFunctionSelector(&function);
 
     // transfer(address,uint256) selector is 0xa9059cbb
-    // TODO: Verify actual keccak256 hash when implemented
     try testing.expectEqual(@as(u8, 0xa9), selector[0]);
+    try testing.expectEqual(@as(u8, 0x05), selector[1]);
+    try testing.expectEqual(@as(u8, 0x9c), selector[2]);
+    try testing.expectEqual(@as(u8, 0xbb), selector[3]);
+}
+
+test "calculateFunctionSelector balanceOf" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    const function = AbiFunction{
+        .name = "balanceOf",
+        .inputs = &[_]AbiParam{
+            .{ .name = "account", .type = "address" },
+        },
+        .outputs = &[_]AbiParam{},
+        .state_mutability = .view,
+        .function_type = .function,
+        .payable = false,
+    };
+
+    const selector = try builder.calculateFunctionSelector(&function);
+
+    // balanceOf(address) selector is 0x70a08231
+    try testing.expectEqual(@as(u8, 0x70), selector[0]);
+    try testing.expectEqual(@as(u8, 0xa0), selector[1]);
+    try testing.expectEqual(@as(u8, 0x82), selector[2]);
+    try testing.expectEqual(@as(u8, 0x31), selector[3]);
+}
+
+test "calculateFunctionSelector approve" {
+    const allocator = testing.allocator;
+    const builder = TransactionBuilder.init(allocator);
+
+    const function = AbiFunction{
+        .name = "approve",
+        .inputs = &[_]AbiParam{
+            .{ .name = "spender", .type = "address" },
+            .{ .name = "amount", .type = "uint256" },
+        },
+        .outputs = &[_]AbiParam{},
+        .state_mutability = .nonpayable,
+        .function_type = .function,
+        .payable = false,
+    };
+
+    const selector = try builder.calculateFunctionSelector(&function);
+
+    // approve(address,uint256) selector is 0x095ea7b3
+    try testing.expectEqual(@as(u8, 0x09), selector[0]);
+    try testing.expectEqual(@as(u8, 0x5e), selector[1]);
+    try testing.expectEqual(@as(u8, 0xa7), selector[2]);
+    try testing.expectEqual(@as(u8, 0xb3), selector[3]);
 }
 
 test "encodeFunctionCall basic" {
