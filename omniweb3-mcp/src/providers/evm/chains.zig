@@ -104,6 +104,26 @@ pub const OPTIMISM_MAINNET = ChainConfig{
     .block_time_seconds = 2,
 };
 
+/// Avalanche C-Chain Mainnet
+pub const AVALANCHE_MAINNET = ChainConfig{
+    .chain_id = 43114,
+    .name = "Avalanche",
+    .rpc_url = "https://api.avax.network/ext/bc/C/rpc",
+    .explorer_url = "https://snowtrace.io",
+    .native_token = "AVAX",
+    .block_time_seconds = 2,
+};
+
+/// Fantom Opera Mainnet
+pub const FANTOM_MAINNET = ChainConfig{
+    .chain_id = 250,
+    .name = "Fantom",
+    .rpc_url = "https://rpc.ftm.tools",
+    .explorer_url = "https://ftmscan.com",
+    .native_token = "FTM",
+    .block_time_seconds = 1,
+};
+
 /// Get chain config by chain ID
 pub fn getChainById(chain_id: u64) ?ChainConfig {
     return switch (chain_id) {
@@ -115,6 +135,8 @@ pub fn getChainById(chain_id: u64) ?ChainConfig {
         80001 => POLYGON_MUMBAI,
         42161 => ARBITRUM_ONE,
         10 => OPTIMISM_MAINNET,
+        43114 => AVALANCHE_MAINNET,
+        250 => FANTOM_MAINNET,
         else => null,
     };
 }
@@ -131,6 +153,10 @@ pub fn getChainByName(name: []const u8) ?ChainConfig {
     if (std.ascii.eqlIgnoreCase(name, "mumbai")) return POLYGON_MUMBAI;
     if (std.ascii.eqlIgnoreCase(name, "arbitrum")) return ARBITRUM_ONE;
     if (std.ascii.eqlIgnoreCase(name, "optimism")) return OPTIMISM_MAINNET;
+    if (std.ascii.eqlIgnoreCase(name, "avalanche")) return AVALANCHE_MAINNET;
+    if (std.ascii.eqlIgnoreCase(name, "avax")) return AVALANCHE_MAINNET;
+    if (std.ascii.eqlIgnoreCase(name, "fantom")) return FANTOM_MAINNET;
+    if (std.ascii.eqlIgnoreCase(name, "ftm")) return FANTOM_MAINNET;
 
     return null;
 }
@@ -148,6 +174,16 @@ test "getChainById" {
     try testing.expect(eth != null);
     try testing.expectEqualStrings("Ethereum", eth.?.name);
 
+    const avax = getChainById(43114);
+    try testing.expect(avax != null);
+    try testing.expectEqualStrings("Avalanche", avax.?.name);
+    try testing.expectEqual(@as(u64, 43114), avax.?.chain_id);
+
+    const ftm = getChainById(250);
+    try testing.expect(ftm != null);
+    try testing.expectEqualStrings("Fantom", ftm.?.name);
+    try testing.expectEqual(@as(u64, 250), ftm.?.chain_id);
+
     const unknown = getChainById(999999);
     try testing.expect(unknown == null);
 }
@@ -164,6 +200,22 @@ test "getChainByName" {
     const polygon = getChainByName("polygon");
     try testing.expect(polygon != null);
     try testing.expectEqual(@as(u64, 137), polygon.?.chain_id);
+
+    const avax = getChainByName("avalanche");
+    try testing.expect(avax != null);
+    try testing.expectEqual(@as(u64, 43114), avax.?.chain_id);
+
+    const avax_short = getChainByName("avax");
+    try testing.expect(avax_short != null);
+    try testing.expectEqual(@as(u64, 43114), avax_short.?.chain_id);
+
+    const ftm = getChainByName("fantom");
+    try testing.expect(ftm != null);
+    try testing.expectEqual(@as(u64, 250), ftm.?.chain_id);
+
+    const ftm_short = getChainByName("FTM");
+    try testing.expect(ftm_short != null);
+    try testing.expectEqual(@as(u64, 250), ftm_short.?.chain_id);
 
     const unknown = getChainByName("unknown");
     try testing.expect(unknown == null);

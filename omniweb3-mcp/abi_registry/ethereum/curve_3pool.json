@@ -1,0 +1,77 @@
+[
+  {
+    "name": "exchange",
+    "inputs": [
+      {"name": "i", "type": "int128"},
+      {"name": "j", "type": "int128"},
+      {"name": "dx", "type": "uint256"},
+      {"name": "min_dy", "type": "uint256"}
+    ],
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "name": "add_liquidity",
+    "inputs": [
+      {"name": "amounts", "type": "uint256[3]"},
+      {"name": "min_mint_amount", "type": "uint256"}
+    ],
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "name": "remove_liquidity",
+    "inputs": [
+      {"name": "_amount", "type": "uint256"},
+      {"name": "min_amounts", "type": "uint256[3]"}
+    ],
+    "outputs": [{"name": "", "type": "uint256[3]"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "name": "remove_liquidity_one_coin",
+    "inputs": [
+      {"name": "_token_amount", "type": "uint256"},
+      {"name": "i", "type": "int128"},
+      {"name": "_min_amount", "type": "uint256"}
+    ],
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "name": "get_dy",
+    "inputs": [
+      {"name": "i", "type": "int128"},
+      {"name": "j", "type": "int128"},
+      {"name": "dx", "type": "uint256"}
+    ],
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "name": "balances",
+    "inputs": [{"name": "arg0", "type": "uint256"}],
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "name": "coins",
+    "inputs": [{"name": "arg0", "type": "uint256"}],
+    "outputs": [{"name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "name": "get_virtual_price",
+    "inputs": [],
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

@@ -292,6 +292,35 @@ pub const EvmRpcClient = struct {
         return error.InvalidResponse;
     }
 
+    /// simulateTransaction - Simulates a transaction to check if it will succeed
+    /// Returns simulation result with success status and return data
+    pub fn simulateTransaction(
+        self: *EvmRpcClient,
+        transaction: TransactionRequest,
+    ) !SimulationResult {
+        // Use eth_call to simulate the transaction
+        const result_data = self.ethCall(transaction, .latest) catch |err| {
+            // If eth_call fails, the transaction would revert
+            return SimulationResult{
+                .success = false,
+                .return_data = &[_]u8{},
+                .error_message = switch (err) {
+                    error.InvalidResponse => "Transaction would revert: Invalid response",
+                    error.RpcError => "Transaction would revert: RPC error",
+                    else => "Transaction would revert: Unknown error",
+                },
+            };
+        };
+        defer self.allocator.free(result_data);
+
+        // If we got here, the call succeeded
+        return SimulationResult{
+            .success = true,
+            .return_data = try self.allocator.dupe(u8, result_data),
+            .error_message = null,
+        };
+    }
+
     /// eth_sendRawTransaction - Sends a signed transaction
     pub fn ethSendRawTransaction(
         self: *EvmRpcClient,
@@ -634,6 +663,24 @@ pub const TransactionRequest = struct {
     value: ?[]const u8 = null,
     data: ?[]const u8 = null,
     nonce: ?u64 = null,
+};
+
+/// Transaction simulation result
+pub const SimulationResult = struct {
+    /// Whether the transaction would succeed
+    success: bool,
+
+    /// Return data from the simulated call (hex string)
+    return_data: []const u8,
+
+    /// Error message if simulation failed
+    error_message: ?[]const u8 = null,
+
+    /// Free allocated fields
+    pub fn deinit(self: SimulationResult, allocator: std.mem.Allocator) void {
+        allocator.free(self.return_data);
+        // error_message is a static string, don't free it
+    }
 };
 
 /// Transaction receipt
