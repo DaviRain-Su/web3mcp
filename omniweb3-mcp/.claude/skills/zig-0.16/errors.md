@@ -135,3 +135,67 @@ fn readFromFd(fd: std.posix.fd_t, buffer: []u8) !usize {
 - deps/mcp.zig/src/transport/transport.zig
 
 ---
+
+## 2026-01-28 - macOS errno 41 EPROTOTYPE in posix_compat socket
+
+**错误信息：**
+```
+unexpected errno: 41
+/Users/davirian/tools/zig-0.16-dev/lib/std/posix.zig:2217:40: in unexpectedErrno
+/Users/davirian/.cache/zig/p/httpz.../src/posix_compat.zig:136:50: in socket
+error: Unexpected
+```
+
+**旧代码：**
+```zig
+return switch (err) {
+    .ACCES => error.AccessDenied,
+    .AFNOSUPPORT => error.AddressFamilyUnsupported,
+    .PROTONOSUPPORT, .NOPROTOOPT => error.ProtocolNotSupported,
+    // 缺少 .PROTOTYPE 处理
+    else => std.posix.unexpectedErrno(err),
+};
+```
+
+**修复代码：**
+```zig
+return switch (err) {
+    .ACCES => error.AccessDenied,
+    .AFNOSUPPORT => error.AddressFamilyUnsupported,
+    .PROTONOSUPPORT, .NOPROTOOPT, .PROTOTYPE => error.ProtocolNotSupported,
+    // 添加 .PROTOTYPE 到错误映射
+    .NFILE => error.ProcessFdQuotaExceeded,
+    .MFILE => error.SystemFdQuotaExceeded,
+    .NOMEM, .NOBUFS => error.SystemResources,
+    .INVAL => error.SocketTypeNotSupported,
+    else => std.posix.unexpectedErrno(err),
+};
+```
+
+**说明：**
+- macOS errno 41 = `EPROTOTYPE` (Protocol wrong type for socket)
+- 在 Zig 0.16 中对应 `std.posix.E.PROTOTYPE`
+- 应该映射到 `error.ProtocolNotSupported`
+- macOS 和 Linux 的 errno 定义可能不同，需要分别处理
+
+**参考：**
+- macOS errno.h: EPROTOTYPE = 41
+- deps/http.zig/src/posix_compat.zig
+
+**最终解决方案：**
+问题根源不是 errno 映射，而是 macOS 不支持在 socket() 和 accept() 中直接使用 SOCK_CLOEXEC 和 SOCK_NONBLOCK 标志。
+
+macOS 上的标志值：
+- SOCK.CLOEXEC = 0x8000 (不是 0x80000)
+- SOCK.NONBLOCK = 0x10000 (不是 0x4000)
+
+修复步骤：
+1. 在 macOS 的 socket() 实现中，提取 socket_type 中的标志位并用 fcntl 设置
+2. 在 macOS 的 accept() 实现中，用 fcntl 设置 CLOEXEC 和 NONBLOCK
+3. 使用 `std.posix.SOCK.NONBLOCK` 和 `std.posix.SOCK.CLOEXEC` 而不是硬编码值
+
+完整修复见：
+- deps/http.zig/src/posix_compat.zig socket() 函数 (line ~110-180)
+- deps/http.zig/src/posix_compat.zig accept() 函数 (line ~265-330)
+
+---
