@@ -63,7 +63,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "privy_list_users",
-        .description = "List all users in your Privy app. Parameters: cursor (optional), limit (optional, default: 100, max: 100). Requires PRIVY_APP_ID and PRIVY_APP_SECRET env vars.",
+        .description = "List all users in your Privy app. Parameters: cursor (optional), limit (optional). Requires PRIVY_APP_ID and PRIVY_APP_SECRET env vars.",
         .handler = user_list.handle,
     },
 

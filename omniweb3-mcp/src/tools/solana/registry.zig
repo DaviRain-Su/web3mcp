@@ -230,172 +230,172 @@ pub const tools = [_]mcp.tools.Tool{
     // Token operations
     .{
         .name = "token_balances",
-        .description = "Solana token balances by owner. Parameters: chain=solana, owner (optional), mint (optional), network (optional), endpoint (optional)",
+        .description = "Solana token balances by owner. Parameters: chain, owner (optional), mint (optional), network (optional), endpoint (optional)",
         .handler = token_balances.handle,
     },
     .{
         .name = "token_accounts",
-        .description = "Solana token accounts by owner. Parameters: chain=solana, owner, mint (optional), network (optional), endpoint (optional)",
+        .description = "Solana token accounts by owner. Parameters: chain, owner, mint (optional), network (optional), endpoint (optional)",
         .handler = token_accounts.handle,
     },
     .{
         .name = "get_token_supply",
-        .description = "Get SPL token supply. Parameters: chain=solana, mint, network (optional), endpoint (optional)",
+        .description = "Get SPL token supply. Parameters: chain, mint, network (optional), endpoint (optional)",
         .handler = token_supply.handle,
     },
     .{
         .name = "get_token_largest_accounts",
-        .description = "Get SPL token largest accounts. Parameters: chain=solana, mint, network (optional), endpoint (optional)",
+        .description = "Get SPL token largest accounts. Parameters: chain, mint, network (optional), endpoint (optional)",
         .handler = token_largest_accounts.handle,
     },
     .{
         .name = "close_empty_token_accounts",
-        .description = "Close empty SPL token accounts. Parameters: chain=solana, keypair_path (optional), network (optional), endpoint (optional)",
+        .description = "Close empty SPL token accounts. Parameters: chain, keypair_path (optional), network (optional), endpoint (optional)",
         .handler = close_empty_token_accounts.handle,
     },
 
     // Account operations
     .{
         .name = "account_info",
-        .description = "Solana account info. Parameters: chain=solana, address, network (optional), endpoint (optional)",
+        .description = "Solana account info. Parameters: chain, address, network (optional), endpoint (optional)",
         .handler = account_info.handle,
     },
     .{
         .name = "get_wallet_address",
-        .description = "Get Solana wallet address from keypair. Parameters: chain=solana, keypair_path (optional)",
+        .description = "Get Solana wallet address from keypair. Parameters: chain, keypair_path (optional)",
         .handler = get_wallet_address.handle,
     },
     .{
         .name = "get_program_accounts",
-        .description = "Get program accounts. Parameters: chain=solana, program_id, network (optional), endpoint (optional)",
+        .description = "Get program accounts. Parameters: chain, program_id, network (optional), endpoint (optional)",
         .handler = get_program_accounts.handle,
     },
     .{
         .name = "get_vote_accounts",
-        .description = "Get vote accounts. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get vote accounts. Parameters: chain, network (optional), endpoint (optional)",
         .handler = get_vote_accounts.handle,
     },
 
     // Batch RPC operations (Phase 2 - Performance Optimization)
     .{
         .name = "batch_account_info",
-        .description = "Batch query multiple Solana accounts in one RPC call (100x faster). Parameters: chain=solana, addresses (array, max 100), network (optional), endpoint (optional). Performance: 100 accounts from ~50s to ~500ms. Returns JSON array with account info for each address.",
+        .description = "Batch query multiple Solana accounts in one RPC call (100x faster). Parameters: chain, addresses (array, max 100), network (optional), endpoint (optional). Performance: 100 accounts from ~50s to ~500ms. Returns JSON array with account info for each address.",
         .handler = batch_account_info.handle,
     },
     .{
         .name = "batch_token_balances",
-        .description = "Batch query token balances for multiple SPL tokens in one RPC call. Parameters: chain=solana, owner, mints (array, max 100), network (optional), endpoint (optional). Use case: Portfolio tracking - query all token balances at once instead of individual calls. Returns JSON array with balances for each mint.",
+        .description = "Batch query token balances for multiple SPL tokens in one RPC call. Parameters: chain, owner, mints (array, max 100), network (optional), endpoint (optional). Use case: Portfolio tracking - query all token balances at once instead of individual calls. Returns JSON array with balances for each mint.",
         .handler = batch_token_balances.handle,
     },
 
     // Real-time data streams (Phase 2 - WebSocket)
     .{
         .name = "price_subscribe",
-        .description = "Subscribe to real-time price updates for DEX pools using WebSocket. Parameters: chain=solana, pool_address, network (optional), endpoint (optional), commitment (optional). Use cases: Trading bots, arbitrage detection, live portfolio tracking. Note: This demonstrates WebSocket infrastructure - production use requires background service.",
+        .description = "Subscribe to real-time price updates for DEX pools using WebSocket. Parameters: chain, pool_address, network (optional), endpoint (optional), commitment (optional). Use cases: Trading bots, arbitrage detection, live portfolio tracking. Note: This demonstrates WebSocket infrastructure - production use requires background service.",
         .handler = price_subscribe.handle,
     },
 
     // Arbitrage detection (Phase 2 - Trading Strategy)
     .{
         .name = "detect_arbitrage",
-        .description = "Detect arbitrage opportunities across multiple DEXs by comparing prices. Parameters: chain=solana, quotes (array of price quotes from different DEXs, min 2), min_profit_pct (optional, default 0.5), max_slippage_bps (optional, default 50), include_gas_cost (optional, default true). Each quote requires: dex, input_mint, output_mint, input_amount, output_amount, price, fee_bps, slippage_bps, pool_address (optional). Returns sorted array of profitable opportunities with buy/sell DEX, prices, net profit, and confidence score. Use cases: Arbitrage trading bots, market analysis, price efficiency monitoring.",
+        .description = "Detect arbitrage opportunities across multiple DEXs by comparing prices. Parameters: chain, quotes (array of price quotes from different DEXs, min 2), min_profit_pct (optional, default 0.5), max_slippage_bps (optional, default 50), include_gas_cost (optional, default true). Each quote requires: dex, input_mint, output_mint, input_amount, output_amount, price, fee_bps, slippage_bps, pool_address (optional). Returns sorted array of profitable opportunities with buy/sell DEX, prices, net profit, and confidence score. Use cases: Arbitrage trading bots, market analysis, price efficiency monitoring.",
         .handler = detect_arbitrage.handle,
     },
 
     // Cache management (Phase 2 - Performance)
     .{
         .name = "cache_stats",
-        .description = "Query response cache statistics or manage cache entries. Parameters: chain=solana, action (optional, default 'stats'). Actions: 'stats' (get cache statistics including total entries, hit rate, size), 'clear' (clear all cache entries). Use cases: Monitor cache performance, check hit rate, manage cache size, optimize query performance. Note: Cache infrastructure is ready for integration with RPC query tools.",
+        .description = "Query response cache statistics or manage cache entries. Parameters: chain, action (optional, default 'stats'). Actions: 'stats' (get cache statistics including total entries, hit rate, size), 'clear' (clear all cache entries). Use cases: Monitor cache performance, check hit rate, manage cache size, optimize query performance. Note: Cache infrastructure is ready for integration with RPC query tools.",
         .handler = cache_stats.handle,
     },
 
     // Transaction operations
     .{
         .name = "signature_status",
-        .description = "Solana signature status. Parameters: chain=solana, signature, network (optional), endpoint (optional)",
+        .description = "Solana signature status. Parameters: chain, signature, network (optional), endpoint (optional)",
         .handler = signature_status.handle,
     },
     .{
         .name = "parse_transaction",
-        .description = "Parse Solana transaction details. Parameters: chain=solana, signature, network (optional), endpoint (optional)",
+        .description = "Parse Solana transaction details. Parameters: chain, signature, network (optional), endpoint (optional)",
         .handler = parse_transaction.handle,
     },
     .{
         .name = "get_signatures_for_address",
-        .description = "Get signatures for address. Parameters: chain=solana, address, limit/before/until (optional), network (optional), endpoint (optional)",
+        .description = "Get signatures for address. Parameters: chain, address, limit, before, until (optional), network (optional), endpoint (optional)",
         .handler = signatures_for_address.handle,
     },
     .{
         .name = "get_fee_for_message",
-        .description = "Get fee for a base64 transaction message. Parameters: chain=solana, message, network (optional), endpoint (optional)",
+        .description = "Get fee for a base64 transaction message. Parameters: chain, message, network (optional), endpoint (optional)",
         .handler = get_fee_for_message.handle,
     },
 
     // Block/Slot operations
     .{
         .name = "get_slot",
-        .description = "Get Solana current slot. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get Solana current slot. Parameters: chain, network (optional), endpoint (optional)",
         .handler = slot.handle,
     },
     .{
         .name = "get_block_height",
-        .description = "Get Solana current block height. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get Solana current block height. Parameters: chain, network (optional), endpoint (optional)",
         .handler = block_height.handle,
     },
     .{
         .name = "get_block_time",
-        .description = "Get Solana block time. Parameters: chain=solana, slot, network (optional), endpoint (optional)",
+        .description = "Get Solana block time. Parameters: chain, slot, network (optional), endpoint (optional)",
         .handler = block_time.handle,
     },
     .{
         .name = "get_latest_blockhash",
-        .description = "Get latest Solana blockhash. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get latest Solana blockhash. Parameters: chain, network (optional), endpoint (optional)",
         .handler = get_latest_blockhash.handle,
     },
 
     // Network info
     .{
         .name = "get_epoch_info",
-        .description = "Get Solana epoch info. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get Solana epoch info. Parameters: chain, network (optional), endpoint (optional)",
         .handler = epoch_info.handle,
     },
     .{
         .name = "get_version",
-        .description = "Get Solana version info. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get Solana version info. Parameters: chain, network (optional), endpoint (optional)",
         .handler = version.handle,
     },
     .{
         .name = "get_supply",
-        .description = "Get Solana supply info. Parameters: chain=solana, network (optional), endpoint (optional)",
+        .description = "Get Solana supply info. Parameters: chain, network (optional), endpoint (optional)",
         .handler = supply.handle,
     },
     .{
         .name = "get_tps",
-        .description = "Get Solana TPS from recent performance samples. Parameters: chain=solana, limit (optional), network (optional), endpoint (optional)",
+        .description = "Get Solana TPS from recent performance samples. Parameters: chain, limit (optional), network (optional), endpoint (optional)",
         .handler = tps.handle,
     },
     .{
         .name = "get_minimum_balance_for_rent_exemption",
-        .description = "Get minimum balance for rent exemption. Parameters: chain=solana, data_len, network (optional), endpoint (optional)",
+        .description = "Get minimum balance for rent exemption. Parameters: chain, data_len, network (optional), endpoint (optional)",
         .handler = get_minimum_balance_for_rent_exemption.handle,
     },
 
     // Devnet/Testnet utilities
     .{
         .name = "request_airdrop",
-        .description = "Request SOL airdrop (devnet/testnet). Parameters: chain=solana, amount (lamports), address (optional), network (optional), endpoint (optional)",
+        .description = "Request SOL airdrop (devnet/testnet). Parameters: chain, amount (lamports), address (optional), network (optional), endpoint (optional)",
         .handler = request_airdrop.handle,
     },
 
     // DeFi - Jupiter Swap & Price
     .{
         .name = "get_jupiter_quote",
-        .description = "Get Jupiter swap quote. Parameters: chain=solana, input_mint, output_mint, amount, swap_mode (optional), slippage_bps (optional), endpoint (optional), api_key (optional), insecure (optional)",
+        .description = "Get Jupiter swap quote. Parameters: chain, input_mint, output_mint, amount, swap_mode (optional), slippage_bps (optional), endpoint (optional), api_key (optional), insecure (optional)",
         .handler = get_jupiter_quote.handle,
     },
     .{
         .name = "get_jupiter_price",
-        .description = "Get Jupiter token price. Parameters: chain=solana, mint, endpoint (optional), insecure (optional). Requires JUPITER_API_KEY environment variable.",
+        .description = "Get Jupiter token price. Parameters: chain, mint, endpoint (optional), insecure (optional). Requires JUPITER_API_KEY environment variable.",
         .handler = get_jupiter_price.handle,
     },
 
@@ -448,7 +448,7 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Trigger (Limit Orders)
     .{
         .name = "get_jupiter_trigger_orders",
-        .description = "Get Jupiter trigger (limit) orders. Parameters: account, status (active|history, optional), endpoint (optional), api_key (optional), insecure (optional)",
+        .description = "Get Jupiter trigger (limit) orders. Parameters: account, status (optional), endpoint (optional), api_key (optional), insecure (optional)",
         .handler = get_jupiter_trigger_orders.handle,
     },
 
@@ -479,7 +479,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "get_jupiter_tokens_by_category",
-        .description = "Get Jupiter tokens by category. Parameters: category (pump, moonshot), interval (5m, 1h, 6h, 24h), endpoint (optional), api_key (optional), insecure (optional)",
+        .description = "Get Jupiter tokens by category. Parameters: category, interval, endpoint (optional), api_key (optional), insecure (optional)",
         .handler = get_jupiter_tokens_by_category.handle,
     },
     .{
@@ -518,12 +518,12 @@ pub const tools = [_]mcp.tools.Tool{
     // DeFi - Jupiter Batch Operations (Phase 2)
     .{
         .name = "jupiter_batch_swap",
-        .description = "Execute multiple swaps in batch. Parameters: swaps (array of {input_mint, output_mint, amount}), wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), slippage_bps (optional), network (optional), sponsor (optional, privy only), fail_fast (optional, stop on first error). Max 10 swaps per batch. Returns array of results with signatures or errors for each swap.",
+        .description = "Execute multiple swaps in batch. Parameters: swaps (array of swap objects), wallet_type, wallet_id (for privy), keypair_path (for local), slippage_bps (optional), network (optional), sponsor (optional), fail_fast (optional). Max 10 swaps per batch.",
         .handler = jupiter_batch_swap.handle,
     },
     .{
         .name = "jupiter_create_batch_trigger_orders",
-        .description = "Create multiple limit orders in batch for grid trading or laddered orders. Parameters: orders (array of {making_amount, taking_amount, expired_at?}), input_mint, output_mint, wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), network (optional), sponsor (optional, privy only), fail_fast (optional), endpoint (optional). Max 20 orders per batch. Returns array of results with signatures, order_ids, prices, or errors for each order.",
+        .description = "Create multiple limit orders in batch for grid trading or laddered orders. Parameters: orders (array of order objects), input_mint, output_mint, wallet_type, wallet_id (for privy), keypair_path (for local), network (optional), sponsor (optional), fail_fast (optional), endpoint (optional). Max 20 orders per batch.",
         .handler = jupiter_batch_trigger_orders.handle,
     },
 
@@ -852,7 +852,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "meteora_dlmm_add_liquidity",
-        .description = "Add liquidity to DLMM pool. Parameters: pool_address, user, amount_x, amount_y, strategy (SpotBalanced, etc), min_bin_id, max_bin_id, network (optional), endpoint (optional)",
+        .description = "Add liquidity to DLMM pool. Parameters: pool_address, user, amount_x, amount_y, strategy, min_bin_id, max_bin_id, network (optional), endpoint (optional)",
         .handler = meteora_dlmm_add_liquidity.handle,
     },
     .{
@@ -1065,7 +1065,7 @@ pub const tools = [_]mcp.tools.Tool{
     // =========================================================================
     .{
         .name = "jupiter_create_grid_strategy",
-        .description = "Create automated grid trading strategy. Calculates price levels and creates all limit orders in batch. Parameters: input_mint, output_mint, lower_price, upper_price, grid_levels (2-20), total_amount, current_price, strategy (arithmetic/geometric, optional), wallet_type (local/privy), wallet_id (for privy), keypair_path (for local), network (optional), sponsor (optional), endpoint (optional). Returns grid configuration and order creation results.",
+        .description = "Create automated grid trading strategy. Calculates price levels and creates all limit orders in batch. Parameters: input_mint, output_mint, lower_price, upper_price, grid_levels, total_amount, current_price, strategy (optional), wallet_type, wallet_id (for privy), keypair_path (for local), network (optional), sponsor (optional), endpoint (optional).",
         .handler = grid_trading.handle,
     },
 };

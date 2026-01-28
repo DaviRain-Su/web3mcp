@@ -52,7 +52,7 @@ pub const tools = [_]mcp.tools.Tool{
     },
     .{
         .name = "get_logs",
-        .description = "Get EVM logs. Parameters: chain, address/from_block/to_block/block_hash/topics/tag (optional), network (optional), endpoint (optional)",
+        .description = "Get EVM logs. Parameters: chain, address (optional), from_block (optional), to_block (optional), block_hash (optional), topics (optional), tag (optional), network (optional), endpoint (optional)",
         .handler = get_logs.handle,
     },
 };

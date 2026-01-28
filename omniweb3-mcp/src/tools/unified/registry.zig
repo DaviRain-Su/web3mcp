@@ -11,6 +11,8 @@ const transaction = @import("transaction.zig");
 const token_balance = @import("token_balance.zig");
 const sign_and_send = @import("sign_and_send.zig");
 const wallet_status = @import("wallet_status.zig");
+const call_contract = @import("call_contract.zig");
+const call_program = @import("call_program.zig");
 
 /// Tool definitions for unified/cross-chain operations.
 pub const tools = [_]mcp.tools.Tool{
@@ -53,6 +55,16 @@ pub const tools = [_]mcp.tools.Tool{
         .name = "wallet_status",
         .description = "Get available wallet configurations. Parameters: chain (optional, filter by solana/ethereum). Shows local and Privy wallet availability.",
         .handler = wallet_status.handle,
+    },
+    .{
+        .name = "call_contract",
+        .description = "Call a smart contract function with automatic ABI encoding. Parameters: chain (bsc/ethereum/polygon/avalanche), contract (address or name from contracts.json), function (function name), args (array of arguments), from (optional sender), value (optional wei amount)",
+        .handler = call_contract.handle,
+    },
+    .{
+        .name = "call_program",
+        .description = "Call a Solana program instruction. Parameters: program, instruction, accounts (array of account objects), data (optional), network (optional)",
+        .handler = call_program.handle,
     },
 };
 
