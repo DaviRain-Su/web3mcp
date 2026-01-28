@@ -12,6 +12,16 @@
     },
     {
       "chain": "bsc",
+      "chain_id": 97,
+      "address": "0xD99D1c33F9fC3444f8101754aBC46c52416550D1",
+      "name": "pancake_testnet",
+      "display_name": "PancakeSwap Router V2 (Testnet)",
+      "category": "dex",
+      "enabled": true,
+      "description": "PancakeSwap V2 Router on BSC Testnet - swap, liquidity management"
+    },
+    {
+      "chain": "bsc",
       "chain_id": 56,
       "address": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
       "name": "pancakeswap_factory_v2",
@@ -32,6 +42,16 @@
     },
     {
       "chain": "bsc",
+      "chain_id": 97,
+      "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
+      "name": "wbnb_test",
+      "display_name": "Wrapped BNB (Testnet)",
+      "category": "token",
+      "enabled": true,
+      "description": "WBNB ERC20 token on BSC Testnet - deposit, withdraw, transfer"
+    },
+    {
+      "chain": "bsc",
       "chain_id": 56,
       "address": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
       "name": "busd",
@@ -39,6 +59,16 @@
       "category": "token",
       "enabled": true,
       "description": "BUSD stablecoin ERC20 token"
+    },
+    {
+      "chain": "bsc",
+      "chain_id": 97,
+      "address": "0xeD24FC36d5Ee211Ea25A80239Fb8C4Cfd80f12Ee",
+      "name": "busd_test",
+      "display_name": "Binance USD (Testnet)",
+      "category": "token",
+      "enabled": true,
+      "description": "BUSD stablecoin on BSC Testnet"
     },
     {
       "chain": "bsc",
