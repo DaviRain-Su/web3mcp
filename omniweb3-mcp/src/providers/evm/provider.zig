@@ -10,6 +10,7 @@ const batch_builder = @import("./batch_builder.zig");
 const multisig = @import("./multisig.zig");
 const simulation = @import("./simulation.zig");
 const rpc_pool = @import("./rpc_pool.zig");
+const ws_client = @import("./ws_client.zig");
 const chain_provider = @import("../../core/chain_provider.zig");
 
 const ChainProvider = chain_provider.ChainProvider;
@@ -57,6 +58,17 @@ pub const LoadBalanceStrategy = rpc_pool.LoadBalanceStrategy;
 pub const HealthStatus = rpc_pool.HealthStatus;
 pub const ConnectionStats = rpc_pool.ConnectionStats;
 pub const PoolStats = rpc_pool.PoolStats;
+
+// Re-export ws_client module for external use
+pub const WsClient = ws_client.WsClient;
+pub const WsManager = ws_client.WsManager;
+pub const SubscriptionType = ws_client.SubscriptionType;
+pub const SubscriptionEvent = ws_client.SubscriptionEvent;
+pub const BlockHeader = ws_client.BlockHeader;
+pub const EventLog = ws_client.EventLog;
+pub const LogFilter = ws_client.LogFilter;
+pub const Subscription = ws_client.Subscription;
+pub const ConnectionState = ws_client.ConnectionState;
 
 /// EVM-specific provider implementation (supports Ethereum, BSC, Polygon, etc.)
 ///
