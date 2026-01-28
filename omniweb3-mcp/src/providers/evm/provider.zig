@@ -9,6 +9,7 @@ const gas_tracker = @import("./gas_tracker.zig");
 const batch_builder = @import("./batch_builder.zig");
 const multisig = @import("./multisig.zig");
 const simulation = @import("./simulation.zig");
+const rpc_pool = @import("./rpc_pool.zig");
 const chain_provider = @import("../../core/chain_provider.zig");
 
 const ChainProvider = chain_provider.ChainProvider;
@@ -47,6 +48,15 @@ pub const TransactionSimulator = simulation.TransactionSimulator;
 pub const DetailedSimulation = simulation.DetailedSimulation;
 pub const StateChange = simulation.StateChange;
 pub const SimulationOptions = simulation.SimulationOptions;
+
+// Re-export rpc_pool module for external use
+pub const RpcPool = rpc_pool.RpcPool;
+pub const RpcConnection = rpc_pool.RpcConnection;
+pub const EndpointConfig = rpc_pool.EndpointConfig;
+pub const LoadBalanceStrategy = rpc_pool.LoadBalanceStrategy;
+pub const HealthStatus = rpc_pool.HealthStatus;
+pub const ConnectionStats = rpc_pool.ConnectionStats;
+pub const PoolStats = rpc_pool.PoolStats;
 
 /// EVM-specific provider implementation (supports Ethereum, BSC, Polygon, etc.)
 ///
