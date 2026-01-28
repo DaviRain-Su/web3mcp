@@ -270,18 +270,81 @@ fn loadContractAbi(
     contract: []const u8,
     chain_name: []const u8,
 ) !abi_resolver.Abi {
-    _ = chain_name;
+    // First, try to find the contract in contracts.json to get the actual name
+    const io = evm_runtime.io();
+    var contract_name: []const u8 = contract;
 
-    // Build ABI path
+    // Try to read contracts.json to find the real contract name
+    const file_result = std.Io.Dir.cwd().openFile(io, "abi_registry/contracts.json", .{});
+    if (file_result) |file| {
+        defer file.close(io);
+
+        const stat = file.stat(io) catch |err| {
+            std.log.warn("Failed to stat contracts.json: {}", .{err});
+            // Fall through to use input contract name
+            return error.FileNotFound;
+        };
+
+        const content = allocator.alloc(u8, stat.size) catch {
+            return error.OutOfMemory;
+        };
+        defer allocator.free(content);
+
+        _ = file.readPositionalAll(io, content, 0) catch {
+            // Fall through to use input contract name
+            return error.FileNotFound;
+        };
+
+        // Parse JSON to find the contract
+        const parsed = std.json.parseFromSlice(
+            struct {
+                evm_contracts: []struct {
+                    chain: []const u8,
+                    address: []const u8,
+                    name: []const u8,
+                    enabled: bool,
+                },
+            },
+            allocator,
+            content,
+            .{},
+        ) catch {
+            return error.FileNotFound;
+        };
+        defer parsed.deinit();
+
+        // Find matching contract by address or name
+        for (parsed.value.evm_contracts) |c| {
+            if (!c.enabled) continue;
+            if (!std.mem.eql(u8, c.chain, chain_name)) continue;
+
+            // Match by address or name
+            const is_address = evm_helpers.parseAddress(contract) catch null;
+            const contract_addr = evm_helpers.parseAddress(c.address) catch continue;
+
+            if (is_address) |addr| {
+                if (std.mem.eql(u8, &addr, &contract_addr)) {
+                    contract_name = c.name;
+                    break;
+                }
+            } else if (std.mem.eql(u8, c.name, contract)) {
+                contract_name = c.name;
+                break;
+            }
+        }
+    } else |_| {
+        // contracts.json not found, continue with provided name
+    }
+
+    // Build ABI path: abi_registry/{chain}/{name}.json
     const abi_path = try std.fmt.allocPrint(
         allocator,
-        "abi_registry/{s}.json",
-        .{contract},
+        "abi_registry/{s}/{s}.json",
+        .{ chain_name, contract_name },
     );
     defer allocator.free(abi_path);
 
     // Load ABI using abi_resolver
-    // Note: We need to pass io parameter, but we have it from evm_runtime
     const io_val = evm_runtime.io();
     return try abi_resolver.loadAbi(allocator, &io_val, abi_path);
 }
