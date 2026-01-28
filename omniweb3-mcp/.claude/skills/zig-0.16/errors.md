@@ -199,3 +199,74 @@ macOS 上的标志值：
 - deps/http.zig/src/posix_compat.zig accept() 函数 (line ~265-330)
 
 ---
+
+---
+
+## 2026-01-28 - PublicChains 枚举缺少测试网 chain_id
+
+**错误信息：**
+```
+thread 140198 panic: invalid enum value
+/Users/davirian/dev/web3mcp/omniweb3-mcp/src/core/evm_helpers.zig:196:12: 0x102f9222b in chainIdFor
+    return @enumFromInt(chain_id_value);
+           ^
+```
+
+**问题原因：**
+`zabi.types.ethereum.PublicChains` 枚举只包含主网 chain_id，缺少测试网：
+- BSC Testnet (97) ❌
+- Avalanche Fuji (43113) ❌
+- Polygon Amoy (80002) ❌
+
+当用户调用 BSC Testnet 工具时，`chainIdFor` 返回 97，但 `@enumFromInt(97)` 失败导致 panic。
+
+**修复代码：**
+```zig
+// deps/zabi/src/types/ethereum.zig
+pub const PublicChains = enum(usize) {
+    ethereum = 1,
+    goerli = 5,
+    op_mainnet = 10,
+    cronos = 25,
+    bnb = 56,
+    bnb_testnet = 97,              // ✅ 添加 BSC Testnet
+    ethereum_classic = 61,
+    op_kovan = 69,
+    gnosis = 100,
+    polygon = 137,
+    fantom = 250,
+    boba = 288,
+    op_goerli = 420,
+    base = 8543,
+    anvil = 31337,
+    arbitrum = 42161,
+    arbitrum_nova = 42170,
+    celo = 42220,
+    avalanche_fuji = 43113,        // ✅ 添加 Avalanche Testnet
+    avalanche = 43114,
+    polygon_amoy = 80002,          // ✅ 添加 Polygon Testnet
+    zora = 7777777,
+    sepolia = 11155111,
+    op_sepolia = 11155420,
+};
+```
+
+**说明：**
+- zabi 库的 PublicChains 枚举需要包含所有支持的 chain_id（主网 + 测试网）
+- `@enumFromInt` 会在枚举值不存在时 panic
+- 添加常用测试网后，BSC Testnet、Avalanche Fuji、Polygon Amoy 都可以正常工作
+
+**测试结果：**
+```bash
+./scripts/test-bsc-testnet.sh
+✅ 链 ID: 97 (BSC Testnet)
+✅ 最新区块: 87,023,625
+✅ BNB 余额: 0.3 tBNB
+✅ 所有测试通过
+```
+
+**参考：**
+- deps/zabi/src/types/ethereum.zig
+- src/core/evm_helpers.zig:181-197
+
+---
