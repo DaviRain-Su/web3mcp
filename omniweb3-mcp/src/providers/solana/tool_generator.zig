@@ -35,11 +35,45 @@ fn generateToolForFunction(
     func: Function,
 ) !mcp.tools.Tool {
     // Tool name: programName_functionName (e.g., "jupiter_swap")
-    const tool_name = try std.fmt.allocPrint(
+    // MCP requires tool names to be at most 64 characters
+    const full_name = try std.fmt.allocPrint(
         allocator,
         "{s}_{s}",
         .{ program_name, func.name },
     );
+    defer allocator.free(full_name);
+
+    const tool_name = if (full_name.len <= 64)
+        try allocator.dupe(u8, full_name)
+    else blk: {
+        // If too long, truncate and add hash for uniqueness
+        // Format: {program_short}_{func_short}_{hash}
+        const hash = std.hash.Wyhash.hash(0, full_name);
+        const hash_str = try std.fmt.allocPrint(allocator, "{x:0>8}", .{@as(u32, @truncate(hash))});
+        defer allocator.free(hash_str);
+
+        // Reserve 9 chars for hash (_12345678), leaving 55 for content
+        const max_base_len = 64 - 9;
+        const prog_len = program_name.len;
+        const func_len = func.name.len;
+
+        // Try to keep full function name, truncate program if needed
+        const func_max = @min(func_len, 35); // Keep function name under 35 chars
+        const prog_max = if (max_base_len - func_max - 1 > 0)
+            @min(prog_len, max_base_len - func_max - 1)
+        else
+            10; // Minimum program name length
+
+        break :blk try std.fmt.allocPrint(
+            allocator,
+            "{s}_{s}_{s}",
+            .{
+                program_name[0..prog_max],
+                func.name[0..func_max],
+                hash_str,
+            },
+        );
+    };
 
     // Description from function docs or auto-generate
     const description = if (func.description) |desc|

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const solana_sdk = @import("solana_sdk");
 const zabi = @import("zabi");
 const evm_helpers = @import("evm_helpers.zig");
@@ -8,9 +9,11 @@ const Hash = zabi.types.ethereum.Hash;
 const Address = zabi.types.ethereum.Address;
 const Signer = zabi.crypto.Signer;
 
-// C interop for getenv
+// C interop for getenv and file operations
 const c = @cImport({
     @cInclude("stdlib.h");
+    @cInclude("fcntl.h");
+    @cInclude("unistd.h");
 });
 
 pub fn loadSolanaKeypair(
@@ -129,17 +132,49 @@ fn readFile(allocator: std.mem.Allocator, path: []const u8, max_len: usize) ![]u
     const path_z = try allocator.dupeZ(u8, path);
     defer allocator.free(path_z);
 
-    const flags: std.os.linux.O = .{ .ACCMODE = .RDONLY };
-    const fd = std.os.linux.open(path_z.ptr, flags, 0);
-    if (fd < 0) return error.KeypairFileNotFound;
-    defer _ = std.os.linux.close(@intCast(fd));
+    if (builtin.os.tag == .linux) {
+        // Linux: use std.os.linux
+        const flags: std.os.linux.O = .{ .ACCMODE = .RDONLY };
+        const fd = std.os.linux.open(path_z.ptr, flags, 0);
+        if (fd < 0) {
+            std.log.err("Failed to open keyfile at {s}", .{path});
+            return error.KeypairFileNotFound;
+        }
+        defer _ = std.os.linux.close(@intCast(fd));
 
-    const buffer = try allocator.alloc(u8, max_len);
-    errdefer allocator.free(buffer);
+        const buffer = try allocator.alloc(u8, max_len);
+        errdefer allocator.free(buffer);
 
-    const bytes_read = std.os.linux.read(@intCast(fd), buffer[0..].ptr, buffer.len);
-    if (bytes_read < 0) return error.KeypairReadFailed;
+        const bytes_read = std.os.linux.read(@intCast(fd), buffer[0..].ptr, buffer.len);
+        if (bytes_read < 0) {
+            std.log.err("Failed to read keyfile", .{});
+            return error.KeypairReadFailed;
+        }
 
-    const trimmed = try allocator.realloc(buffer, @intCast(bytes_read));
-    return trimmed;
+        const trimmed = try allocator.realloc(buffer, @intCast(bytes_read));
+        return trimmed;
+    } else if (builtin.os.tag == .macos) {
+        // macOS: use std.c for file operations
+        const fd = c.open(path_z.ptr, c.O_RDONLY);
+        if (fd < 0) {
+            std.log.err("Failed to open keyfile at {s}", .{path});
+            return error.KeypairFileNotFound;
+        }
+        defer _ = c.close(fd);
+
+        const buffer = try allocator.alloc(u8, max_len);
+        errdefer allocator.free(buffer);
+
+        const bytes_read_raw = c.read(fd, buffer.ptr, buffer.len);
+        if (bytes_read_raw < 0) {
+            std.log.err("Failed to read keyfile", .{});
+            return error.KeypairReadFailed;
+        }
+        const bytes_read: usize = @intCast(bytes_read_raw);
+
+        const trimmed = try allocator.realloc(buffer, bytes_read);
+        return trimmed;
+    } else {
+        @compileError("Unsupported OS for wallet file reading");
+    }
 }

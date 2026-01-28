@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
     const zabi_dep = b.dependency("zabi", .{ .target = target, .optimize = optimize });
     const httpz_dep = b.dependency("httpz", .{ .target = target, .optimize = optimize });
 
+    // Main executable: Smart MCP with discovery tools + unified interfaces
     const exe = b.addExecutable(.{
         .name = "omniweb3-mcp",
         .root_module = b.createModule(.{

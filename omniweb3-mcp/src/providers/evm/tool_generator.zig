@@ -111,11 +111,48 @@ pub fn generateToolForFunction(
     func: AbiFunction,
 ) !mcp.tools.Tool {
     // Tool name: {chain}_{contract}_{function} (e.g., "bsc_wbnb_deposit")
-    const tool_name = try std.fmt.allocPrint(
+    // MCP requires tool names to be at most 64 characters
+    const full_name = try std.fmt.allocPrint(
         allocator,
         "{s}_{s}_{s}",
         .{ chain, contract_name, func.name },
     );
+    defer allocator.free(full_name);
+
+    const tool_name = if (full_name.len <= 64)
+        try allocator.dupe(u8, full_name)
+    else blk: {
+        // If too long, truncate and add hash for uniqueness
+        // Format: {chain}_{contract_short}_{func_short}_{hash}
+        // Reserve 9 chars for hash (_12345678), leaving 55 for content
+        const hash = std.hash.Wyhash.hash(0, full_name);
+        const hash_str = try std.fmt.allocPrint(allocator, "{x:0>8}", .{@as(u32, @truncate(hash))});
+        defer allocator.free(hash_str);
+
+        // Calculate available space for each component
+        const max_base_len = 64 - 9; // 55 chars for base, 9 for _hash
+        const chain_len = chain.len;
+        const contract_len = contract_name.len;
+        const func_len = func.name.len;
+
+        // Try to keep full function name, truncate contract if needed
+        const func_max = @min(func_len, 30); // Keep function name under 30 chars
+        const contract_max = if (max_base_len - chain_len - func_max - 2 > 0)
+            @min(contract_len, max_base_len - chain_len - func_max - 2)
+        else
+            8; // Minimum contract name length
+
+        break :blk try std.fmt.allocPrint(
+            allocator,
+            "{s}_{s}_{s}_{s}",
+            .{
+                chain,
+                contract_name[0..contract_max],
+                func.name[0..func_max],
+                hash_str,
+            },
+        );
+    };
 
     // Generate description
     const state_mutability_desc = switch (func.state_mutability) {
