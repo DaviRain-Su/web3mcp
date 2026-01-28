@@ -18,9 +18,10 @@
             .hash = "solana_sdk-0.1.0-J3orT3VWCACNq3Kziv3YTb7KE85t8-xDjawoxj6DHmPt",
         },
         .zabi = .{ .path = "deps/zabi" },
+        //.httpz = .{ .path = "deps/http.zig" },
         .httpz = .{
-            .url = "https://github.com/DaviRain-Su/http.zig/archive/b769a5867ebf7a5239e38fd4960560e0117d771c.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrCuHBwDRRex4Mtn5wo5jpXVfgoVNmm3xCteJYBEu",
+            .url = "https://github.com/DaviRain-Su/http.zig/archive/1778619ddc03acb7858b9d6b68f21919d59a0650.tar.gz",
+            .hash = "httpz-0.0.0-PNVzrA2mBwD4XcvUV2kfG8Nl9J9mFAu5NFvAb448WiX-",
         },
     },
 }

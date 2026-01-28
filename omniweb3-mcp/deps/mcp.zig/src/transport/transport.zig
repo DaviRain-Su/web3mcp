@@ -18,6 +18,15 @@ fn writeToFd(fd: std.posix.fd_t, bytes: []const u8) !void {
             if (written == 0) return error.WriteError;
             index += written;
         }
+    } else if (builtin.os.tag == .macos) {
+        var index: usize = 0;
+        while (index < bytes.len) {
+            const written_raw = std.c.write(fd, bytes[index..].ptr, bytes[index..].len);
+            if (written_raw < 0) return error.WriteError;
+            const written: usize = @intCast(written_raw);
+            if (written == 0) return error.WriteError;
+            index += written;
+        }
     } else if (builtin.os.tag == .windows) {
         @compileError("Windows not yet supported in Zig 0.16 transport");
     } else {
@@ -28,6 +37,10 @@ fn writeToFd(fd: std.posix.fd_t, bytes: []const u8) !void {
 fn readFromFd(fd: std.posix.fd_t, buffer: []u8) !usize {
     if (builtin.os.tag == .linux) {
         const result = std.os.linux.read(fd, buffer.ptr, buffer.len);
+        if (result < 0) return error.ReadError;
+        return @intCast(result);
+    } else if (builtin.os.tag == .macos) {
+        const result = std.c.read(fd, buffer.ptr, buffer.len);
         if (result < 0) return error.ReadError;
         return @intCast(result);
     } else if (builtin.os.tag == .windows) {
