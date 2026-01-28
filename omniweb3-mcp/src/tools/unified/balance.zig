@@ -72,7 +72,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     }
 
-    if (std.ascii.eqlIgnoreCase(chain_name, "ethereum") or std.ascii.eqlIgnoreCase(chain_name, "avalanche") or std.ascii.eqlIgnoreCase(chain_name, "bnb") or std.ascii.eqlIgnoreCase(chain_name, "evm")) {
+    if (std.ascii.eqlIgnoreCase(chain_name, "ethereum") or std.ascii.eqlIgnoreCase(chain_name, "avalanche") or std.ascii.eqlIgnoreCase(chain_name, "bnb") or std.ascii.eqlIgnoreCase(chain_name, "bsc") or std.ascii.eqlIgnoreCase(chain_name, "polygon") or std.ascii.eqlIgnoreCase(chain_name, "evm")) {
         const evm_address = evm_helpers.parseAddress(address) catch {
             return mcp.tools.errorResult(allocator, "Invalid EVM address") catch {
                 return mcp.tools.ToolError.InvalidArguments;
