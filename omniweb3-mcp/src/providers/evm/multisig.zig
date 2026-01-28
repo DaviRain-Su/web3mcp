@@ -7,6 +7,7 @@ const std = @import("std");
 const chain_provider = @import("../../core/chain_provider.zig");
 
 const FunctionCall = chain_provider.FunctionCall;
+const Keccak256 = std.crypto.hash.sha3.Keccak256;
 
 /// Gnosis Safe transaction operation type
 pub const Operation = enum(u8) {
@@ -89,20 +90,30 @@ pub const MultiSigBuilder = struct {
         return .{ .allocator = allocator };
     }
 
-    /// Build Safe transaction from function call
+    /// Build Safe transaction from encoded call data
+    ///
+    /// Parameters:
+    /// - safe_address: Address of the Gnosis Safe contract
+    /// - to: Target contract address
+    /// - value: ETH value to send (in wei)
+    /// - data: Encoded function call data (from TransactionBuilder.encodeFunctionCall)
+    /// - operation: Call or DelegateCall
+    /// - nonce: Safe transaction nonce (fetch from Safe.nonce() if unknown)
+    ///
+    /// Note: For production use, you should:
+    /// 1. Fetch current nonce from Safe contract (Safe.nonce())
+    /// 2. Estimate gas for the transaction
+    /// 3. Set appropriate gas price for faster execution
     pub fn buildSafeTransaction(
         self: *MultiSigBuilder,
         safe_address: []const u8,
-        call: FunctionCall,
+        to: []const u8,
+        value: u64,
+        data: []const u8,
         operation: Operation,
+        nonce: u64,
     ) !SafeTransaction {
-        // Note: In real implementation, you would:
-        // 1. Fetch current nonce from Safe contract
-        // 2. Estimate gas for the transaction
-        // 3. Calculate gas price
-
-        // For now, use defaults
-        const nonce: u64 = 0; // Should fetch from Safe contract
+        // Use defaults for gas parameters (can be customized via buildSafeTransactionWithGas)
         const safe_tx_gas: u64 = 0; // 0 means estimate
         const base_gas: u64 = 0;
         const gas_price: u64 = 0; // 0 means current gas price
@@ -111,9 +122,39 @@ pub const MultiSigBuilder = struct {
 
         return SafeTransaction{
             .safe_address = try self.allocator.dupe(u8, safe_address),
-            .to = try self.allocator.dupe(u8, call.contract),
-            .value = call.options.value orelse 0,
-            .data = &[_]u8{}, // Should be encoded function call data
+            .to = try self.allocator.dupe(u8, to),
+            .value = value,
+            .data = try self.allocator.dupe(u8, data),
+            .operation = operation,
+            .safe_tx_gas = safe_tx_gas,
+            .base_gas = base_gas,
+            .gas_price = gas_price,
+            .gas_token = try self.allocator.dupe(u8, gas_token),
+            .refund_receiver = try self.allocator.dupe(u8, refund_receiver),
+            .nonce = nonce,
+        };
+    }
+
+    /// Build Safe transaction with custom gas parameters
+    pub fn buildSafeTransactionWithGas(
+        self: *MultiSigBuilder,
+        safe_address: []const u8,
+        to: []const u8,
+        value: u64,
+        data: []const u8,
+        operation: Operation,
+        nonce: u64,
+        safe_tx_gas: u64,
+        base_gas: u64,
+        gas_price: u64,
+        gas_token: []const u8,
+        refund_receiver: []const u8,
+    ) !SafeTransaction {
+        return SafeTransaction{
+            .safe_address = try self.allocator.dupe(u8, safe_address),
+            .to = try self.allocator.dupe(u8, to),
+            .value = value,
+            .data = try self.allocator.dupe(u8, data),
             .operation = operation,
             .safe_tx_gas = safe_tx_gas,
             .base_gas = base_gas,
@@ -130,28 +171,95 @@ pub const MultiSigBuilder = struct {
         safe_tx: *const SafeTransaction,
         chain_id: u64,
     ) !SafeTransactionHash {
-        _ = self;
-        _ = chain_id;
+        // EIP-712 Domain Separator
+        // keccak256(EIP712_DOMAIN_TYPEHASH || Safe address || chain_id)
+        const domain_typehash = try self.hashString(
+            "EIP712Domain(uint256 chainId,address verifyingContract)",
+        );
 
-        // In real implementation, this would:
-        // 1. Calculate domain separator using chain_id and Safe address
-        // 2. Encode transaction data using EIP-712 typed data hashing
-        // 3. Calculate keccak256 hash
+        var domain_data = try self.allocator.alloc(u8, 32 + 32 + 32); // typehash + padded_chainId + padded_address
+        defer self.allocator.free(domain_data);
 
-        // Placeholder implementation
-        var hash: [32]u8 = undefined;
+        // Copy domain typehash
+        @memcpy(domain_data[0..32], &domain_typehash);
+
+        // Encode chain_id (left-padded to 32 bytes)
+        @memset(domain_data[32..64], 0);
+        std.mem.writeInt(u64, domain_data[56..64], chain_id, .big);
+
+        // Encode Safe address (right-padded to 32 bytes)
+        @memset(domain_data[64..96], 0);
+        const safe_addr_bytes = try self.parseAddressToBytes(safe_tx.safe_address);
+        @memcpy(domain_data[76..96], &safe_addr_bytes); // 20 bytes at right
+
         var domain_separator: [32]u8 = undefined;
+        Keccak256.hash(domain_data, &domain_separator, .{});
 
-        // Simple hash for demonstration (NOT secure, just for structure)
-        @memset(&hash, 0);
-        @memset(&domain_separator, 0);
+        // Safe Transaction TypeHash
+        const tx_typehash = try self.hashString(
+            "SafeTx(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,uint256 nonce)",
+        );
 
-        // Copy first bytes of address as placeholder
-        if (safe_tx.to.len >= 2 and safe_tx.to[0] == '0' and safe_tx.to[1] == 'x') {
-            const addr_bytes = safe_tx.to[2..];
-            const copy_len = @min(addr_bytes.len, 32);
-            @memcpy(hash[0..copy_len], addr_bytes[0..copy_len]);
-        }
+        // Encode Safe transaction data
+        // Total: 32 (typehash) + 32 (to) + 32 (value) + 32 (data hash) + 32 (operation) + 32*5 (gas params) + 32 (nonce)
+        var tx_data = try self.allocator.alloc(u8, 32 * 11);
+        defer self.allocator.free(tx_data);
+
+        @memset(tx_data, 0);
+
+        // TypeHash
+        @memcpy(tx_data[0..32], &tx_typehash);
+
+        // to address (right-aligned in 32 bytes)
+        const to_bytes = try self.parseAddressToBytes(safe_tx.to);
+        @memcpy(tx_data[44..64], &to_bytes); // 20 bytes at right of 32-byte word
+
+        // value (big-endian u64 in 32 bytes)
+        std.mem.writeInt(u64, tx_data[88..96], safe_tx.value, .big);
+
+        // data hash (keccak256 of data)
+        var data_hash: [32]u8 = undefined;
+        Keccak256.hash(safe_tx.data, &data_hash, .{});
+        @memcpy(tx_data[96..128], &data_hash);
+
+        // operation (u8 in 32 bytes)
+        tx_data[159] = safe_tx.operation.toU8();
+
+        // safeTxGas
+        std.mem.writeInt(u64, tx_data[184..192], safe_tx.safe_tx_gas, .big);
+
+        // baseGas
+        std.mem.writeInt(u64, tx_data[216..224], safe_tx.base_gas, .big);
+
+        // gasPrice
+        std.mem.writeInt(u64, tx_data[248..256], safe_tx.gas_price, .big);
+
+        // gasToken address
+        const gas_token_bytes = try self.parseAddressToBytes(safe_tx.gas_token);
+        @memcpy(tx_data[268..288], &gas_token_bytes);
+
+        // refundReceiver address
+        const refund_bytes = try self.parseAddressToBytes(safe_tx.refund_receiver);
+        @memcpy(tx_data[300..320], &refund_bytes);
+
+        // nonce
+        std.mem.writeInt(u64, tx_data[344..352], safe_tx.nonce, .big);
+
+        // Hash transaction data
+        var tx_hash_inner: [32]u8 = undefined;
+        Keccak256.hash(tx_data, &tx_hash_inner, .{});
+
+        // Final EIP-712 hash: keccak256("\x19\x01" || domainSeparator || txHash)
+        var final_data = try self.allocator.alloc(u8, 2 + 32 + 32);
+        defer self.allocator.free(final_data);
+
+        final_data[0] = 0x19;
+        final_data[1] = 0x01;
+        @memcpy(final_data[2..34], &domain_separator);
+        @memcpy(final_data[34..66], &tx_hash_inner);
+
+        var hash: [32]u8 = undefined;
+        Keccak256.hash(final_data, &hash, .{});
 
         return SafeTransactionHash{
             .hash = hash,
@@ -159,16 +267,39 @@ pub const MultiSigBuilder = struct {
         };
     }
 
+    /// Hash a string with keccak256
+    fn hashString(self: *MultiSigBuilder, s: []const u8) ![32]u8 {
+        _ = self;
+        var hash: [32]u8 = undefined;
+        Keccak256.hash(s, &hash, .{});
+        return hash;
+    }
+
+    /// Parse hex address string to 20 bytes
+    fn parseAddressToBytes(self: *MultiSigBuilder, addr: []const u8) ![20]u8 {
+        _ = self;
+        var result: [20]u8 = undefined;
+
+        // Remove "0x" prefix if present
+        const hex_str = if (addr.len >= 2 and addr[0] == '0' and (addr[1] == 'x' or addr[1] == 'X'))
+            addr[2..]
+        else
+            addr;
+
+        // Parse hex string to bytes
+        if (hex_str.len != 40) {
+            return error.InvalidAddressLength;
+        }
+
+        _ = std.fmt.hexToBytes(&result, hex_str) catch return error.InvalidHexAddress;
+        return result;
+    }
+
     /// Encode execTransaction call data
     pub fn encodeExecTransaction(
         self: *MultiSigBuilder,
         safe_tx: *const SafeTransaction,
     ) ![]const u8 {
-        _ = safe_tx; // Will be used in full implementation
-
-        // In real implementation, this would encode the execTransaction() call
-        // using ABI encoding with all Safe transaction parameters
-
         // Function signature: execTransaction(
         //     address to,
         //     uint256 value,
@@ -181,10 +312,125 @@ pub const MultiSigBuilder = struct {
         //     address refundReceiver,
         //     bytes signatures
         // )
+        // Selector: 0x6a761202
 
-        // Placeholder: return function selector
-        const selector = "0x6a761202"; // execTransaction selector
-        return try self.allocator.dupe(u8, selector);
+        // Calculate function selector
+        const selector_bytes = [_]u8{ 0x6a, 0x76, 0x12, 0x02 };
+
+        // ABI encoding:
+        // 1. Static parameters (to, value) encoded in place
+        // 2. Dynamic parameters (data, signatures) have offset pointers
+        // 3. Dynamic data appended at end
+
+        // Calculate offsets for dynamic parameters
+        // Head = 32 * 10 (10 parameters) = 320 bytes
+        const data_offset: usize = 320;
+        const signatures_offset: usize = data_offset + 32 + ((safe_tx.data.len + 31) / 32) * 32;
+
+        // Allocate buffer for encoding
+        // Head (320) + data_length (32) + data_padded + sig_length (32) + sig_padded
+        const sig_len = if (safe_tx.signatures) |sigs| sigs.len else 0;
+        const data_padded_len = ((safe_tx.data.len + 31) / 32) * 32;
+        const sig_padded_len = ((sig_len + 31) / 32) * 32;
+        const total_len = 320 + 32 + data_padded_len + 32 + sig_padded_len;
+
+        var encoded = try self.allocator.alloc(u8, total_len);
+        @memset(encoded, 0);
+
+        var offset: usize = 0;
+
+        // Parameter 1: to (address)
+        const to_bytes = try self.parseAddressToBytes(safe_tx.to);
+        @memcpy(encoded[offset + 12 .. offset + 32], &to_bytes);
+        offset += 32;
+
+        // Parameter 2: value (uint256)
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], safe_tx.value, .big);
+        offset += 32;
+
+        // Parameter 3: data offset (uint256)
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], data_offset, .big);
+        offset += 32;
+
+        // Parameter 4: operation (uint8)
+        encoded[offset + 31] = safe_tx.operation.toU8();
+        offset += 32;
+
+        // Parameter 5: safeTxGas (uint256)
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], safe_tx.safe_tx_gas, .big);
+        offset += 32;
+
+        // Parameter 6: baseGas (uint256)
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], safe_tx.base_gas, .big);
+        offset += 32;
+
+        // Parameter 7: gasPrice (uint256)
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], safe_tx.gas_price, .big);
+        offset += 32;
+
+        // Parameter 8: gasToken (address)
+        const gas_token_bytes = try self.parseAddressToBytes(safe_tx.gas_token);
+        @memcpy(encoded[offset + 12 .. offset + 32], &gas_token_bytes);
+        offset += 32;
+
+        // Parameter 9: refundReceiver (address)
+        const refund_bytes = try self.parseAddressToBytes(safe_tx.refund_receiver);
+        @memcpy(encoded[offset + 12 .. offset + 32], &refund_bytes);
+        offset += 32;
+
+        // Parameter 10: signatures offset (uint256)
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], signatures_offset, .big);
+        offset += 32;
+
+        // Dynamic data: bytes data
+        // Length
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], safe_tx.data.len, .big);
+        offset += 32;
+        // Data (padded to 32-byte boundary)
+        if (safe_tx.data.len > 0) {
+            @memcpy(encoded[offset .. offset + safe_tx.data.len], safe_tx.data);
+        }
+        offset += data_padded_len;
+
+        // Dynamic data: bytes signatures
+        // Length
+        std.mem.writeInt(u64, encoded[offset + 24 .. offset + 32], sig_len, .big);
+        offset += 32;
+        // Signatures (padded to 32-byte boundary)
+        if (safe_tx.signatures) |sigs| {
+            if (sigs.len > 0) {
+                @memcpy(encoded[offset .. offset + sigs.len], sigs);
+            }
+        }
+
+        // Build final hex string: 0x + selector + encoded
+        const hex_len = 2 + (selector_bytes.len + encoded.len) * 2;
+        var result = try self.allocator.alloc(u8, hex_len);
+        errdefer self.allocator.free(result);
+
+        result[0] = '0';
+        result[1] = 'x';
+
+        const hex_chars = "0123456789abcdef";
+        var hex_offset: usize = 2;
+
+        // Encode selector
+        for (selector_bytes) |byte| {
+            result[hex_offset] = hex_chars[byte >> 4];
+            result[hex_offset + 1] = hex_chars[byte & 0x0F];
+            hex_offset += 2;
+        }
+
+        // Encode parameters
+        for (encoded) |byte| {
+            result[hex_offset] = hex_chars[byte >> 4];
+            result[hex_offset + 1] = hex_chars[byte & 0x0F];
+            hex_offset += 2;
+        }
+
+        self.allocator.free(encoded);
+
+        return result;
     }
 };
 
