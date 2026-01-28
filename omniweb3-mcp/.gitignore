@@ -19,3 +19,4 @@ web-app/dist/
 # OS files
 .DS_Store
 deps/
+zig-out/bin/omniweb3-mcp
