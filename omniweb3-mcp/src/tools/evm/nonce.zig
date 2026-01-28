@@ -28,7 +28,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const endpoint_override = mcp.tools.getString(args, "endpoint");
     const tag_str = mcp.tools.getString(args, "tag") orelse "latest";
 
-    if (!(std.ascii.eqlIgnoreCase(chain_name, "ethereum") or std.ascii.eqlIgnoreCase(chain_name, "avalanche") or std.ascii.eqlIgnoreCase(chain_name, "bnb") or std.ascii.eqlIgnoreCase(chain_name, "evm"))) {
+    if (!(std.ascii.eqlIgnoreCase(chain_name, "ethereum") or std.ascii.eqlIgnoreCase(chain_name, "avalanche") or std.ascii.eqlIgnoreCase(chain_name, "bnb") or std.ascii.eqlIgnoreCase(chain_name, "bsc") or std.ascii.eqlIgnoreCase(chain_name, "polygon") or std.ascii.eqlIgnoreCase(chain_name, "evm"))) {
         const msg = std.fmt.allocPrint(allocator, "Unsupported chain for nonce: {s}", .{chain_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
