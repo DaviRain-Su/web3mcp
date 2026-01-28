@@ -31,6 +31,9 @@ pub const MultiSigBuilder = multisig.MultiSigBuilder;
 pub const SafeTransaction = multisig.SafeTransaction;
 pub const SafeInfo = multisig.SafeInfo;
 pub const Operation = multisig.Operation;
+pub const Signature = multisig.Signature;
+pub const SafeManager = multisig.SafeManager;
+pub const SafeTransactionHash = multisig.SafeTransactionHash;
 
 // Re-export gas_tracker module for external use
 pub const GasTracker = gas_tracker.GasTracker;

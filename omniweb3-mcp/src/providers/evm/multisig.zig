@@ -5,9 +5,11 @@
 
 const std = @import("std");
 const chain_provider = @import("../../core/chain_provider.zig");
+const rpc_client = @import("./rpc_client.zig");
 
 const FunctionCall = chain_provider.FunctionCall;
 const Keccak256 = std.crypto.hash.sha3.Keccak256;
+const EvmRpcClient = rpc_client.EvmRpcClient;
 
 /// Gnosis Safe transaction operation type
 pub const Operation = enum(u8) {
@@ -448,6 +450,9 @@ pub const SafeInfo = struct {
     /// Current nonce
     nonce: u64,
 
+    /// Safe version (e.g., "1.4.1")
+    version: ?[]const u8 = null,
+
     /// Free allocated memory
     pub fn deinit(self: SafeInfo, allocator: std.mem.Allocator) void {
         allocator.free(self.address);
@@ -455,6 +460,351 @@ pub const SafeInfo = struct {
             allocator.free(owner);
         }
         allocator.free(self.owners);
+        if (self.version) |v| {
+            allocator.free(v);
+        }
+    }
+};
+
+/// ECDSA signature components
+pub const Signature = struct {
+    /// r component (32 bytes)
+    r: [32]u8,
+
+    /// s component (32 bytes)
+    s: [32]u8,
+
+    /// v component (recovery id, typically 27 or 28)
+    v: u8,
+
+    /// Encode signature as bytes (r || s || v) - 65 bytes total
+    pub fn toBytes(self: Signature, allocator: std.mem.Allocator) ![]u8 {
+        var result = try allocator.alloc(u8, 65);
+        @memcpy(result[0..32], &self.r);
+        @memcpy(result[32..64], &self.s);
+        result[64] = self.v;
+        return result;
+    }
+
+    /// Parse signature from 65-byte array
+    pub fn fromBytes(bytes: []const u8) !Signature {
+        if (bytes.len != 65) {
+            return error.InvalidSignatureLength;
+        }
+
+        var sig: Signature = undefined;
+        @memcpy(&sig.r, bytes[0..32]);
+        @memcpy(&sig.s, bytes[32..64]);
+        sig.v = bytes[64];
+
+        return sig;
+    }
+
+    /// Parse signature from hex string (0x-prefixed, 130 chars)
+    pub fn fromHex(allocator: std.mem.Allocator, hex: []const u8) !Signature {
+        const hex_data = if (hex.len >= 2 and hex[0] == '0' and (hex[1] == 'x' or hex[1] == 'X'))
+            hex[2..]
+        else
+            hex;
+
+        if (hex_data.len != 130) {
+            return error.InvalidSignatureLength;
+        }
+
+        const bytes = try allocator.alloc(u8, 65);
+        defer allocator.free(bytes);
+
+        _ = std.fmt.hexToBytes(bytes, hex_data) catch return error.InvalidHexSignature;
+
+        return try fromBytes(bytes);
+    }
+};
+
+/// Safe manager with RPC integration
+pub const SafeManager = struct {
+    allocator: std.mem.Allocator,
+    rpc_client: *EvmRpcClient,
+
+    /// Initialize Safe manager
+    pub fn init(allocator: std.mem.Allocator, client: *EvmRpcClient) SafeManager {
+        return .{
+            .allocator = allocator,
+            .rpc_client = client,
+        };
+    }
+
+    /// Get Safe contract information (nonce, threshold, owners, version)
+    pub fn getSafeInfo(self: *SafeManager, safe_address: []const u8) !SafeInfo {
+        // Call nonce()
+        const nonce_data = "0xaffed0e0"; // nonce() selector
+        const nonce_result = try self.rpc_client.ethCall(.{
+            .from = null,
+            .to = safe_address,
+            .gas = null,
+            .gasPrice = null,
+            .value = null,
+            .data = nonce_data,
+        }, .latest);
+        defer self.allocator.free(nonce_result);
+
+        const nonce = try self.parseU256(nonce_result);
+
+        // Call getThreshold()
+        const threshold_data = "0xe75235b8"; // getThreshold() selector
+        const threshold_result = try self.rpc_client.ethCall(.{
+            .from = null,
+            .to = safe_address,
+            .gas = null,
+            .gasPrice = null,
+            .value = null,
+            .data = threshold_data,
+        }, .latest);
+        defer self.allocator.free(threshold_result);
+
+        const threshold = try self.parseU256(threshold_result);
+
+        // Call getOwners()
+        const owners_data = "0xa0e67e2b"; // getOwners() selector
+        const owners_result = try self.rpc_client.ethCall(.{
+            .from = null,
+            .to = safe_address,
+            .gas = null,
+            .gasPrice = null,
+            .value = null,
+            .data = owners_data,
+        }, .latest);
+        defer self.allocator.free(owners_result);
+
+        const owners = try self.parseAddressArray(owners_result);
+
+        // Try to get version (may fail on older Safe contracts)
+        var version: ?[]const u8 = null;
+        const version_data = "0xffa1ad74"; // VERSION() selector
+        if (self.rpc_client.ethCall(.{
+            .from = null,
+            .to = safe_address,
+            .gas = null,
+            .gasPrice = null,
+            .value = null,
+            .data = version_data,
+        }, .latest)) |version_result| {
+            defer self.allocator.free(version_result);
+            version = try self.parseString(version_result);
+        } else |_| {
+            // Version call failed, assume older version
+            version = try self.allocator.dupe(u8, "< 1.3.0");
+        }
+
+        return SafeInfo{
+            .address = try self.allocator.dupe(u8, safe_address),
+            .owners = owners,
+            .threshold = threshold,
+            .nonce = nonce,
+            .version = version,
+        };
+    }
+
+    /// Build Safe transaction with auto-fetched nonce
+    pub fn buildSafeTransactionAuto(
+        self: *SafeManager,
+        safe_address: []const u8,
+        to: []const u8,
+        value: u64,
+        data: []const u8,
+        operation: Operation,
+    ) !SafeTransaction {
+        // Get Safe info to fetch current nonce
+        const safe_info = try self.getSafeInfo(safe_address);
+        defer safe_info.deinit(self.allocator);
+
+        // Build transaction with fetched nonce
+        var builder = MultiSigBuilder.init(self.allocator);
+        return try builder.buildSafeTransaction(
+            safe_address,
+            to,
+            value,
+            data,
+            operation,
+            safe_info.nonce,
+        );
+    }
+
+    /// Aggregate signatures for Safe transaction
+    ///
+    /// Signatures must be sorted by signer address (ascending order)
+    /// Safe requires: sig1.signer < sig2.signer < sig3.signer
+    pub fn aggregateSignatures(
+        self: *SafeManager,
+        signatures: []const Signature,
+        signers: []const []const u8,
+    ) ![]u8 {
+        if (signatures.len != signers.len) {
+            return error.SignerCountMismatch;
+        }
+
+        if (signatures.len == 0) {
+            return error.NoSignatures;
+        }
+
+        // Create array of (signer, signature) pairs for sorting
+        var pairs = try self.allocator.alloc(struct { signer: []const u8, sig: Signature }, signatures.len);
+        defer self.allocator.free(pairs);
+
+        for (signatures, signers, 0..) |sig, signer, i| {
+            pairs[i] = .{ .signer = signer, .sig = sig };
+        }
+
+        // Sort by signer address (ascending)
+        std.mem.sort(@TypeOf(pairs[0]), pairs, {}, struct {
+            fn lessThan(_: void, a: @TypeOf(pairs[0]), b: @TypeOf(pairs[0])) bool {
+                return std.mem.lessThan(u8, a.signer, b.signer);
+            }
+        }.lessThan);
+
+        // Concatenate signatures: r1 || s1 || v1 || r2 || s2 || v2 || ...
+        var result = try self.allocator.alloc(u8, 65 * signatures.len);
+        errdefer self.allocator.free(result);
+
+        for (pairs, 0..) |pair, i| {
+            const offset = i * 65;
+            const sig_bytes = try pair.sig.toBytes(self.allocator);
+            defer self.allocator.free(sig_bytes);
+            @memcpy(result[offset .. offset + 65], sig_bytes);
+        }
+
+        return result;
+    }
+
+    /// Verify Safe version is supported
+    pub fn verifySafeVersion(self: *SafeManager, safe_address: []const u8) !bool {
+        const safe_info = try self.getSafeInfo(safe_address);
+        defer safe_info.deinit(self.allocator);
+
+        if (safe_info.version == null) {
+            // No version info, assume compatible
+            return true;
+        }
+
+        const version = safe_info.version.?;
+
+        // Support Safe 1.3.0 and above
+        // Version format: "1.4.1", "1.3.0", etc.
+        if (version.len >= 5) {
+            const major = version[0] - '0';
+            const minor = version[2] - '0';
+
+            // Support version 1.3.0+
+            if (major == '1' and minor >= 3) {
+                return true;
+            }
+            // Support version 2.0.0+
+            if (major >= '2') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// Parse uint256 from hex result
+    fn parseU256(self: *SafeManager, hex: []const u8) !u64 {
+        _ = self;
+        const hex_str = if (hex.len >= 2 and hex[0] == '0' and (hex[1] == 'x' or hex[1] == 'X'))
+            hex[2..]
+        else
+            hex;
+
+        return try std.fmt.parseInt(u64, hex_str, 16);
+    }
+
+    /// Parse address array from ABI-encoded result
+    fn parseAddressArray(self: *SafeManager, hex: []const u8) ![][]const u8 {
+        // Simplified parsing: assumes standard ABI encoding
+        // offset (32 bytes) | length (32 bytes) | addr1 (32 bytes) | addr2 (32 bytes) | ...
+
+        const hex_str = if (hex.len >= 2 and hex[0] == '0' and (hex[1] == 'x' or hex[1] == 'X'))
+            hex[2..]
+        else
+            hex;
+
+        if (hex_str.len < 128) {
+            // Need at least offset + length
+            return error.InvalidAbiData;
+        }
+
+        // Parse length (at bytes 32-64, hex position 64-128)
+        const length_hex = hex_str[64..128];
+        const length = try std.fmt.parseInt(usize, length_hex, 16);
+
+        if (length == 0) {
+            return try self.allocator.alloc([]const u8, 0);
+        }
+
+        var addresses = try self.allocator.alloc([]const u8, length);
+        errdefer {
+            for (addresses[0..length]) |addr| {
+                self.allocator.free(addr);
+            }
+            self.allocator.free(addresses);
+        }
+
+        // Each address is 32 bytes (64 hex chars), but actual address is last 20 bytes
+        for (0..length) |i| {
+            const addr_offset = 128 + (i * 64); // Skip offset + length
+            if (addr_offset + 64 > hex_str.len) {
+                return error.InvalidAbiData;
+            }
+
+            // Take last 40 hex chars (20 bytes = address)
+            const addr_hex = hex_str[addr_offset + 24 .. addr_offset + 64];
+
+            // Format as "0x" + address
+            var addr = try self.allocator.alloc(u8, 42);
+            addr[0] = '0';
+            addr[1] = 'x';
+            @memcpy(addr[2..], addr_hex);
+
+            addresses[i] = addr;
+        }
+
+        return addresses;
+    }
+
+    /// Parse string from ABI-encoded result
+    fn parseString(self: *SafeManager, hex: []const u8) ![]const u8 {
+        const hex_str = if (hex.len >= 2 and hex[0] == '0' and (hex[1] == 'x' or hex[1] == 'X'))
+            hex[2..]
+        else
+            hex;
+
+        if (hex_str.len < 128) {
+            return error.InvalidAbiData;
+        }
+
+        // Parse length (at bytes 32-64)
+        const length_hex = hex_str[64..128];
+        const length = try std.fmt.parseInt(usize, length_hex, 16);
+
+        if (length == 0) {
+            return try self.allocator.alloc(u8, 0);
+        }
+
+        // String data starts at byte 64
+        const data_hex = hex_str[128..];
+        if (data_hex.len < length * 2) {
+            return error.InvalidAbiData;
+        }
+
+        // Convert hex to string
+        var result = try self.allocator.alloc(u8, length);
+        errdefer self.allocator.free(result);
+
+        for (0..length) |i| {
+            const byte_hex = data_hex[i * 2 .. i * 2 + 2];
+            result[i] = try std.fmt.parseInt(u8, byte_hex, 16);
+        }
+
+        return result;
     }
 };
 
