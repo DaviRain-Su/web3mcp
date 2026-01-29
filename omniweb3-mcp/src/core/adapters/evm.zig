@@ -5,7 +5,6 @@ const evm_helpers = @import("../evm_helpers.zig");
 const HttpProvider = zabi.clients.Provider.HttpProvider;
 const Wallet = zabi.clients.Wallet;
 const block = zabi.types.block;
-const transaction = zabi.types.transactions;
 const EthCall = zabi.types.transactions.EthCall;
 const Transaction = zabi.types.transactions.Transaction;
 const TransactionTypes = zabi.types.transactions.TransactionTypes;
@@ -19,8 +18,6 @@ const Hash = zabi.types.ethereum.Hash;
 const Hex = zabi.types.ethereum.Hex;
 const RPCResponse = zabi.types.ethereum.RPCResponse;
 const Wei = zabi.types.ethereum.Wei;
-const serialize = zabi.encoding.serialize;
-const Keccak256 = std.crypto.hash.sha3.Keccak256;
 
 pub const TransferResult = struct {
     tx_hash: Hash,
@@ -65,123 +62,10 @@ pub const EvmAdapter = struct {
         wallet: *Wallet,
         envelope: UnpreparedTransactionEnvelope,
     ) !Hash {
-        const tx_hash_response = wallet.sendTransaction(envelope) catch |err| {
-            if (err == error.UnexpectedErrorFound) {
-                std.log.warn("wallet.sendTransaction returned UnexpectedErrorFound; retrying with raw RPC", .{});
-                return self.sendSignedTransactionRaw(wallet, envelope);
-            }
-            return err;
-        };
+        _ = self;
+        const tx_hash_response = try wallet.sendTransaction(envelope);
         defer tx_hash_response.deinit();
         return tx_hash_response.response;
-    }
-
-    fn sendSignedTransactionRaw(
-        self: *EvmAdapter,
-        wallet: *Wallet,
-        envelope: UnpreparedTransactionEnvelope,
-    ) !Hash {
-        // Manually construct prepared envelope to avoid prepareTransaction issues with BSC testnet
-        const LegacyTransactionEnvelope = transaction.LegacyTransactionEnvelope;
-        const TransactionEnvelope = transaction.TransactionEnvelope;
-
-        const prepared = switch (envelope.type) {
-            .legacy => TransactionEnvelope{ .legacy = LegacyTransactionEnvelope{
-                .chainId = envelope.chainId orelse @intFromEnum(wallet.rpc_client.network_config.chain_id),
-                .nonce = envelope.nonce orelse 0,
-                .gasPrice = envelope.gasPrice orelse 0,
-                .gas = envelope.gas orelse 0,
-                .to = envelope.to,
-                .value = envelope.value orelse 0,
-                .data = envelope.data,
-            } },
-            else => return error.UnsupportedTransactionType,
-        };
-
-        try wallet.assertTransaction(prepared);
-
-        const serialized = try serialize.serializeTransaction(self.allocator, prepared, null);
-        defer self.allocator.free(serialized);
-
-        var hash_buffer: [Keccak256.digest_length]u8 = undefined;
-        Keccak256.hash(serialized, &hash_buffer, .{});
-
-        const signature = try wallet.signer.sign(hash_buffer);
-        const serialized_signed = try serialize.serializeTransaction(self.allocator, prepared, signature);
-        defer self.allocator.free(serialized_signed);
-
-        const raw_hex = try hexEncodePrefixed(self.allocator, serialized_signed);
-        defer self.allocator.free(raw_hex);
-
-        return self.sendRawTransactionHex(raw_hex);
-    }
-
-    fn sendRawTransactionHex(self: *EvmAdapter, raw_hex: []const u8) !Hash {
-        const request_json = try std.fmt.allocPrint(
-            self.allocator,
-            "{{\"jsonrpc\":\"2.0\",\"id\":{d},\"method\":\"eth_sendRawTransaction\",\"params\":[\"{s}\"]}}",
-            .{ @intFromEnum(self.provider.provider.network_config.chain_id), raw_hex },
-        );
-        defer self.allocator.free(request_json);
-
-        const response = try self.provider.provider.vtable.sendRpcRequest(&self.provider.provider, request_json);
-        defer response.deinit();
-
-        if (response.value != .object) return error.InvalidRpcResponse;
-
-        const obj = response.value.object;
-        if (obj.get("result")) |value| {
-            if (value == .string) {
-                return evm_helpers.parseHash(value.string);
-            }
-            return error.InvalidRpcResponse;
-        }
-
-        if (obj.get("error")) |err_value| {
-            if (err_value == .object) {
-                const err_obj = err_value.object;
-                const message = if (err_obj.get("message")) |msg|
-                    if (msg == .string) msg.string else "RPC error"
-                else
-                    "RPC error";
-
-                if (err_obj.get("data")) |data_value| {
-                    const data_string = evm_helpers.jsonStringifyAlloc(self.allocator, data_value) catch null;
-                    if (data_string) |data| {
-                        defer self.allocator.free(data);
-                        std.log.err("RPC error: {s} data={s}", .{ message, data });
-                    } else {
-                        std.log.err("RPC error: {s}", .{message});
-                    }
-                } else {
-                    std.log.err("RPC error: {s}", .{message});
-                }
-            } else {
-                std.log.err("RPC error: unexpected error payload", .{});
-            }
-            return error.RpcSendFailed;
-        }
-
-        return error.InvalidRpcResponse;
-    }
-
-    fn hexEncodePrefixed(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-        const hex_len = bytes.len * 2;
-        var out = try allocator.alloc(u8, hex_len + 2);
-        errdefer allocator.free(out);
-
-        out[0] = '0';
-        out[1] = 'x';
-
-        const charset = "0123456789abcdef";
-        var idx: usize = 2;
-        for (bytes) |b| {
-            out[idx] = charset[b >> 4];
-            out[idx + 1] = charset[b & 0x0f];
-            idx += 2;
-        }
-
-        return out;
     }
 
     pub fn getBalance(self: *EvmAdapter, address: Address) !u256 {
