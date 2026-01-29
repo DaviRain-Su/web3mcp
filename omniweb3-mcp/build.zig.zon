@@ -6,6 +6,7 @@
         "build.zig",
         "build.zig.zon",
         "src",
+        "ui/dist",
     },
     .dependencies = .{
         .mcp = .{ .path = "deps/mcp.zig" },

@@ -2,6 +2,7 @@ const std = @import("std");
 const mcp = @import("mcp");
 const tools = @import("tools/registry.zig");
 const evm_runtime = @import("core/evm_runtime.zig");
+const ui_server = @import("ui/server.zig");
 
 /// Smart MCP Server with Contract Discovery
 /// Only loads static tools (~175) + uses unified interfaces for contracts
@@ -52,6 +53,10 @@ fn run(init: std.process.Init) !void {
     // Register discovery tools
     std.log.info("Registering discovery tools...", .{});
     try registerDiscoveryTools(&server, allocator, &init.io);
+
+    // Register UI resources
+    std.log.info("Registering UI resources...", .{});
+    try ui_server.registerResources(&server, allocator);
 
     server.enableLogging();
 

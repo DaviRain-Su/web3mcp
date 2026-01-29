@@ -408,6 +408,12 @@ pub const Server = struct {
             }
 
             _ = tool_obj.put("inputSchema", .{ .object = input_schema }) catch {};
+
+            // Add metadata if present (for MCP Apps UI support)
+            if (entry.value_ptr.metadata) |meta| {
+                _ = tool_obj.put("_meta", meta) catch {};
+            }
+
             try tools_array.append(.{ .object = tool_obj });
         }
 
@@ -619,7 +625,18 @@ pub const Server = struct {
                     },
                     .resource => |res| {
                         try item_obj.put("type", .{ .string = "resource" });
-                        try item_obj.put("uri", .{ .string = res.resource.uri });
+                        var resource_obj = std.json.ObjectMap.init(self.allocator);
+                        try resource_obj.put("uri", .{ .string = res.resource.uri });
+                        if (res.resource.mimeType) |mt| {
+                            try resource_obj.put("mimeType", .{ .string = mt });
+                        }
+                        if (res.resource.text) |text| {
+                            try resource_obj.put("text", .{ .string = text });
+                        }
+                        if (res.resource.blob) |blob| {
+                            try resource_obj.put("blob", .{ .string = blob });
+                        }
+                        try item_obj.put("resource", .{ .object = resource_obj });
                     },
                 }
                 try content_array.append(.{ .object = item_obj });

@@ -16,6 +16,7 @@ pub const Tool = struct {
     inputSchema: ?types.InputSchema = null,
     icons: ?[]const types.Icon = null,
     annotations: ?ToolAnnotations = null,
+    metadata: ?std.json.Value = null, // For MCP Apps UI support (_meta field)
     handler: *const fn (allocator: std.mem.Allocator, arguments: ?std.json.Value) ToolError!ToolResult,
     user_data: ?*anyopaque = null,
 };

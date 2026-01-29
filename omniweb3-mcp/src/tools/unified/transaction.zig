@@ -18,6 +18,7 @@ const chain = @import("../../core/chain.zig");
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     const chain_name = mcp.tools.getString(args, "chain") orelse "solana";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
+    _ = mcp.tools.getBoolean(args, "_ui");
 
     if (std.ascii.eqlIgnoreCase(chain_name, "solana")) {
         const signature_str = mcp.tools.getString(args, "signature") orelse {
@@ -149,6 +150,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         ) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
+        defer allocator.free(response);
 
         return mcp.tools.textResult(allocator, response) catch {
             return mcp.tools.ToolError.OutOfMemory;

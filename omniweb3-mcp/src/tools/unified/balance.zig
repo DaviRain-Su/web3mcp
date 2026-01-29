@@ -30,6 +30,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     const network_str = mcp.tools.getString(args, "network") orelse "mainnet";
     const endpoint_override = mcp.tools.getString(args, "endpoint");
+    _ = mcp.tools.getBoolean(args, "_ui");
 
     if (std.ascii.eqlIgnoreCase(chain_name, "solana")) {
         const pubkey = solana_helpers.parsePublicKey(address) catch {
@@ -66,6 +67,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         ) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
+        defer allocator.free(response);
 
         return mcp.tools.textResult(allocator, response) catch {
             return mcp.tools.ToolError.OutOfMemory;
@@ -115,6 +117,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         ) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
+        defer allocator.free(response);
 
         return mcp.tools.textResult(allocator, response) catch {
             return mcp.tools.ToolError.OutOfMemory;
