@@ -1,0 +1,6 @@
+{
+  "build:single": "vite build -c vite.config.transaction.ts && vite build -c vite.config.swap.ts && vite build -c vite.config.balance.ts",
+  "build:transaction": "vite build -c vite.config.transaction.ts",
+  "build:swap": "vite build -c vite.config.swap.ts",
+  "build:balance": "vite build -c vite.config.balance.ts"
+}

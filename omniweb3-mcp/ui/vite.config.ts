@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-// import { viteSingleFile } from 'vite-plugin-singlefile';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
+// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    // viteSingleFile(), // TODO: Enable per-page single file bundling
+    viteSingleFile(), // Bundle everything into single HTML files (官方MCP Apps要求)
   ],
   build: {
     rollupOptions: {
@@ -15,6 +16,8 @@ export default defineConfig({
         balance: './src/balance/index.html',
       },
     },
-    minify: 'esbuild', // Use esbuild for faster minification
+    minify: 'esbuild',
+    cssCodeSplit: false, // Inline CSS
+    assetsInlineLimit: 100000000, // Inline all assets
   },
 });

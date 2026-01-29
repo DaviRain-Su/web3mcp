@@ -100,12 +100,33 @@ npm run build
 
 ## 🚀 开发
 
+### 开发服务器
+
+```bash
+npm run dev
+```
+
+### Mock 模式 (推荐用于开发)
+
+默认情况下，开发环境会使用 Mock 模式，无需真实的 MCP Host：
+
 ```bash
 npm run dev
 ```
 
 然后访问：
-- http://localhost:5173/src/transaction/index.html?chain=bsc&tx_hash=0x...&network=testnet
+- **Mock 模式**: http://localhost:5173/src/transaction/index.html?mock=true
+- **真实模式**: http://localhost:5173/src/transaction/index.html?chain=bsc&tx_hash=0x5ad4...&network=testnet
+
+**Mock 模式特性**:
+- ✅ 无需 MCP Host (Claude Desktop/VS Code)
+- ✅ 提供示例数据
+- ✅ 模拟网络延迟
+- ✅ 方便快速开发和调试
+
+**控制 Mock 模式**:
+1. 通过 `.env.development` 文件: `VITE_USE_MOCK=true`
+2. 通过 URL 参数: `?mock=true`
 
 ## 📝 URL 参数
 

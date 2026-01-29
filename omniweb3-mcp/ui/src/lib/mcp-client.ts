@@ -128,7 +128,22 @@ export class MCPClient {
 // Singleton instance
 let mcpClient: MCPClient | null = null;
 
-export function getMCPClient(): MCPClient {
+// Check if we should use mock mode
+function shouldUseMock(): boolean {
+  return import.meta.env.VITE_USE_MOCK === 'true' ||
+         new URLSearchParams(window.location.search).get('mock') === 'true';
+}
+
+export async function getMCPClient(): Promise<MCPClient | any> {
+  if (shouldUseMock()) {
+    console.log('[MCP] Using Mock Mode for development');
+    const { getMockMCPClient } = await import('./mcp-mock');
+    if (!mcpClient) {
+      mcpClient = getMockMCPClient() as any;
+    }
+    return mcpClient;
+  }
+
   if (!mcpClient) {
     mcpClient = new MCPClient();
   }

@@ -49,23 +49,45 @@ export function TransactionViewer({
     try {
       setLoading(true);
       setError(null);
+
+      if (!mcp) {
+        setError('MCP client not initialized');
+        setLoading(false);
+        return;
+      }
+
       const result = await mcp.callTool('get_transaction', {
         chain,
         tx_hash: txHash,
         network,
+        _ui: true,
       });
 
-      if (result.isError) {
-        setError('Failed to fetch transaction');
+      // Handle undefined result
+      if (!result) {
+        setError('No response from MCP Host. Make sure the UI is running inside an MCP Host iframe.');
         return;
       }
 
-      if (result.content && result.content.length > 0) {
-        const content = result.content[0];
-        if (content.type === 'text' && content.text) {
-          const parsed = JSON.parse(content.text) as TransactionData;
+      // Handle error result
+      if (result.isError) {
+        const errorMsg = result.content?.[0]?.text || 'Failed to fetch transaction';
+        setError(errorMsg);
+        return;
+      }
+
+      const textItem = result.content?.find(
+        (item) => item.type === 'text' && 'text' in item && item.text
+      );
+      if (textItem && textItem.type === 'text' && textItem.text) {
+        try {
+          const parsed = JSON.parse(textItem.text) as TransactionData;
           setData(parsed);
+        } catch (parseErr) {
+          setError('Failed to parse transaction data');
         }
+      } else {
+        setError('Empty response from server');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -75,6 +97,8 @@ export function TransactionViewer({
   };
 
   useEffect(() => {
+    if (!mcp) return; // Wait for MCP client to initialize
+
     fetchTransaction();
 
     // Auto-refresh if transaction is pending
@@ -86,7 +110,7 @@ export function TransactionViewer({
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [chain, txHash, network]);
+  }, [chain, txHash, network, mcp]);
 
   if (loading && !data) {
     return (

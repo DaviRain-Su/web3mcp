@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getMCPClient, MCPClient } from '../lib/mcp-client';
+import { getMCPAppClient, MCPAppClient } from '../lib/mcp-app';
 
 /**
- * Hook to get the MCP client instance
+ * Hook to get the MCP App client instance (using official SDK)
  */
-export function useMCP(): MCPClient {
-  const clientRef = useRef<MCPClient | null>(null);
+export function useMCP(): MCPAppClient | null {
+  const clientRef = useRef<MCPAppClient | null>(null);
+  const [client, setClient] = useState<MCPAppClient | null>(null);
 
-  if (!clientRef.current) {
-    clientRef.current = getMCPClient();
-  }
+  useEffect(() => {
+    if (!clientRef.current) {
+      getMCPAppClient('OmniWeb3 Transaction Viewer').then((c) => {
+        clientRef.current = c;
+        setClient(c);
+      });
+    }
+  }, []);
 
-  return clientRef.current;
+  return client;
 }
 
 /**
@@ -38,6 +44,10 @@ export function useMCPTool<T = any>(
       setLoading(false);
       return;
     }
+    if (!mcp) {
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -50,14 +60,14 @@ export function useMCPTool<T = any>(
 
         // Parse result
         let parsedData: T | null = null;
-        if (result.content && result.content.length > 0) {
-          const content = result.content[0];
-          if (content.type === 'text' && content.text) {
-            try {
-              parsedData = JSON.parse(content.text) as T;
-            } catch {
-              parsedData = content.text as any;
-            }
+        const textItem = result.content?.find(
+          (item) => item.type === 'text' && 'text' in item && item.text
+        );
+        if (textItem && textItem.type === 'text' && textItem.text) {
+          try {
+            parsedData = JSON.parse(textItem.text) as T;
+          } catch {
+            parsedData = textItem.text as any;
           }
         }
 
@@ -87,22 +97,25 @@ export function useMCPTool<T = any>(
         window.clearInterval(intervalId);
       }
     };
-  }, [enabled, toolName, JSON.stringify(args), refreshInterval]);
+  }, [enabled, mcp, toolName, JSON.stringify(args), refreshInterval]);
 
   const refetch = useCallback(async () => {
     try {
       setLoading(true);
+      if (!mcp) {
+        throw new Error('MCP client not initialized');
+      }
       const result = await mcp.callTool(toolName, args);
 
       let parsedData: T | null = null;
-      if (result.content && result.content.length > 0) {
-        const content = result.content[0];
-        if (content.type === 'text' && content.text) {
-          try {
-            parsedData = JSON.parse(content.text) as T;
-          } catch {
-            parsedData = content.text as any;
-          }
+      const textItem = result.content?.find(
+        (item) => item.type === 'text' && 'text' in item && item.text
+      );
+      if (textItem && textItem.type === 'text' && textItem.text) {
+        try {
+          parsedData = JSON.parse(textItem.text) as T;
+        } catch {
+          parsedData = textItem.text as any;
         }
       }
 
