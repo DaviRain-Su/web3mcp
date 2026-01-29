@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "omniweb3": {
+      "command": "/Users/davirian/dev/web3mcp/omniweb3-mcp/zig-out/bin/omniweb3-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
