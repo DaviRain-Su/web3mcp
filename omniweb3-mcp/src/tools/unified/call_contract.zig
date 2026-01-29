@@ -5,10 +5,12 @@ const evm_helpers = @import("../../core/evm_helpers.zig");
 const evm_runtime = @import("../../core/evm_runtime.zig");
 const chain = @import("../../core/chain.zig");
 const abi_resolver = @import("../../providers/evm/abi_resolver.zig");
+const wallet = @import("../../core/wallet.zig");
 
 const block = zabi.types.block;
 const EthCall = zabi.types.transactions.EthCall;
 const Wei = zabi.types.ethereum.Wei;
+const TransactionTypes = zabi.types.transactions.TransactionTypes;
 const encoder = zabi.encoding.abi_encoding;
 
 /// Call a smart contract function with automatic ABI encoding.
@@ -23,13 +25,25 @@ const encoder = zabi.encoding.abi_encoding;
 /// - args: Array of function arguments (optional, default: [])
 /// - from: Optional sender address
 /// - value: Optional value to send (in wei or as string)
+/// - send_transaction: Set to true to send a transaction (default: false for read-only call)
+/// - private_key: EVM private key (optional, for local wallet)
+/// - keypair_path: Keypair file path (optional, for local wallet)
+/// - tx_type: Transaction type "eip1559" or "legacy" (optional, default: eip1559)
+/// - confirmations: Number of confirmations to wait for (optional, default: 1)
+/// - network: Network name (optional, default: mainnet)
 ///
-/// Example:
+/// Example (read-only):
+///   call_contract(chain="bsc", contract="wbnb_test", function="name")
+///
+/// Example (transaction):
 ///   call_contract(
 ///     chain="bsc",
-///     contract="0xD99D1c33F9fC3444f8101754aBC46c52416550D1",
-///     function="swapExactTokensForTokens",
-///     args=[100000000, 0, ["0xToken1", "0xToken2"], "0xRecipient", 1234567890]
+///     contract="pancake_testnet",
+///     function="swapExactETHForTokens",
+///     args=[0, ["0xWBNB", "0xBUSD"], "0xRecipient", 1234567890],
+///     value="10000000000000000",
+///     send_transaction=true,
+///     network="testnet"
 ///   )
 pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
     // Parse basic parameters
@@ -55,6 +69,12 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const from_str = mcp.tools.getString(args, "from");
     const value_str = mcp.tools.getString(args, "value");
     const network = mcp.tools.getString(args, "network") orelse "mainnet";
+    const send_transaction = mcp.tools.getBoolean(args, "send_transaction") orelse false;
+    const private_key_override = mcp.tools.getString(args, "private_key");
+    const keypair_path = mcp.tools.getString(args, "keypair_path");
+    const tx_type_str = mcp.tools.getString(args, "tx_type") orelse "eip1559";
+    const confirmations_raw = mcp.tools.getInteger(args, "confirmations") orelse 1;
+    const confirmations = if (confirmations_raw < 0) 0 else confirmations_raw;
 
     // Parse contract address
     const contract_address = evm_helpers.parseAddress(contract_str) catch blk: {
@@ -98,9 +118,15 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     };
 
+    // Extract function arguments from the args object
+    const func_args = if (args) |args_obj| blk: {
+        if (args_obj != .object) break :blk null;
+        const obj = args_obj.object;
+        break :blk obj.get("args");
+    } else null;
+
     // Encode function call
-    // TODO: Parse args from JSON and encode using zabi
-    const calldata = encodeFunctionCall(allocator, func, args) catch |err| {
+    const calldata = encodeFunctionCall(allocator, func, func_args) catch |err| {
         const msg = std.fmt.allocPrint(
             allocator,
             "Failed to encode function call: {s}",
@@ -154,68 +180,188 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     };
     defer adapter.deinit();
 
-    // Call contract
-    const call = EthCall{
-        .london = .{
-            .from = from_address,
-            .to = contract_address,
-            .value = value_wei,
-            .data = @constCast(calldata),
-        }
-    };
-    const request: block.BlockNumberRequest = .{ .tag = .latest };
+    // Branch based on whether we're sending a transaction or doing a read-only call
+    if (send_transaction) {
+        // Load private key for transaction signing
+        const private_key = wallet.loadEvmPrivateKey(allocator, private_key_override, keypair_path) catch |err| {
+            const msg = std.fmt.allocPrint(allocator, "Failed to load private key: {s}", .{@errorName(err)}) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+            return mcp.tools.errorResult(allocator, msg) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+        };
 
-    const response = adapter.call(call, request) catch |err| {
-        const msg = std.fmt.allocPrint(
+        const sender_address = if (from_address) |addr| addr else blk: {
+            const derived = wallet.deriveEvmAddress(private_key) catch |err| {
+                const msg = std.fmt.allocPrint(allocator, "Failed to derive address: {s}", .{@errorName(err)}) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                };
+                return mcp.tools.errorResult(allocator, msg) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                };
+            };
+            break :blk derived;
+        };
+
+        const use_legacy = std.ascii.eqlIgnoreCase(tx_type_str, "legacy");
+        const tx_type = if (use_legacy) TransactionTypes.legacy else TransactionTypes.london;
+        const confirmations_u8: u8 = if (confirmations > std.math.maxInt(u8))
+            std.math.maxInt(u8)
+        else
+            @intCast(confirmations);
+
+        // Send transaction
+        std.log.info("Sending contract call: to=0x{x}, value={}, tx_type={s}, confirmations={}", .{
+            contract_address,
+            value_wei orelse 0,
+            @tagName(tx_type),
+            confirmations_u8,
+        });
+
+        const tx_result = adapter.sendContractCall(
+            private_key,
+            sender_address,
+            contract_address,
+            calldata,
+            value_wei orelse 0,
+            tx_type,
+            confirmations_u8,
+        ) catch |err| {
+            std.log.err("sendContractCall failed: {}", .{err});
+            const msg = std.fmt.allocPrint(
+                allocator,
+                "Failed to send transaction: {s}",
+                .{@errorName(err)}
+            ) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+            return mcp.tools.errorResult(allocator, msg) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+        };
+        std.log.info("Transaction sent successfully", .{});
+
+        const hash_hex = std.fmt.bytesToHex(tx_result.tx_hash, .lower);
+
+        const receipt_info = if (tx_result.receipt) |receipt| blk: {
+            const status = switch (receipt) {
+                .legacy => |r| r.status,
+                .cancun => |r| r.status,
+                .op_receipt => |r| r.status,
+                .arbitrum_receipt => |r| r.status,
+                .deposit_receipt => |r| r.status,
+            };
+            const block_number = switch (receipt) {
+                .legacy => |r| r.blockNumber,
+                .cancun => |r| r.blockNumber,
+                .op_receipt => |r| r.blockNumber,
+                .arbitrum_receipt => |r| r.blockNumber,
+                .deposit_receipt => |r| r.blockNumber,
+            };
+
+            const status_str = if (status) |s| if (s) "true" else "false" else "null";
+            const block_str = if (block_number) |bn|
+                std.fmt.allocPrint(allocator, "{d}", .{bn}) catch {
+                    return mcp.tools.ToolError.OutOfMemory;
+                }
+            else
+                try allocator.dupe(u8, "null");
+            defer allocator.free(block_str);
+
+            break :blk try std.fmt.allocPrint(
+                allocator,
+                ",\"receipt_status\":{s},\"receipt_block\":{s}",
+                .{ status_str, block_str },
+            );
+        } else blk: {
+            break :blk try allocator.dupe(u8, "");
+        };
+        defer allocator.free(receipt_info);
+
+        const response_json = std.fmt.allocPrint(
             allocator,
-            "Contract call failed: {s}",
-            .{@errorName(err)}
+            \\{{
+            \\  "success": true,
+            \\  "chain": "{s}",
+            \\  "contract": "{s}",
+            \\  "function": "{s}",
+            \\  "tx_hash": "0x{s}",
+            \\  "network": "{s}"{s}
+            \\}}
+            ,
+            .{ chain_name, contract_str, function_name, hash_hex, network, receipt_info }
         ) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
-        return mcp.tools.errorResult(allocator, msg) catch {
+
+        return mcp.tools.textResult(allocator, response_json) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
-    };
-    defer response.deinit();
+    } else {
+        // Read-only call (eth_call)
+        const call = EthCall{
+            .london = .{
+                .from = from_address,
+                .to = contract_address,
+                .value = value_wei,
+                .data = @constCast(calldata),
+            }
+        };
+        const request: block.BlockNumberRequest = .{ .tag = .latest };
 
-    // Decode response using ABI
-    // TODO: Decode using zabi
-    const hex_len = response.response.len * 2;
-    const hex_buf = try allocator.alloc(u8, hex_len);
-    defer allocator.free(hex_buf);
+        const response = adapter.call(call, request) catch |err| {
+            const msg = std.fmt.allocPrint(
+                allocator,
+                "Contract call failed: {s}",
+                .{@errorName(err)}
+            ) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+            return mcp.tools.errorResult(allocator, msg) catch {
+                return mcp.tools.ToolError.OutOfMemory;
+            };
+        };
+        defer response.deinit();
 
-    const hex_chars = "0123456789abcdef";
-    for (response.response, 0..) |byte, i| {
-        hex_buf[i * 2] = hex_chars[byte >> 4];
-        hex_buf[i * 2 + 1] = hex_chars[byte & 0x0f];
+        // Decode response using ABI
+        // TODO: Decode using zabi
+        const hex_len = response.response.len * 2;
+        const hex_buf = try allocator.alloc(u8, hex_len);
+        defer allocator.free(hex_buf);
+
+        const hex_chars = "0123456789abcdef";
+        for (response.response, 0..) |byte, i| {
+            hex_buf[i * 2] = hex_chars[byte >> 4];
+            hex_buf[i * 2 + 1] = hex_chars[byte & 0x0f];
+        }
+
+        const result_hex = std.fmt.allocPrint(allocator, "0x{s}", .{hex_buf}) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+        defer allocator.free(result_hex);
+
+        // Format response
+        const response_json = std.fmt.allocPrint(
+            allocator,
+            \\{{
+            \\  "success": true,
+            \\  "chain": "{s}",
+            \\  "contract": "{s}",
+            \\  "function": "{s}",
+            \\  "result_hex": "{s}",
+            \\  "note": "Result decoding not yet implemented - showing raw hex"
+            \\}}
+            ,
+            .{ chain_name, contract_str, function_name, result_hex }
+        ) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
+
+        return mcp.tools.textResult(allocator, response_json) catch {
+            return mcp.tools.ToolError.OutOfMemory;
+        };
     }
-
-    const result_hex = std.fmt.allocPrint(allocator, "0x{s}", .{hex_buf}) catch {
-        return mcp.tools.ToolError.OutOfMemory;
-    };
-    defer allocator.free(result_hex);
-
-    // Format response
-    const response_json = std.fmt.allocPrint(
-        allocator,
-        \\{{
-        \\  "success": true,
-        \\  "chain": "{s}",
-        \\  "contract": "{s}",
-        \\  "function": "{s}",
-        \\  "result_hex": "{s}",
-        \\  "note": "Result decoding not yet implemented - showing raw hex"
-        \\}}
-        ,
-        .{ chain_name, contract_str, function_name, result_hex }
-    ) catch {
-        return mcp.tools.ToolError.OutOfMemory;
-    };
-
-    return mcp.tools.textResult(allocator, response_json) catch {
-        return mcp.tools.ToolError.OutOfMemory;
-    };
 }
 
 /// Resolve contract name to address from contracts.json
@@ -224,6 +370,8 @@ fn resolveContractAddress(
     name: []const u8,
     chain_name: []const u8,
 ) !zabi.types.ethereum.Address {
+    std.log.info("resolveContractAddress: name={s}, chain={s}", .{ name, chain_name });
+
     // Read contracts.json using std.Io
     const io = evm_runtime.io();
     const file = try std.Io.Dir.cwd().openFile(io, "abi_registry/contracts.json", .{});
@@ -234,9 +382,10 @@ fn resolveContractAddress(
     defer allocator.free(content);
 
     _ = try file.readPositionalAll(io, content, 0);
+    std.log.info("Read contracts.json: {} bytes", .{content.len});
 
     // Parse JSON
-    const parsed = try std.json.parseFromSlice(
+    const parsed = std.json.parseFromSlice(
         struct {
             evm_contracts: []struct {
                 chain: []const u8,
@@ -247,20 +396,27 @@ fn resolveContractAddress(
         },
         allocator,
         content,
-        .{}
-    );
+        .{ .ignore_unknown_fields = true }
+    ) catch |err| {
+        std.log.err("Failed to parse contracts.json: {}", .{err});
+        return err;
+    };
     defer parsed.deinit();
+    std.log.info("Parsed {} contracts", .{parsed.value.evm_contracts.len});
 
     // Find matching contract
     for (parsed.value.evm_contracts) |contract| {
         if (!contract.enabled) continue;
+        std.log.info("Checking contract: chain={s}, name={s}, enabled={}", .{ contract.chain, contract.name, contract.enabled });
         if (std.mem.eql(u8, contract.chain, chain_name) and
             std.mem.eql(u8, contract.name, name))
         {
+            std.log.info("Found matching contract: {s}", .{contract.address});
             return try evm_helpers.parseAddress(contract.address);
         }
     }
 
+    std.log.warn("Contract not found: name={s}, chain={s}", .{ name, chain_name });
     return error.ContractNotFound;
 }
 
@@ -270,79 +426,21 @@ fn loadContractAbi(
     contract: []const u8,
     chain_name: []const u8,
 ) !abi_resolver.Abi {
-    // First, try to find the contract in contracts.json to get the actual name
-    const io = evm_runtime.io();
-    var contract_name: []const u8 = contract;
+    std.log.info("loadContractAbi: contract={s}, chain={s}", .{ contract, chain_name });
 
-    // Try to read contracts.json to find the real contract name
-    const file_result = std.Io.Dir.cwd().openFile(io, "abi_registry/contracts.json", .{});
-    if (file_result) |file| {
-        defer file.close(io);
-
-        const stat = file.stat(io) catch |err| {
-            std.log.warn("Failed to stat contracts.json: {}", .{err});
-            // Fall through to use input contract name
-            return error.FileNotFound;
-        };
-
-        const content = allocator.alloc(u8, stat.size) catch {
-            return error.OutOfMemory;
-        };
-        defer allocator.free(content);
-
-        _ = file.readPositionalAll(io, content, 0) catch {
-            // Fall through to use input contract name
-            return error.FileNotFound;
-        };
-
-        // Parse JSON to find the contract
-        const parsed = std.json.parseFromSlice(
-            struct {
-                evm_contracts: []struct {
-                    chain: []const u8,
-                    address: []const u8,
-                    name: []const u8,
-                    enabled: bool,
-                },
-            },
-            allocator,
-            content,
-            .{},
-        ) catch {
-            return error.FileNotFound;
-        };
-        defer parsed.deinit();
-
-        // Find matching contract by address or name
-        for (parsed.value.evm_contracts) |c| {
-            if (!c.enabled) continue;
-            if (!std.mem.eql(u8, c.chain, chain_name)) continue;
-
-            // Match by address or name
-            const is_address = evm_helpers.parseAddress(contract) catch null;
-            const contract_addr = evm_helpers.parseAddress(c.address) catch continue;
-
-            if (is_address) |addr| {
-                if (std.mem.eql(u8, &addr, &contract_addr)) {
-                    contract_name = c.name;
-                    break;
-                }
-            } else if (std.mem.eql(u8, c.name, contract)) {
-                contract_name = c.name;
-                break;
-            }
-        }
-    } else |_| {
-        // contracts.json not found, continue with provided name
-    }
+    // Build ABI path directly: abi_registry/{chain}/{name}.json
+    // The contract parameter is already the contract name (from contracts.json lookup in resolveContractAddress)
+    std.log.info("Building ABI path for contract={s}, chain={s}", .{ contract, chain_name });
 
     // Build ABI path: abi_registry/{chain}/{name}.json
     const abi_path = try std.fmt.allocPrint(
         allocator,
         "abi_registry/{s}/{s}.json",
-        .{ chain_name, contract_name },
+        .{ chain_name, contract },
     );
     defer allocator.free(abi_path);
+
+    std.log.info("Loading ABI from path: {s}", .{abi_path});
 
     // Load ABI using abi_resolver
     const io_val = evm_runtime.io();
@@ -365,12 +463,15 @@ fn encodeFunctionCall(
     func: abi_resolver.AbiFunction,
     args: ?std.json.Value,
 ) ![]const u8 {
+    std.log.info("encodeFunctionCall: function={s}, has_args={}", .{ func.name, args != null });
+
     // Import zabi encoding
     const Keccak256 = std.crypto.hash.sha3.Keccak256;
 
     // Step 1: Compute function selector (first 4 bytes of keccak256(signature))
     var sig_buffer: [256]u8 = undefined;
     const sig = try buildFunctionSignature(allocator, func, &sig_buffer);
+    std.log.info("Function signature: {s}", .{sig});
 
     var hash: [Keccak256.digest_length]u8 = undefined;
     Keccak256.hash(sig, &hash, .{});
@@ -379,13 +480,19 @@ fn encodeFunctionCall(
 
     // Step 2: Parse and encode parameters
     const encoded_params = if (args) |arg_value| blk: {
+        std.log.info("Parsing {} arguments", .{func.inputs.len});
         // Parse JSON args into AbiEncodedValues
-        const abi_values = try parseArgsToAbiValues(allocator, func.inputs, arg_value);
+        const abi_values = parseArgsToAbiValues(allocator, func.inputs, arg_value) catch |err| {
+            std.log.err("Failed to parse args: {}", .{err});
+            return err;
+        };
         defer allocator.free(abi_values);
 
+        std.log.info("Encoding {} ABI values", .{abi_values.len});
         // Encode using zabi
         break :blk try encoder.encodeAbiParametersValues(allocator, abi_values);
     } else if (func.inputs.len > 0) {
+        std.log.err("Missing arguments for function with {} inputs", .{func.inputs.len});
         return error.MissingArguments;
     } else blk: {
         // No parameters
@@ -431,10 +538,18 @@ fn parseArgsToAbiValues(
     params: []const abi_resolver.AbiParam,
     args_value: std.json.Value,
 ) ![]const encoder.AbiEncodedValues {
+    std.log.info("parseArgsToAbiValues: args_value type={s}", .{@tagName(args_value)});
+
     // Args should be an array
     const args_array = switch (args_value) {
-        .array => |arr| arr.items,
-        else => return error.InvalidArguments,
+        .array => |arr| blk: {
+            std.log.info("Got array with {} items", .{arr.items.len});
+            break :blk arr.items;
+        },
+        else => |tag| {
+            std.log.err("Expected array, got {s}", .{@tagName(tag)});
+            return error.InvalidArguments;
+        },
     };
 
     if (args_array.len != params.len) {
@@ -445,7 +560,11 @@ fn parseArgsToAbiValues(
     errdefer allocator.free(values);
 
     for (params, args_array, 0..) |param, arg, i| {
-        values[i] = try parseJsonToAbiValue(allocator, param.type, arg);
+        std.log.info("Parsing arg {}: type={s}, json_type={s}", .{ i, param.type, @tagName(arg) });
+        values[i] = parseJsonToAbiValue(allocator, param.type, arg) catch |err| {
+            std.log.err("Failed to parse arg {}: {}", .{ i, err });
+            return err;
+        };
     }
 
     return values;
@@ -472,6 +591,10 @@ fn parseJsonToAbiValue(
                 const parsed = try std.fmt.parseInt(u256, s, 10);
                 break :blk parsed;
             },
+            .string => |s| blk: {
+                const parsed = try std.fmt.parseInt(u256, s, 10);
+                break :blk parsed;
+            },
             else => return error.InvalidArgumentType,
         };
         return encoder.AbiEncodedValues{ .uint = num };
@@ -479,6 +602,10 @@ fn parseJsonToAbiValue(
         const num = switch (value) {
             .integer => |n| @as(i256, @intCast(n)),
             .number_string => |s| blk: {
+                const parsed = try std.fmt.parseInt(i256, s, 10);
+                break :blk parsed;
+            },
+            .string => |s| blk: {
                 const parsed = try std.fmt.parseInt(i256, s, 10);
                 break :blk parsed;
             },
