@@ -70,6 +70,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     const value_str = mcp.tools.getString(args, "value");
     const network = mcp.tools.getString(args, "network") orelse "mainnet";
     const send_transaction = mcp.tools.getBoolean(args, "send_transaction") orelse false;
+    const include_receipt = mcp.tools.getBoolean(args, "include_receipt") orelse false;
     const private_key_override = mcp.tools.getString(args, "private_key");
     const keypair_path = mcp.tools.getString(args, "keypair_path");
     const tx_type_str = mcp.tools.getString(args, "tx_type") orelse "eip1559";
@@ -89,11 +90,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     // Load ABI from abi_registry
     const abi = loadContractAbi(allocator, contract_str, chain_name) catch |err| {
-        const msg = std.fmt.allocPrint(
-            allocator,
-            "Failed to load ABI for contract {s}: {s}",
-            .{ contract_str, @errorName(err) }
-        ) catch {
+        const msg = std.fmt.allocPrint(allocator, "Failed to load ABI for contract {s}: {s}", .{ contract_str, @errorName(err) }) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -106,11 +103,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
     // Find function in ABI
     const func = findFunction(abi, function_name) orelse {
-        const msg = std.fmt.allocPrint(
-            allocator,
-            "Function '{s}' not found in contract ABI",
-            .{function_name}
-        ) catch {
+        const msg = std.fmt.allocPrint(allocator, "Function '{s}' not found in contract ABI", .{function_name}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -125,19 +118,29 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         break :blk obj.get("args");
     } else null;
 
+    const parsed_args = if (func_args) |value| blk: {
+        if (value == .string) {
+            const parsed = std.json.parseFromSlice(std.json.Value, allocator, value.string, .{ .allocate = .alloc_always }) catch {
+                return mcp.tools.errorResult(allocator, "Invalid args JSON string") catch {
+                    return mcp.tools.ToolError.InvalidArguments;
+                };
+            };
+            break :blk parsed;
+        }
+        break :blk null;
+    } else null;
+
     // Encode function call
-    const calldata = encodeFunctionCall(allocator, func, func_args) catch |err| {
-        const msg = std.fmt.allocPrint(
-            allocator,
-            "Failed to encode function call: {s}",
-            .{@errorName(err)}
-        ) catch {
+    const args_value = if (parsed_args) |parsed| parsed.value else func_args;
+    const calldata = encodeFunctionCall(allocator, func, args_value) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to encode function call: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
     };
+    defer if (parsed_args) |parsed| parsed.deinit();
     defer allocator.free(calldata);
 
     // Parse optional parameters
@@ -160,18 +163,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
     } else null;
 
     // Initialize chain adapter
-    var adapter = chain.initEvmAdapter(
-        allocator,
-        evm_runtime.io(),
-        chain_name,
-        network,
-        null
-    ) catch |err| {
-        const msg = std.fmt.allocPrint(
-            allocator,
-            "Failed to init chain adapter: {s}",
-            .{@errorName(err)}
-        ) catch {
+    var adapter = chain.initEvmAdapter(allocator, evm_runtime.io(), chain_name, network, null) catch |err| {
+        const msg = std.fmt.allocPrint(allocator, "Failed to init chain adapter: {s}", .{@errorName(err)}) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
         return mcp.tools.errorResult(allocator, msg) catch {
@@ -229,11 +222,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             confirmations_u8,
         ) catch |err| {
             std.log.err("sendContractCall failed: {}", .{err});
-            const msg = std.fmt.allocPrint(
-                allocator,
-                "Failed to send transaction: {s}",
-                .{@errorName(err)}
-            ) catch {
+            const msg = std.fmt.allocPrint(allocator, "Failed to send transaction: {s}", .{@errorName(err)}) catch {
                 return mcp.tools.ToolError.OutOfMemory;
             };
             return mcp.tools.errorResult(allocator, msg) catch {
@@ -244,7 +233,8 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
 
         const hash_hex = std.fmt.bytesToHex(tx_result.tx_hash, .lower);
 
-        const receipt_info = if (tx_result.receipt) |receipt| blk: {
+        const receipt_info = if (include_receipt and tx_result.receipt != null) blk: {
+            const receipt = tx_result.receipt.?;
             const status = switch (receipt) {
                 .legacy => |r| r.status,
                 .cancun => |r| r.status,
@@ -279,8 +269,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
         defer allocator.free(receipt_info);
 
-        const response_json = std.fmt.allocPrint(
-            allocator,
+        const response_json = std.fmt.allocPrint(allocator,
             \\{{
             \\  "success": true,
             \\  "chain": "{s}",
@@ -289,9 +278,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             \\  "tx_hash": "0x{s}",
             \\  "network": "{s}"{s}
             \\}}
-            ,
-            .{ chain_name, contract_str, function_name, hash_hex, network, receipt_info }
-        ) catch {
+        , .{ chain_name, contract_str, function_name, hash_hex, network, receipt_info }) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
 
@@ -300,22 +287,16 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         };
     } else {
         // Read-only call (eth_call)
-        const call = EthCall{
-            .london = .{
-                .from = from_address,
-                .to = contract_address,
-                .value = value_wei,
-                .data = @constCast(calldata),
-            }
-        };
+        const call = EthCall{ .london = .{
+            .from = from_address,
+            .to = contract_address,
+            .value = value_wei,
+            .data = @constCast(calldata),
+        } };
         const request: block.BlockNumberRequest = .{ .tag = .latest };
 
         const response = adapter.call(call, request) catch |err| {
-            const msg = std.fmt.allocPrint(
-                allocator,
-                "Contract call failed: {s}",
-                .{@errorName(err)}
-            ) catch {
+            const msg = std.fmt.allocPrint(allocator, "Contract call failed: {s}", .{@errorName(err)}) catch {
                 return mcp.tools.ToolError.OutOfMemory;
             };
             return mcp.tools.errorResult(allocator, msg) catch {
@@ -342,8 +323,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
         defer allocator.free(result_hex);
 
         // Format response
-        const response_json = std.fmt.allocPrint(
-            allocator,
+        const response_json = std.fmt.allocPrint(allocator,
             \\{{
             \\  "success": true,
             \\  "chain": "{s}",
@@ -352,9 +332,7 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             \\  "result_hex": "{s}",
             \\  "note": "Result decoding not yet implemented - showing raw hex"
             \\}}
-            ,
-            .{ chain_name, contract_str, function_name, result_hex }
-        ) catch {
+        , .{ chain_name, contract_str, function_name, result_hex }) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };
 
@@ -385,19 +363,14 @@ fn resolveContractAddress(
     std.log.info("Read contracts.json: {} bytes", .{content.len});
 
     // Parse JSON
-    const parsed = std.json.parseFromSlice(
-        struct {
-            evm_contracts: []struct {
-                chain: []const u8,
-                address: []const u8,
-                name: []const u8,
-                enabled: bool,
-            },
+    const parsed = std.json.parseFromSlice(struct {
+        evm_contracts: []struct {
+            chain: []const u8,
+            address: []const u8,
+            name: []const u8,
+            enabled: bool,
         },
-        allocator,
-        content,
-        .{ .ignore_unknown_fields = true }
-    ) catch |err| {
+    }, allocator, content, .{ .ignore_unknown_fields = true }) catch |err| {
         std.log.err("Failed to parse contracts.json: {}", .{err});
         return err;
     };
@@ -480,6 +453,17 @@ fn encodeFunctionCall(
 
     // Step 2: Parse and encode parameters
     const encoded_params = if (args) |arg_value| blk: {
+        if (func.inputs.len == 0) {
+            switch (arg_value) {
+                .array => |arr| {
+                    if (arr.items.len == 0) {
+                        break :blk try allocator.alloc(u8, 0);
+                    }
+                    return error.ArgumentCountMismatch;
+                },
+                else => return error.InvalidArguments,
+            }
+        }
         std.log.info("Parsing {} arguments", .{func.inputs.len});
         // Parse JSON args into AbiEncodedValues
         const abi_values = parseArgsToAbiValues(allocator, func.inputs, arg_value) catch |err| {
