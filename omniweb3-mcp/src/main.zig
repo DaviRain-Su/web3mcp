@@ -30,13 +30,13 @@ fn run(init: std.process.Init) !void {
         .title = "Omniweb3 Smart MCP",
         .description = "Smart Web3 MCP with unified interfaces and contract discovery",
         .instructions =
-            \\This server provides a smart approach to Web3 interactions:
-            \\
-            \\1. Use 'discover_contracts' to find available contracts on different chains
-            \\2. Use 'call_contract' (unified interface) to interact with any contract
-            \\3. Use 'get_balance', 'transfer' for common operations
-            \\
-            \\This approach keeps context small (<200 tools) while supporting unlimited contracts!
+        \\This server provides a smart approach to Web3 interactions:
+        \\
+        \\1. Use 'discover_contracts' to find available contracts on different chains
+        \\2. Use 'call_contract' (unified interface) to interact with any contract
+        \\3. Use 'get_balance', 'transfer' for common operations
+        \\
+        \\This approach keeps context small (<200 tools) while supporting unlimited contracts!
         ,
         .allocator = allocator,
     });
@@ -83,14 +83,14 @@ fn registerDiscoveryTools(server: *mcp.Server, allocator: std.mem.Allocator, io:
         const tool = mcp.Tool{
             .name = "discover_contracts",
             .description =
-                \\Discover available smart contracts from contracts.json.
-                \\Returns contract addresses, ABIs, and usage information.
-                \\
-                \\After discovering contracts, use the 'call_contract' tool to interact with them.
-                \\
-                \\Example workflow:
-                \\1. discover_contracts(chain="bsc")
-                \\2. call_contract(chain="bsc", contract="0x...", function="balanceOf", args=["0xAddress"])
+            \\Discover available smart contracts from contracts.json.
+            \\Returns contract addresses, ABIs, and usage information.
+            \\
+            \\After discovering contracts, use the 'call_contract' tool to interact with them.
+            \\
+            \\Example workflow:
+            \\1. discover_contracts(chain="bsc")
+            \\2. call_contract(chain="bsc", contract="0x...", function="balanceOf", args=["0xAddress"])
             ,
             .inputSchema = .{
                 .type = "object",
@@ -150,7 +150,6 @@ fn registerDiscoveryTools(server: *mcp.Server, allocator: std.mem.Allocator, io:
 
         try server.addTool(tool);
     }
-
 }
 
 fn handleDiscoverContracts(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.ToolError!mcp.tools.ToolResult {
@@ -489,4 +488,3 @@ fn fallbackHardcodedPrograms(allocator: std.mem.Allocator) mcp.tools.ToolError!m
 
     return mcp.tools.textResult(allocator, text);
 }
-

@@ -1,7 +1,0 @@
-[workspace]
-resolver = "2"
-members = ["crates/*"]
-
-# pbjson-build is vendored with a patch to generate compliant protobuf json
-# bindings
-exclude = ["crates/proto-build/pbjson-build"]

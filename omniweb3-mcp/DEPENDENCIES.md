@@ -58,12 +58,16 @@ pub const PublicChains = enum(usize) {
 
 见提交记录中的 macOS 兼容性修复。
 
+### zkLogin sidecar (Rust)
+
+使用 `deps/sui-rust-sdk` 的 `sui-zklogin-ffi` 提供 HTTP 验证服务，主程序自动拉起。
+文档见 `docs/zklogin_sidecar.md`。
+
 ## 注意事项
 
-**deps 目录被 .gitignore 忽略**:
-- 依赖修改不会提交到 git
-- 每次 `zig build` 后需要确保修改仍在
-- 如果依赖被重新拉取，需要重新应用修改
+**deps 目录已纳入版本控制**:
+- 关键依赖（包括 `deps/sui-sdk-zig` 与 `deps/sui-rust-sdk`）已 vendor 进仓库
+- 依赖修改会随仓库提交
 
 **如何重新应用修改**:
 ```bash
