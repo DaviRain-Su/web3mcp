@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule: [cron: "40 1 * * *"]
+
+permissions:
+  contents: read
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: rust version
+        run: |
+          rustc --version
+          cargo --version
+
+      - uses: taiki-e/install-action@cargo-nextest
+
+      # install sui
+      - name: Install Sui Binary
+        run: |
+          # Get latest testnet release that has ubuntu binary available
+          echo "Detecting latest Sui testnet version with ubuntu binary..."
+          SUI_VERSION=$(curl -s https://api.github.com/repos/MystenLabs/sui/releases | \
+            jq -r '.[] | select(.tag_name | startswith("testnet-")) |
+                   select(.assets[].name | contains("ubuntu-x86_64")) |
+                   .tag_name' | head -n 1)
+
+          if [ -z "$SUI_VERSION" ]; then
+            echo "Failed to detect testnet version, falling back to testnet-v1.63.1"
+            SUI_VERSION="testnet-v1.63.1"
+          fi
+
+          echo "Installing Sui binary ${SUI_VERSION}..."
+
+          wget https://github.com/MystenLabs/sui/releases/download/${SUI_VERSION}/sui-${SUI_VERSION}-ubuntu-x86_64.tgz || {
+            echo "Failed to download Sui ${SUI_VERSION}"
+            exit 1
+          }
+
+          echo "Extracting Sui binary..."
+          tar -xzf sui-*.tgz ./sui
+
+          # Move sui binary to PATH
+          echo "Installing Sui binary..."
+          sudo mv sui /usr/local/bin/
+
+          # Cleanup
+          rm -f sui-*.tgz
+
+          # Verify installation
+          echo "Verifying Sui installation..."
+          sui --version
+
+          # Export SUI_BINARY for tests
+          echo "SUI_BINARY=/usr/local/bin/sui" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: make test
+
+      - run: make is-dirty
+
+  check-features:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: rust version
+        run: |
+          rustc --version
+          cargo --version
+
+      - uses: taiki-e/install-action@cargo-hack
+
+      - name: feature compatibility
+        run: make check-features
+
+      - run: make is-dirty
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: rust version
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: rustfmt
+        run: make check-fmt
+
+      - name: clippy
+        run: make clippy
+
+      - run: make -C crates/sui-rpc proto
+
+      - run: make is-dirty
+
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: rust version
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: rustdoc
+        run: make doc
+
+      - run: make is-dirty
+
+  wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: rust version
+        run: |
+          rustc --version
+          cargo --version
+
+      - uses: taiki-e/install-action@wasm-pack
+
+      - name: Install clang
+        run: sudo apt-get install -y clang
+
+      - name: Run tests in wasm
+        run: RUSTFLAGS='-Dwarnings --cfg getrandom_backend="wasm_js"' make wasm
+
+      - run: make is-dirty
+
+  semver-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: rust version
+        run: |
+          rustc --version
+          cargo --version
+
+      - uses: taiki-e/install-action@cargo-semver-checks
+
+      - run: cargo semver-checks
