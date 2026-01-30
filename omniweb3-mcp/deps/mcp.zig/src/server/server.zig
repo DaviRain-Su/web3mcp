@@ -694,7 +694,14 @@ pub const Server = struct {
             }
         }
 
-        if (self.resources.get(uri)) |resource| {
+        const resource_opt = self.resources.get(uri) orelse blk: {
+            if (std.mem.indexOfScalar(u8, uri, '?')) |pos| {
+                break :blk self.resources.get(uri[0..pos]);
+            }
+            break :blk null;
+        };
+
+        if (resource_opt) |resource| {
             const content = resource.handler(self.allocator, uri) catch |err| {
                 const error_response = jsonrpc.createInternalError(request.id, .{ .string = @errorName(err) });
                 try self.sendResponse(.{ .error_response = error_response });

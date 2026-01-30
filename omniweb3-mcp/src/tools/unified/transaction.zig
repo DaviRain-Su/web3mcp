@@ -151,7 +151,6 @@ pub fn handle(allocator: std.mem.Allocator, args: ?std.json.Value) mcp.tools.Too
             return mcp.tools.ToolError.OutOfMemory;
         };
         defer allocator.free(response);
-
         return mcp.tools.textResult(allocator, response) catch {
             return mcp.tools.ToolError.OutOfMemory;
         };

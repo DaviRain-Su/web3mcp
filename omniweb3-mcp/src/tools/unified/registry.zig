@@ -91,25 +91,11 @@ pub fn registerAll(server: *mcp.Server) !void {
         // Add MCP Apps UI metadata for tools with UI support
         if (std.mem.eql(u8, tool.name, "call_contract")) {
             modified_tool.inputSchema = try buildCallContractSchema(allocator);
+        } else if (std.mem.eql(u8, tool.name, "get_transaction")) {
+            modified_tool.inputSchema = try buildGetTransactionSchema(allocator);
         } else if (std.mem.eql(u8, tool.name, "get_balance")) {
             var ui_obj = std.json.ObjectMap.init(allocator);
             try ui_obj.put("resourceUri", .{ .string = "ui://balance" });
-
-            var meta_obj = std.json.ObjectMap.init(allocator);
-            try meta_obj.put("ui", .{ .object = ui_obj });
-
-            modified_tool.metadata = .{ .object = meta_obj };
-        } else if (std.mem.eql(u8, tool.name, "swap")) {
-            var ui_obj = std.json.ObjectMap.init(allocator);
-            try ui_obj.put("resourceUri", .{ .string = "ui://swap" });
-
-            var meta_obj = std.json.ObjectMap.init(allocator);
-            try meta_obj.put("ui", .{ .object = ui_obj });
-
-            modified_tool.metadata = .{ .object = meta_obj };
-        } else if (std.mem.eql(u8, tool.name, "get_transaction")) {
-            var ui_obj = std.json.ObjectMap.init(allocator);
-            try ui_obj.put("resourceUri", .{ .string = "ui://transaction" });
 
             var meta_obj = std.json.ObjectMap.init(allocator);
             try meta_obj.put("ui", .{ .object = ui_obj });
@@ -148,6 +134,27 @@ fn buildCallContractSchema(allocator: std.mem.Allocator) !mcp.types.InputSchema 
         .properties = .{ .object = props },
         .required = required_fields,
         .description = "call_contract input parameters",
+    };
+}
+
+fn buildGetTransactionSchema(allocator: std.mem.Allocator) !mcp.types.InputSchema {
+    var props = std.json.ObjectMap.init(allocator);
+
+    try props.put("chain", .{ .object = try schemaString(allocator, "Chain name: solana/ethereum/bsc/polygon") });
+    try props.put("signature", .{ .object = try schemaString(allocator, "Solana signature") });
+    try props.put("tx_hash", .{ .object = try schemaString(allocator, "EVM transaction hash") });
+    try props.put("network", .{ .object = try schemaString(allocator, "Network: mainnet or testnet") });
+    try props.put("endpoint", .{ .object = try schemaString(allocator, "Optional RPC endpoint override") });
+    try props.put("_ui", .{ .object = try schemaBoolean(allocator, "Internal UI flag") });
+
+    const required_fields = try allocator.alloc([]const u8, 1);
+    required_fields[0] = "chain";
+
+    return .{
+        .type = "object",
+        .properties = .{ .object = props },
+        .required = required_fields,
+        .description = "get_transaction input parameters (use tx_hash for EVM, signature for Solana)",
     };
 }
 
