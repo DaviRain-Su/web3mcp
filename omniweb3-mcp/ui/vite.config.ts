@@ -11,8 +11,6 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        transaction: './src/transaction/index.html',
-        swap: './src/swap/index.html',
         balance: './src/balance/index.html',
       },
     },

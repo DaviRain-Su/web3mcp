@@ -4,32 +4,6 @@ const resources = @import("resources_single.zig");
 
 /// Register UI resources with MCP server
 pub fn registerResources(server: *mcp.Server, _: std.mem.Allocator) !void {
-    // Register transaction viewer resource template
-    {
-        const resource = mcp.resources.Resource{
-            .uri = "ui://transaction",
-            .name = "Transaction Viewer",
-            .description = "Interactive UI for viewing blockchain transaction details",
-            .mimeType = "text/html;profile=mcp-app",
-            .handler = handleTransactionResource,
-            .user_data = null,
-        };
-        try server.addResource(resource);
-    }
-
-    // Register swap interface resource template
-    {
-        const resource = mcp.resources.Resource{
-            .uri = "ui://swap",
-            .name = "Swap Interface",
-            .description = "Interactive UI for token swapping",
-            .mimeType = "text/html;profile=mcp-app",
-            .handler = handleSwapResource,
-            .user_data = null,
-        };
-        try server.addResource(resource);
-    }
-
     // Register balance dashboard resource template
     {
         const resource = mcp.resources.Resource{
@@ -57,46 +31,14 @@ pub fn registerResources(server: *mcp.Server, _: std.mem.Allocator) !void {
     }
 }
 
-fn handleTransactionResource(allocator: std.mem.Allocator, uri: []const u8) mcp.resources.ResourceError!mcp.resources.ResourceContent {
-    _ = uri; // URI params would be parsed here in production
-
-    const html = resources.Resources.transaction_html;
-    const html_copy = allocator.dupe(u8, html) catch {
-        return mcp.resources.ResourceError.OutOfMemory;
-    };
-
-    return .{
-        .uri = "ui://transaction",
-        .mimeType = "text/html;profile=mcp-app",
-        .text = html_copy,
-    };
-}
-
-fn handleSwapResource(allocator: std.mem.Allocator, uri: []const u8) mcp.resources.ResourceError!mcp.resources.ResourceContent {
-    _ = uri;
-
-    const html = resources.Resources.swap_html;
-    const html_copy = allocator.dupe(u8, html) catch {
-        return mcp.resources.ResourceError.OutOfMemory;
-    };
-
-    return .{
-        .uri = "ui://swap",
-        .mimeType = "text/html;profile=mcp-app",
-        .text = html_copy,
-    };
-}
-
 fn handleBalanceResource(allocator: std.mem.Allocator, uri: []const u8) mcp.resources.ResourceError!mcp.resources.ResourceContent {
-    _ = uri;
-
     const html = resources.Resources.balance_html;
     const html_copy = allocator.dupe(u8, html) catch {
         return mcp.resources.ResourceError.OutOfMemory;
     };
 
     return .{
-        .uri = "ui://balance",
+        .uri = uri,
         .mimeType = "text/html;profile=mcp-app",
         .text = html_copy,
     };

@@ -16,8 +16,10 @@ web-app/dist/
 !web-app/tailwind.config.js
 !web-app/vite.config.ts
 
+
 # OS files
 .DS_Store
-deps/
+deps/http.zig
+deps/zabi
 zig-out/bin/omniweb3-mcp
 .archive/
