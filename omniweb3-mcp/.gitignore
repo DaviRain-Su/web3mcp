@@ -21,5 +21,6 @@ web-app/dist/
 .DS_Store
 deps/http.zig
 deps/zabi
+deps/sui-sdk-zig/zig-out/
 zig-out/bin/omniweb3-mcp
 .archive/
