@@ -1100,7 +1100,9 @@
         let sell_token = Self::normalize_token_for_0x(chain_id, &sell_token)?;
         let buy_token = Self::normalize_token_for_0x(chain_id, &buy_token)?;
 
-        let sell_amount_wei = if sell_amount_is_wei {
+        let original_human_sell_amount = sell_amount.clone();
+
+        let mut sell_amount_wei = if sell_amount_is_wei {
             ethers::types::U256::from_dec_str(sell_amount.trim()).map_err(|e| ErrorData {
                 code: ErrorCode(-32602),
                 message: Cow::from(format!("Invalid sell_amount wei: {}", e)),
@@ -1163,66 +1165,159 @@
             (v / 100.0).max(0.0)
         };
 
-        let mut url = format!("{}/swap/v1/quote", base);
-
-        // Build query
-        let mut query: Vec<(String, String)> = vec![
-            ("sellToken".to_string(), sell_token.clone()),
-            ("buyToken".to_string(), buy_token.clone()),
-            ("sellAmount".to_string(), sell_amount_wei.to_string()),
-            (
-                "slippagePercentage".to_string(),
-                format!("{}", slippage_fraction),
-            ),
-        ];
-        if let Some(t) = taker.as_deref() {
+        // Normalize takerAddress once (so helpers don't need to call Self::parse_evm_address).
+        let taker_param = if let Some(t) = taker.as_deref() {
             let taker_addr = Self::parse_evm_address(t)?;
-            query.push((
-                "takerAddress".to_string(),
-                format!("0x{}", hex::encode(taker_addr.as_bytes())),
-            ));
-        }
-
-        let qs = query
-            .into_iter()
-            .map(|(k, v)| {
-                format!(
-                    "{}={}",
-                    urlencoding::encode(&k),
-                    urlencoding::encode(&v)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("&");
-        url.push('?');
-        url.push_str(&qs);
+            Some(format!("0x{}", hex::encode(taker_addr.as_bytes())))
+        } else {
+            None
+        };
 
         let client = reqwest::Client::new();
-        let resp = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| ErrorData {
+
+        async fn fetch_0x_quote(
+            client: &reqwest::Client,
+            base: &str,
+            sell_token: &str,
+            buy_token: &str,
+            taker_param: &Option<String>,
+            slippage_fraction: f64,
+            sell_amount_wei: ethers::types::U256,
+        ) -> Result<Value, ErrorData> {
+            let mut url = format!("{}/swap/v1/quote", base);
+
+            let mut query: Vec<(String, String)> = vec![
+                ("sellToken".to_string(), sell_token.to_string()),
+                ("buyToken".to_string(), buy_token.to_string()),
+                ("sellAmount".to_string(), sell_amount_wei.to_string()),
+                (
+                    "slippagePercentage".to_string(),
+                    format!("{}", slippage_fraction),
+                ),
+            ];
+            if let Some(t) = taker_param.as_deref() {
+                query.push(("takerAddress".to_string(), t.to_string()));
+            }
+
+            let qs = query
+                .into_iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}={}",
+                        urlencoding::encode(&k),
+                        urlencoding::encode(&v)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("&");
+            url.push('?');
+            url.push_str(&qs);
+
+            let resp = client.get(url).send().await.map_err(|e| ErrorData {
                 code: ErrorCode(-32603),
                 message: Cow::from(format!("0x quote request failed: {}", e)),
                 data: None,
             })?;
 
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(ErrorData {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            if !status.is_success() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("0x quote http {}: {}", status, text)),
+                    data: None,
+                });
+            }
+
+            serde_json::from_str::<Value>(&text).map_err(|e| ErrorData {
                 code: ErrorCode(-32603),
-                message: Cow::from(format!("0x quote http {}: {}", status, text)),
+                message: Cow::from(format!("Invalid 0x quote JSON: {}", e)),
                 data: None,
-            });
+            })
         }
 
-        let v = serde_json::from_str::<Value>(&text).map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Invalid 0x quote JSON: {}", e)),
-            data: None,
-        })?;
+        let mut v = fetch_0x_quote(
+            &client,
+            base,
+            &sell_token,
+            &buy_token,
+            &taker_param,
+            slippage_fraction,
+            sell_amount_wei,
+        )
+        .await?;
+
+        // Second-pass verification: if 0x returns sellTokenAddress, recompute sellAmount using that exact token decimals.
+        // If our computed sellAmount differs, re-quote with the corrected amount.
+        if !sell_amount_is_wei && sell_token != "ETH" {
+            if let Some(token_addr) = v.get("sellTokenAddress").and_then(Value::as_str) {
+                if let Ok(token) = Self::parse_evm_address(token_addr) {
+                    let decimals = self.evm_read_erc20_decimals(chain_id, token).await.ok();
+                    if let Some(decimals) = decimals {
+                        // Parse the human sell amount again using the token returned by 0x.
+                        let parsed = self
+                            .evm_parse_amount(Parameters(EvmParseAmountRequest {
+                                chain_id,
+                                amount: original_human_sell_amount.clone(),
+                                symbol: None,
+                                token_address: Some(format!("0x{}", hex::encode(token.as_bytes()))),
+                                decimals: Some(decimals),
+                            }))
+                            .await?;
+                        let j = Self::evm_extract_first_json(&parsed).ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from("Failed to parse evm_parse_amount response"),
+                            data: None,
+                        })?;
+                        let w = j
+                            .get("amount_wei")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| ErrorData {
+                                code: ErrorCode(-32603),
+                                message: Cow::from("Missing amount_wei"),
+                                data: None,
+                            })?;
+                        let corrected = ethers::types::U256::from_dec_str(w).map_err(|e| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from(format!("Invalid amount_wei from parser: {}", e)),
+                            data: None,
+                        })?;
+
+                        if corrected != sell_amount_wei {
+                            sell_amount_wei = corrected;
+                            v = fetch_0x_quote(
+                                &client,
+                                base,
+                                &sell_token,
+                                &buy_token,
+                                &taker_param,
+                                slippage_fraction,
+                                sell_amount_wei,
+                            )
+                            .await?;
+                            if let Value::Object(ref mut map) = v {
+                                map.insert(
+                                    "web3mcp".to_string(),
+                                    json!({
+                                        "requoted": true,
+                                        "sell_amount_requested": sell_amount_wei.to_string(),
+                                        "note": "Re-quoted using sellTokenAddress decimals returned by 0x"
+                                    }),
+                                );
+                            }
+                        } else if let Value::Object(ref mut map) = v {
+                            map.insert(
+                                "web3mcp".to_string(),
+                                json!({
+                                    "requoted": false,
+                                    "sell_amount_requested": sell_amount_wei.to_string()
+                                }),
+                            );
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(v)
     }
