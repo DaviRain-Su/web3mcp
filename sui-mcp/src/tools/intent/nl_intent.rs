@@ -232,7 +232,26 @@
                     })?
                 };
 
-                let (tx, _created_at_ms, expires_at_ms) = pending;
+                let (tx, _created_at_ms, expires_at_ms, expected_hash) = pending;
+
+                let provided_hash = Self::extract_tx_summary_hash(&text).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "Missing tx_summary_hash. Send: confirm <confirmation_id> hash:<tx_summary_hash>",
+                    ),
+                    data: None,
+                })?;
+
+                if provided_hash != expected_hash.to_lowercase() {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!(
+                            "tx_summary_hash mismatch. expected={} got={}",
+                            expected_hash, provided_hash
+                        )),
+                        data: None,
+                    });
+                }
 
                 // Expiry guard (safe by default)
                 if Self::now_ms() > expires_at_ms {
@@ -462,7 +481,11 @@
                             message: Cow::from("Pending store lock poisoned"),
                             data: None,
                         })?;
-                    guard.insert(confirmation_id.clone(), (tx.clone(), now_ms, expires_at_ms));
+                    let tx_summary_hash = Self::evm_tx_summary_hash(&tx);
+                    guard.insert(
+                        confirmation_id.clone(),
+                        (tx.clone(), now_ms, expires_at_ms, tx_summary_hash),
+                    );
                 }
 
                 // Human-friendly summary for quick review.
@@ -478,17 +501,20 @@
                     "data_prefix": tx.data_hex.as_ref().map(|d| d.chars().take(18).collect::<String>()),
                 });
 
+                let tx_summary_hash = Self::evm_tx_summary_hash(&tx);
+
                 let response = Self::pretty_json(&json!({
                     "resolved_network": resolved_network,
                     "mode": "dry_run_only",
                     "confirmation_id": confirmation_id,
                     "expires_in_ms": ttl_ms,
                     "tx_summary": tx_summary,
+                    "tx_summary_hash": tx_summary_hash,
                     "plan": planned_json,
                     "build": built_json,
                     "preflight": preflight_json,
                     "next": {
-                        "how_to_confirm": "Send: confirm <confirmation_id> (and include the same network like 'on Base')",
+                        "how_to_confirm": "Send: confirm <confirmation_id> hash:<tx_summary_hash> (and include the same network like 'on Base')",
                         "warning": "Confirm step will SIGN+BROADCAST using EVM_PRIVATE_KEY",
                         "expires_in_ms": ttl_ms
                     },
@@ -1683,10 +1709,10 @@
     }
 
     fn evm_pending_store(
-    ) -> &'static std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128)>> {
-        // value tuple: (tx, created_at_ms, expires_at_ms)
+    ) -> &'static std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128, String)>> {
+        // value tuple: (tx, created_at_ms, expires_at_ms, tx_summary_hash)
         static STORE: std::sync::OnceLock<
-            std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128)>>,
+            std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128, String)>>,
         > = std::sync::OnceLock::new();
         STORE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
     }
@@ -1721,4 +1747,36 @@
             }
         }
         None
+    }
+
+    fn extract_tx_summary_hash(text: &str) -> Option<String> {
+        for raw in text.split_whitespace() {
+            let t = raw.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c));
+            let t = t.strip_prefix("hash:").unwrap_or(t);
+            let t = t.strip_prefix("summary:").unwrap_or(t);
+            if t.starts_with("0x") && t.len() == 66 {
+                // keccak256 = 32 bytes
+                return Some(t.to_lowercase());
+            }
+        }
+        None
+    }
+
+    fn evm_tx_summary_hash(tx: &EvmTxRequest) -> String {
+        // Build a stable-ish string to hash. (All fields are strings/ints already.)
+        // NOTE: This is *not* the tx hash. It's just a human-confirmation checksum.
+        let s = format!(
+            "chain_id={}|from={}|to={}|value_wei={}|nonce={:?}|gas_limit={:?}|max_fee_per_gas_wei={:?}|max_priority_fee_per_gas_wei={:?}|data_hex={:?}",
+            tx.chain_id,
+            tx.from.to_lowercase(),
+            tx.to.to_lowercase(),
+            tx.value_wei,
+            tx.nonce,
+            tx.gas_limit,
+            tx.max_fee_per_gas_wei,
+            tx.max_priority_fee_per_gas_wei,
+            tx.data_hex.as_ref().map(|d| d.to_lowercase())
+        );
+        let h = ethers::utils::keccak256(s.as_bytes());
+        format!("0x{}", hex::encode(h))
     }
