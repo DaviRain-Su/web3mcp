@@ -56,8 +56,19 @@ Add this to your Claude Desktop configuration file:
 - `SUI_RPC_URL` - The Sui RPC endpoint to use (defaults to `https://fullnode.mainnet.sui.io:443`)
 
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
-- `SUI_USDC_COIN_TYPE` - Full Sui coin type string for USDC (e.g. `0x...::usdc::USDC`)
-- `SUI_USDT_COIN_TYPE` - Full Sui coin type string for USDT (e.g. `0x...::usdt::USDT`)
+- `SUI_USDC_COIN_TYPE` - Full Sui coin type string for USDC (overrides built-in defaults)
+- `SUI_USDT_COIN_TYPE` - Full Sui coin type string for USDT
+
+Built-in defaults (can be overridden):
+- USDC mainnet: `0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC`
+- USDC testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`
+
+Selection rule:
+- If `SUI_NETWORK` contains `test` or `SUI_RPC_URL` contains `testnet` → use testnet USDC
+- Else → use mainnet USDC
+
+Source: Circle blog “Now Available: Native USDC on Sui”
+<https://www.circle.com/blog/now-available-native-usdc-on-sui>
 
 How to find these values:
 - Use a Sui token list / explorer for your target network (mainnet/testnet) and copy the **coin type** string.

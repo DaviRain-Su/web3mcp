@@ -611,7 +611,7 @@
             confidence = 0.6;
 
             let coin_type = if lower.contains("usdc") {
-                Self::resolve_sui_coin_type("usdc").or_else(|| Some("<usdc_coin_type>".to_string()))
+                Some(Self::resolve_sui_coin_type("usdc").unwrap_or_else(|| "<usdc_coin_type>".to_string()))
             } else if lower.contains("usdt") {
                 Self::resolve_sui_coin_type("usdt").or_else(|| Some("<usdt_coin_type>".to_string()))
             } else {
