@@ -83,6 +83,48 @@
         })
     }
 
+    fn u256_from_u64(v: u64) -> ethers::types::U256 {
+        ethers::types::U256::from(v)
+    }
+
+    fn encode_erc20_call(sig: &str, args: Vec<ethers::abi::Token>) -> ethers::types::Bytes {
+        let selector = &ethers::utils::keccak256(sig)[0..4];
+        let mut out = Vec::with_capacity(4 + 32 * args.len());
+        out.extend_from_slice(selector);
+        out.extend_from_slice(&ethers::abi::encode(&args));
+        ethers::types::Bytes::from(out)
+    }
+
+    fn tx_request_to_evm_tx(tx: &ethers::types::TransactionRequest, chain_id: u64) -> EvmTxRequest {
+        let from = tx
+            .from
+            .as_ref()
+            .map(|a| format!("0x{}", hex::encode(a.as_bytes())))
+            .unwrap_or_default();
+        let to = match &tx.to {
+            Some(ethers::types::NameOrAddress::Address(a)) => {
+                format!("0x{}", hex::encode(a.as_bytes()))
+            }
+            Some(_) => "".to_string(),
+            None => "".to_string(),
+        };
+        let value = tx.value.unwrap_or_else(|| ethers::types::U256::from(0));
+        let data_hex = tx.data.as_ref().map(|b| format!("0x{}", hex::encode(b.as_ref())));
+
+        // TransactionRequest does not include EIP-1559 fields; those are filled during evm_preflight.
+        EvmTxRequest {
+            chain_id,
+            from,
+            to,
+            value_wei: value.to_string(),
+            data_hex,
+            nonce: tx.nonce.as_ref().map(|n| n.as_u64()),
+            gas_limit: tx.gas.as_ref().map(|g| g.as_u64()),
+            max_fee_per_gas_wei: None,
+            max_priority_fee_per_gas_wei: None,
+        }
+    }
+
     #[tool(description = "EVM: get balance (native ETH by default; ERC20 if token_address is provided)")]
     async fn evm_get_balance(
         &self,
@@ -148,6 +190,195 @@
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ERC20: balanceOf(token, owner)")]
+    async fn evm_erc20_balance_of(
+        &self,
+        Parameters(request): Parameters<EvmErc20BalanceOfRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+
+        let token = Self::parse_evm_address(&request.token)?;
+        let owner = Self::parse_evm_address(&request.owner)?;
+
+        let data = Self::encode_erc20_call(
+            "balanceOf(address)",
+            vec![ethers::abi::Token::Address(owner)],
+        );
+
+        let call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(data),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call.clone().into();
+
+        let raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_erc20_balance_of:eth_call", e))?;
+
+        let bytes: Vec<u8> = raw.to_vec();
+        if bytes.len() < 32 {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("ERC20 balanceOf returned unexpected length"),
+                data: None,
+            });
+        }
+        let balance = ethers::types::U256::from_big_endian(&bytes[bytes.len() - 32..]);
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "token": request.token,
+            "owner": request.owner,
+            "balance_raw": balance.to_string()
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ERC20: allowance(token, owner, spender)")]
+    async fn evm_erc20_allowance(
+        &self,
+        Parameters(request): Parameters<EvmErc20AllowanceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+
+        let token = Self::parse_evm_address(&request.token)?;
+        let owner = Self::parse_evm_address(&request.owner)?;
+        let spender = Self::parse_evm_address(&request.spender)?;
+
+        let data = Self::encode_erc20_call(
+            "allowance(address,address)",
+            vec![
+                ethers::abi::Token::Address(owner),
+                ethers::abi::Token::Address(spender),
+            ],
+        );
+
+        let call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(data),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call.clone().into();
+
+        let raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_erc20_allowance:eth_call", e))?;
+
+        let bytes: Vec<u8> = raw.to_vec();
+        if bytes.len() < 32 {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("ERC20 allowance returned unexpected length"),
+                data: None,
+            });
+        }
+        let allowance = ethers::types::U256::from_big_endian(&bytes[bytes.len() - 32..]);
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "token": request.token,
+            "owner": request.owner,
+            "spender": request.spender,
+            "allowance_raw": allowance.to_string()
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ERC20: one-step transfer(token, to, amount_raw) with local signing")]
+    async fn evm_execute_erc20_transfer(
+        &self,
+        Parameters(request): Parameters<EvmExecuteErc20TransferRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+
+        let from = Self::parse_evm_address(&request.sender)?;
+        let token = Self::parse_evm_address(&request.token)?;
+        let to = Self::parse_evm_address(&request.recipient)?;
+        let amount = Self::parse_evm_u256("amount_raw", &request.amount_raw)?;
+
+        let data = Self::encode_erc20_call(
+            "transfer(address,uint256)",
+            vec![
+                ethers::abi::Token::Address(to),
+                ethers::abi::Token::Uint(amount),
+            ],
+        );
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(from),
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            value: Some(ethers::types::U256::from(0)),
+            data: Some(data),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        self.evm_execute_tx_request(
+            chain_id,
+            tx_request,
+            request.allow_sender_mismatch.unwrap_or(false),
+        )
+        .await
+    }
+
+    #[tool(description = "EVM ERC20: one-step approve(token, spender, amount_raw) with local signing")]
+    async fn evm_execute_erc20_approve(
+        &self,
+        Parameters(request): Parameters<EvmExecuteErc20ApproveRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+
+        let from = Self::parse_evm_address(&request.sender)?;
+        let token = Self::parse_evm_address(&request.token)?;
+        let spender = Self::parse_evm_address(&request.spender)?;
+        let amount = Self::parse_evm_u256("amount_raw", &request.amount_raw)?;
+
+        let data = Self::encode_erc20_call(
+            "approve(address,uint256)",
+            vec![
+                ethers::abi::Token::Address(spender),
+                ethers::abi::Token::Uint(amount),
+            ],
+        );
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(from),
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            value: Some(ethers::types::U256::from(0)),
+            data: Some(data),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        self.evm_execute_tx_request(
+            chain_id,
+            tx_request,
+            request.allow_sender_mismatch.unwrap_or(false),
+        )
+        .await
     }
 
     #[tool(description = "EVM: get transaction by hash")]
@@ -525,42 +756,20 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "EVM: one-step native transfer (build -> preflight -> sign -> send). Amount is in ETH (18 decimals).")]
-    async fn evm_execute_transfer_native(
+    async fn evm_execute_tx_request(
         &self,
-        Parameters(request): Parameters<EvmExecuteTransferNativeRequest>,
+        chain_id: u64,
+        tx_request: ethers::types::TransactionRequest,
+        allow_sender_mismatch: bool,
     ) -> Result<CallToolResult, ErrorData> {
-        let chain_id = request
-            .chain_id
-            .unwrap_or(Self::evm_default_chain_id()?);
+        let built_json_for_return = serde_json::to_value(Self::tx_request_to_evm_tx(&tx_request, chain_id))
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to serialize tx_request: {}", e)),
+                data: None,
+            })?;
 
-        let amount_wei = ethers::utils::parse_units(&request.amount, 18).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid amount (expected ETH units): {}", e)),
-            data: None,
-        })?;
-
-        let built = self
-            .evm_build_transfer_native(Parameters(EvmBuildTransferNativeRequest {
-                sender: request.sender.clone(),
-                recipient: request.recipient.clone(),
-                amount_wei: amount_wei.to_string(),
-                chain_id: Some(chain_id),
-                data_hex: None,
-                gas_limit: request.gas_limit,
-                confirm_large_transfer: request.confirm_large_transfer,
-                large_transfer_threshold_wei: request.large_transfer_threshold_wei.clone(),
-            }))
-            .await?;
-
-        let built_json = Self::evm_extract_first_json(&built).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from("Failed to parse evm_build_transfer_native result"),
-            data: None,
-        })?;
-        let built_json_for_return = built_json.clone();
-
-        let tx: EvmTxRequest = serde_json::from_value(built_json).map_err(|e| ErrorData {
+        let tx: EvmTxRequest = serde_json::from_value(built_json_for_return.clone()).map_err(|e| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from(format!("Failed to decode EVM tx: {}", e)),
             data: None,
@@ -587,7 +796,7 @@
         let signed = self
             .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
                 tx: tx.clone(),
-                allow_sender_mismatch: Some(false),
+                allow_sender_mismatch: Some(allow_sender_mismatch),
             }))
             .await?;
 
@@ -630,4 +839,32 @@
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: one-step native transfer (build -> preflight -> sign -> send). Amount is in ETH (18 decimals).")]
+    async fn evm_execute_transfer_native(
+        &self,
+        Parameters(request): Parameters<EvmExecuteTransferNativeRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+
+        let amount_wei = ethers::utils::parse_units(&request.amount, 18).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid amount (expected ETH units): {}", e)),
+            data: None,
+        })?;
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(Self::parse_evm_address(&request.sender)?),
+            to: Some(ethers::types::NameOrAddress::Address(Self::parse_evm_address(
+                &request.recipient,
+            )?)),
+            value: Some(amount_wei.into()),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        self.evm_execute_tx_request(chain_id, tx_request, false).await
     }

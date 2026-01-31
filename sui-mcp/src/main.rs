@@ -1237,6 +1237,68 @@ struct EvmExecuteTransferNativeRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmErc20BalanceOfRequest {
+    #[schemars(description = "ERC20 token contract address")]
+    token: String,
+    #[schemars(description = "Owner address")]
+    owner: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmErc20AllowanceRequest {
+    #[schemars(description = "ERC20 token contract address")]
+    token: String,
+    #[schemars(description = "Owner address")]
+    owner: String,
+    #[schemars(description = "Spender address")]
+    spender: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmExecuteErc20TransferRequest {
+    #[schemars(
+        description = "Sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"
+    )]
+    sender: String,
+    #[schemars(description = "ERC20 token contract address")]
+    token: String,
+    #[schemars(description = "Recipient address")]
+    recipient: String,
+    #[schemars(description = "Token amount in base units (raw integer, e.g. USDC has 6 decimals)")]
+    amount_raw: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmExecuteErc20ApproveRequest {
+    #[schemars(
+        description = "Owner/sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"
+    )]
+    sender: String,
+    #[schemars(description = "ERC20 token contract address")]
+    token: String,
+    #[schemars(description = "Spender address")]
+    spender: String,
+    #[schemars(description = "Token amount in base units (raw integer)")]
+    amount_raw: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct GetObjectRequest {
     #[schemars(description = "The object ID to query (hex format starting with 0x)")]
     object_id: String,
