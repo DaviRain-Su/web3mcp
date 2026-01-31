@@ -81,11 +81,7 @@ impl SuiMcpServer {
 
     // Move schema/helpers moved to src/move_schema.rs
 
-    fn resolve_network(network: Option<String>) -> String {
-        network
-            .or_else(|| std::env::var("SUI_NETWORK").ok())
-            .unwrap_or_else(|| "mainnet".to_string())
-    }
+    // resolve_network moved to src/utils/network.rs
 
     // auto_fill_move_call_internal moved to src/move_auto_fill.rs
 
