@@ -140,6 +140,7 @@
                     .and_then(Value::as_str)
                     .unwrap_or("<amount>")
                     .to_string();
+                let amount_for_swap = amount.clone();
 
                 if amount.starts_with('<') {
                     return Err(ErrorData {
@@ -159,7 +160,7 @@
                         sender: sender.clone(),
                         sell_token: sell,
                         buy_token: buy,
-                        sell_amount: amount,
+                        sell_amount: amount_for_swap,
                         sell_amount_is_wei: Some(false),
                         slippage,
                     }))
@@ -223,48 +224,104 @@
                     .map(|s| s.to_string());
                 let suggested_approve_tx = built_json.get("suggested_approve_tx").cloned();
 
-                // If we have a suggested approve tx, preflight it and create its own confirmation.
+                // Check current allowance and only prompt approve if needed.
+                let mut allowance_info: Option<Value> = None;
                 let mut approve_flow: Option<Value> = None;
-                if let Some(stx) = suggested_approve_tx.clone() {
-                    if let Ok(approve_tx) = serde_json::from_value::<EvmTxRequest>(stx.clone()) {
-                        let approve_preflight = self
-                            .evm_preflight(Parameters(EvmPreflightRequest { tx: approve_tx }))
+
+                if let (Some(token_addr), Some(spender)) = (sell_token_address.clone(), allowance_target.clone()) {
+                    if token_addr != "ETH" {
+                        // Get current allowance
+                        let allowance_res = self
+                            .evm_erc20_allowance(Parameters(EvmErc20AllowanceRequest {
+                                token: token_addr.clone(),
+                                owner: sender.clone(),
+                                spender: spender.clone(),
+                                chain_id: Some(chain_id),
+                            }))
                             .await?;
-                        let approve_preflight_json =
-                            Self::extract_first_json(&approve_preflight).ok_or_else(|| ErrorData {
-                                code: ErrorCode(-32603),
-                                message: Cow::from("Failed to parse approve preflight"),
-                                data: None,
-                            })?;
-                        let approve_tx: EvmTxRequest = serde_json::from_value(
-                            approve_preflight_json.get("tx").cloned().unwrap_or(Value::Null),
-                        )
-                        .map_err(|e| ErrorData {
-                            code: ErrorCode(-32603),
-                            message: Cow::from(format!("Failed to decode approve tx: {}", e)),
-                            data: None,
-                        })?;
+                        let allowance_json = Self::extract_first_json(&allowance_res).unwrap_or(json!({}));
+                        allowance_info = Some(allowance_json.clone());
 
-                        let approve_confirmation_id = Self::evm_next_confirmation_id();
-                        let approve_hash = crate::utils::evm_confirm_store::tx_summary_hash(&approve_tx);
-                        crate::utils::evm_confirm_store::insert_pending(
-                            &approve_confirmation_id,
-                            &approve_tx,
-                            now_ms,
-                            expires_at_ms,
-                            &approve_hash,
-                        )?;
+                        let allowance_raw = allowance_json
+                            .get("allowance_raw")
+                            .and_then(Value::as_str)
+                            .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
+                            .unwrap_or_else(|| ethers::types::U256::from(0));
 
-                        approve_flow = Some(json!({
-                            "confirmation_id": approve_confirmation_id,
-                            "expires_in_ms": ttl_ms,
-                            "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&approve_tx),
-                            "tx_summary_hash": approve_hash,
-                            "preflight": approve_preflight_json,
-                            "next": {
-                                "how_to_confirm": format!("confirm {} hash:{} (approve) (and include same network)", approve_confirmation_id, approve_hash)
+                        // Parse sell amount in base units (best effort) using evm_parse_amount + known token address.
+                        let sell_amount_res = self
+                            .evm_parse_amount(Parameters(EvmParseAmountRequest {
+                                chain_id,
+                                amount: amount.clone(),
+                                symbol: None,
+                                token_address: Some(token_addr.clone()),
+                                decimals: None,
+                            }))
+                            .await;
+                        let sell_amount_wei = sell_amount_res
+                            .ok()
+                            .and_then(|r| Self::extract_first_json(&r))
+                            .and_then(|j| j.get("amount_wei").and_then(Value::as_str).map(|s| s.to_string()))
+                            .and_then(|s| ethers::types::U256::from_dec_str(&s).ok())
+                            .unwrap_or_else(|| ethers::types::U256::from(0));
+
+                        let needs_approve = sell_amount_wei > ethers::types::U256::from(0)
+                            && allowance_raw < sell_amount_wei;
+
+                        // If we have a suggested approve tx and approve is needed, preflight it and create its own confirmation.
+                        if needs_approve {
+                            if let Some(stx) = suggested_approve_tx.clone() {
+                                if let Ok(approve_tx) = serde_json::from_value::<EvmTxRequest>(stx.clone()) {
+                                    let approve_preflight = self
+                                        .evm_preflight(Parameters(EvmPreflightRequest { tx: approve_tx }))
+                                        .await?;
+                                    let approve_preflight_json = Self::extract_first_json(&approve_preflight)
+                                        .ok_or_else(|| ErrorData {
+                                            code: ErrorCode(-32603),
+                                            message: Cow::from("Failed to parse approve preflight"),
+                                            data: None,
+                                        })?;
+                                    let approve_tx: EvmTxRequest = serde_json::from_value(
+                                        approve_preflight_json.get("tx").cloned().unwrap_or(Value::Null),
+                                    )
+                                    .map_err(|e| ErrorData {
+                                        code: ErrorCode(-32603),
+                                        message: Cow::from(format!("Failed to decode approve tx: {}", e)),
+                                        data: None,
+                                    })?;
+
+                                    let approve_confirmation_id = Self::evm_next_confirmation_id();
+                                    let approve_hash = crate::utils::evm_confirm_store::tx_summary_hash(&approve_tx);
+                                    crate::utils::evm_confirm_store::insert_pending(
+                                        &approve_confirmation_id,
+                                        &approve_tx,
+                                        now_ms,
+                                        expires_at_ms,
+                                        &approve_hash,
+                                    )?;
+
+                                    approve_flow = Some(json!({
+                                        "needed": true,
+                                        "allowance_raw": allowance_raw.to_string(),
+                                        "required_raw": sell_amount_wei.to_string(),
+                                        "confirmation_id": approve_confirmation_id,
+                                        "expires_in_ms": ttl_ms,
+                                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&approve_tx),
+                                        "tx_summary_hash": approve_hash,
+                                        "preflight": approve_preflight_json,
+                                        "next": {
+                                            "how_to_confirm": format!("confirm {} hash:{} (approve) (and include same network)", approve_confirmation_id, approve_hash)
+                                        }
+                                    }));
+                                }
                             }
-                        }));
+                        } else {
+                            approve_flow = Some(json!({
+                                "needed": false,
+                                "allowance_raw": allowance_raw.to_string(),
+                                "required_raw": sell_amount_wei.to_string()
+                            }));
+                        }
                     }
                 }
 
@@ -287,8 +344,9 @@
                     "allowance": {
                         "sell_token_address": sell_token_address,
                         "allowance_target": allowance_target,
+                        "current": allowance_info,
                         "suggested_approve_tx": suggested_approve_tx,
-                        "note": "If allowance_target is present and sell_token_address is ERC20, confirm approve first, then confirm swap."
+                        "note": "If approve.needed=true, confirm approve first, then confirm swap. If approve.needed=false, you can confirm swap directly."
                     },
                     "note": "Safe default: not signed/broadcast. Confirm to execute." 
                 }))?;
