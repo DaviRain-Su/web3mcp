@@ -414,6 +414,42 @@ pub struct EvmExecuteContractCallRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmBuildContractTxRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Sender address")]
+    pub sender: String,
+    #[schemars(
+        description = "Contract address (optional if contract_name/contract_query is provided)"
+    )]
+    pub address: Option<String>,
+    #[schemars(description = "Contract name/alias in ABI registry (optional)")]
+    pub contract_name: Option<String>,
+    #[schemars(
+        description = "Contract fuzzy query (e.g. 'usdc', 'cetus', partial address). Used if address/contract_name not provided."
+    )]
+    pub contract_query: Option<String>,
+    #[schemars(
+        description = "If true, pick the top fuzzy match automatically when contract_query returns multiple results"
+    )]
+    pub accept_best_match: Option<bool>,
+    #[schemars(description = "Function name")]
+    pub function: String,
+    #[schemars(
+        description = "Optional exact function signature (e.g. 'transfer(address,uint256)')"
+    )]
+    pub function_signature: Option<String>,
+    #[schemars(
+        description = "Arguments as JSON array (supports basic types: address, uint/int, bool, string, bytes)"
+    )]
+    pub args: Option<Value>,
+    #[schemars(description = "Optional value in wei (decimal string or 0x hex)")]
+    pub value_wei: Option<String>,
+    #[schemars(description = "Optional gas limit override")]
+    pub gas_limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetObjectRequest {
     #[schemars(description = "The object ID to query (hex format starting with 0x)")]
     pub object_id: String,

@@ -1752,10 +1752,10 @@ fn abi_entry_json(
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "EVM ABI Registry: execute a contract call (nonpayable/payable) using registered ABI")]
-    async fn evm_execute_contract_call(
+    #[tool(description = "EVM ABI Registry: build a contract tx (nonpayable/payable) using registered ABI. Returns an EvmTxRequest; run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction.")]
+    async fn evm_build_contract_tx(
         &self,
-        Parameters(request): Parameters<EvmExecuteContractCallRequest>,
+        Parameters(request): Parameters<EvmBuildContractTxRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let (address_norm, _entry, abi) = Self::resolve_contract_for_call(
             request.chain_id,
@@ -1816,11 +1816,87 @@ fn abi_entry_json(
             ..Default::default()
         };
 
-        self.evm_execute_tx_request(
-            request.chain_id,
-            tx_request,
-            request.allow_sender_mismatch.unwrap_or(false),
-        )
+        let tx = Self::tx_request_to_evm_tx(&tx_request, request.chain_id);
+
+        let response = Self::pretty_json(&json!({
+            "tx": tx,
+            "note": "Run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction"
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ABI Registry: execute a contract call (nonpayable/payable) using registered ABI")]
+    async fn evm_execute_contract_call(
+        &self,
+        Parameters(request): Parameters<EvmExecuteContractCallRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let built = self
+            .evm_build_contract_tx(Parameters(EvmBuildContractTxRequest {
+                chain_id: request.chain_id,
+                sender: request.sender.clone(),
+                address: request.address.clone(),
+                contract_name: request.contract_name.clone(),
+                contract_query: request.contract_query.clone(),
+                accept_best_match: request.accept_best_match,
+                function: request.function.clone(),
+                function_signature: request.function_signature.clone(),
+                args: request.args.clone(),
+                value_wei: request.value_wei.clone(),
+                gas_limit: request.gas_limit,
+            }))
+            .await?;
+
+        let built_json = Self::evm_extract_first_json(&built).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse built tx"),
+            data: None,
+        })?;
+        let tx: EvmTxRequest = serde_json::from_value(built_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode tx: {}", e)),
+            data: None,
+        })?;
+
+        let preflight = self
+            .evm_preflight(Parameters(EvmPreflightRequest { tx }))
+            .await?;
+        let preflight_json = Self::evm_extract_first_json(&preflight).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse preflight"),
+            data: None,
+        })?;
+        let tx: EvmTxRequest = serde_json::from_value(preflight_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+            data: None,
+        })?;
+
+        let signed = self
+            .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
+                tx,
+                allow_sender_mismatch: request.allow_sender_mismatch,
+            }))
+            .await?;
+
+        let signed_json = Self::evm_extract_first_json(&signed).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse signed"),
+            data: None,
+        })?;
+        let raw_tx = signed_json
+            .get("raw_tx")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Missing raw_tx"),
+                data: None,
+            })?
+            .to_string();
+
+        self.evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
+            chain_id: Some(request.chain_id),
+            raw_tx,
+        }))
         .await
     }
 
