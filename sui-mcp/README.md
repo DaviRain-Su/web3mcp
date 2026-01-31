@@ -82,6 +82,11 @@ Once configured with Claude Desktop, you can ask Claude to:
 - "What is the current gas price on Sui?"
 - "Show me all balances for address 0x..."
 
+## Intent Router
+
+Design notes for the multi-chain intent router are in `docs/intent-router.md`.
+Chinese version: `docs/intent-router.zh.md`.
+
 ### Example: Build transfer without coin selection
 
 ```json
