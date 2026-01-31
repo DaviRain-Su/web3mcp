@@ -83,6 +83,11 @@ pub struct EvmGetTransactionReceiptRequest {
 
     #[schemars(description = "Max decoded logs to return (default: 50)")]
     pub decoded_logs_limit: Option<usize>,
+
+    #[schemars(
+        description = "Only decode logs emitted by these contract addresses (0x...). If omitted, decode all."
+    )]
+    pub only_addresses: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -96,6 +101,11 @@ pub struct EvmDecodeTransactionReceiptRequest {
 
     #[schemars(description = "Max decoded logs to return (default: 50)")]
     pub decoded_logs_limit: Option<usize>,
+
+    #[schemars(
+        description = "Only decode logs emitted by these contract addresses (0x...). If omitted, decode all."
+    )]
+    pub only_addresses: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

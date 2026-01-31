@@ -293,7 +293,12 @@
 
         let limit = request.decoded_logs_limit.unwrap_or(50);
         let (decoded_logs, decoded_logs_truncated, decoded_logs_total) = if let Some(receipt) = &receipt {
-            Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>(), limit)?
+            Self::decode_receipt_logs(
+                chain_id,
+                receipt.logs.iter().collect::<Vec<_>>(),
+                limit,
+                request.only_addresses.clone(),
+            )?
         } else {
             (Vec::new(), false, 0)
         };
@@ -332,8 +337,12 @@
         })?;
 
         let limit = request.decoded_logs_limit.unwrap_or(50);
-        let (decoded_logs, decoded_logs_truncated, decoded_logs_total) =
-            Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>(), limit)?;
+        let (decoded_logs, decoded_logs_truncated, decoded_logs_total) = Self::decode_receipt_logs(
+            chain_id,
+            receipt.logs.iter().collect::<Vec<_>>(),
+            limit,
+            request.only_addresses.clone(),
+        )?;
 
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
@@ -607,11 +616,31 @@
         chain_id: u64,
         logs: Vec<&ethers::types::Log>,
         limit: usize,
+        only_addresses: Option<Vec<String>>,
     ) -> Result<(Vec<Value>, bool, usize), ErrorData> {
-        let total = logs.len();
+        let normalized_allowlist = only_addresses.map(|addrs| {
+            addrs
+                .into_iter()
+                .filter_map(|a| Self::normalize_evm_address(&a).ok())
+                .collect::<std::collections::BTreeSet<_>>()
+        });
+
+        let filtered = logs
+            .into_iter()
+            .filter(|log| {
+                if let Some(allow) = &normalized_allowlist {
+                    let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
+                    allow.contains(&addr)
+                } else {
+                    true
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let total = filtered.len();
         let mut out = Vec::new();
 
-        for log in logs.into_iter().take(limit) {
+        for log in filtered.into_iter().take(limit) {
             let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
             if let Ok(Some(abi)) = Self::evm_load_contract_abi(chain_id, &addr) {
                 if let Some(decoded) = Self::evm_decode_log_with_abi(log, &abi) {

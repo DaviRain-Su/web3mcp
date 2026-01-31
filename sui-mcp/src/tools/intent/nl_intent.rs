@@ -194,6 +194,7 @@
                         chain_id,
                         include_receipt: Some(false),
                         decoded_logs_limit: None,
+                        only_addresses: None,
                     }))
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
