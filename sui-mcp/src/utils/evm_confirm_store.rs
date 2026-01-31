@@ -15,6 +15,10 @@ pub struct PendingRow {
     pub status: String,
     pub tx_hash: Option<String>,
     pub last_error: Option<String>,
+    pub raw_tx_prefix: Option<String>,
+    pub signed_at_ms: Option<u128>,
+    pub second_confirm_token: Option<String>,
+    pub second_confirmed: bool,
 }
 
 pub fn now_ms() -> u128 {
@@ -180,8 +184,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         let status: String = row.get(7)?;
         let tx_hash: Option<String> = row.get(8)?;
         let last_error: Option<String> = row.get(9)?;
-        let _raw_tx_prefix: Option<String> = row.get(10)?;
-        let _signed_at_ms: Option<i64> = row.get(11)?;
+        let raw_tx_prefix: Option<String> = row.get(10)?;
+        let signed_at_ms: Option<i64> = row.get(11)?;
         let second_confirm_token: Option<String> = row.get(12)?;
         let second_confirmed: Option<i64> = row.get(13)?;
         Ok((
@@ -195,6 +199,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
             status,
             tx_hash,
             last_error,
+            raw_tx_prefix,
+            signed_at_ms,
             second_confirm_token,
             second_confirmed.unwrap_or(0),
         ))
@@ -221,8 +227,10 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         status,
         tx_hash,
         last_error,
-        _second_confirm_token,
-        _second_confirmed,
+        raw_tx_prefix,
+        signed_at_ms,
+        second_confirm_token,
+        second_confirmed,
     )) = row
     else {
         return Ok(None);
@@ -245,6 +253,10 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         status,
         tx_hash,
         last_error,
+        raw_tx_prefix,
+        signed_at_ms: signed_at_ms.map(|v| v.max(0) as u128),
+        second_confirm_token,
+        second_confirmed: second_confirmed == 1,
     }))
 }
 

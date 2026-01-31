@@ -173,7 +173,7 @@
 
         let mut items: Vec<Value> = Vec::new();
 
-        let mut sql = "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json FROM evm_pending_confirmations".to_string();
+        let mut sql = "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json, raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed FROM evm_pending_confirmations".to_string();
         let mut params: Vec<rusqlite::types::Value> = Vec::new();
         let mut where_clauses: Vec<String> = Vec::new();
 
@@ -211,6 +211,10 @@
                 let tx_hash: Option<String> = row.get(7)?;
                 let last_error: Option<String> = row.get(8)?;
                 let tx_json: String = row.get(9)?;
+                let raw_tx_prefix: Option<String> = row.get(10)?;
+                let signed_at_ms: Option<i64> = row.get(11)?;
+                let second_confirm_token: Option<String> = row.get(12)?;
+                let second_confirmed: Option<i64> = row.get(13)?;
                 Ok((
                     id,
                     chain_id,
@@ -222,6 +226,10 @@
                     tx_hash,
                     last_error,
                     tx_json,
+                    raw_tx_prefix,
+                    signed_at_ms,
+                    second_confirm_token,
+                    second_confirmed,
                 ))
             })
             .map_err(|e| ErrorData {
@@ -248,6 +256,10 @@
                 "status": r.6,
                 "tx_hash": r.7,
                 "last_error": r.8,
+                "raw_tx_prefix": r.10,
+                "signed_at_ms": r.11,
+                "second_confirm_token": r.12,
+                "second_confirmed": r.13.map(|v| v == 1).unwrap_or(false),
                 "tx_summary_hash": r.5,
                 "tx_summary": tx.as_ref().map(crate::utils::evm_confirm_store::tx_summary_for_response)
             }));
@@ -256,7 +268,8 @@
         let response = Self::pretty_json(&json!({
             "db_path": crate::utils::evm_confirm_store::pending_db_path_from_cwd()?.to_string_lossy(),
             "count": items.len(),
-            "items": items
+            "items": items,
+            "note": "Use evm_get_pending_confirmation for full record; use evm_retry_pending_confirmation to retry failed/consumed."
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -286,6 +299,10 @@
                 "status": r.status,
                 "tx_hash": r.tx_hash,
                 "last_error": r.last_error,
+                "raw_tx_prefix": r.raw_tx_prefix,
+                "signed_at_ms": r.signed_at_ms,
+                "second_confirm_token": r.second_confirm_token,
+                "second_confirmed": r.second_confirmed,
                 "tx_summary_hash": r.tx_summary_hash,
                 "tx": r.tx,
                 "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&r.tx)
