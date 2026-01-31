@@ -776,10 +776,122 @@
         })
     }
 
+    fn resolve_contract_by_query(
+        chain_id: u64,
+        query: &str,
+        accept_best_match: bool,
+    ) -> Result<(Value, ethers::abi::Abi), ErrorData> {
+        let root = Self::evm_abi_registry_dir().join(chain_id.to_string());
+        let rd = std::fs::read_dir(&root).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read registry dir: {}", e)),
+            data: None,
+        })?;
+
+        let q = query.trim().to_lowercase();
+        if q.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("contract_query is empty"),
+                data: None,
+            });
+        }
+
+        let mut scored: Vec<(i64, Value)> = Vec::new();
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let path_str = p.to_string_lossy().to_string();
+            let Ok(bytes) = std::fs::read(&p) else { continue };
+            let Ok(v) = serde_json::from_slice::<Value>(&bytes) else { continue };
+
+            let name = v.get("name").and_then(Value::as_str).unwrap_or("");
+            let address = v.get("address").and_then(Value::as_str).unwrap_or("");
+
+            let hay_name = name.to_lowercase();
+            let hay_addr = address.to_lowercase();
+            let hay_path = path_str.to_lowercase();
+
+            let mut score: i64 = 0;
+            if hay_addr == q {
+                score += 1000;
+            }
+            if hay_name.starts_with(&q) {
+                score += 300;
+            }
+            if hay_addr.starts_with(&q) {
+                score += 300;
+            }
+            if hay_name.contains(&q) {
+                score += 120;
+            }
+            if hay_addr.contains(&q) {
+                score += 120;
+            }
+            if hay_path.contains(&q) {
+                score += 60;
+            }
+
+            if score > 0 {
+                scored.push((score, v));
+            }
+        }
+
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+
+        if scored.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("No registry matches for query: {}", query)),
+                data: None,
+            });
+        }
+
+        // If ambiguous and not accepting best match, return candidates.
+        if scored.len() > 1 && !accept_best_match {
+            let candidates: Vec<Value> = scored
+                .iter()
+                .take(5)
+                .map(|(score, v)| {
+                    json!({
+                        "score": score,
+                        "name": v.get("name"),
+                        "address": v.get("address")
+                    })
+                })
+                .collect();
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Ambiguous contract_query '{}'. Provide address/contract_name or set accept_best_match=true.",
+                    query
+                )),
+                data: Some(json!(candidates)),
+            });
+        }
+
+        let best = scored.remove(0).1;
+        let abi_val = best.get("abi").cloned().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("ABI entry missing 'abi'"),
+            data: None,
+        })?;
+        let abi: ethers::abi::Abi = serde_json::from_value(abi_val).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Invalid ABI JSON: {}", e)),
+            data: None,
+        })?;
+        Ok((best, abi))
+    }
+
     fn resolve_contract_for_call(
         chain_id: u64,
         address: Option<String>,
         contract_name: Option<String>,
+        contract_query: Option<String>,
+        accept_best_match: bool,
     ) -> Result<(String, Value, ethers::abi::Abi), ErrorData> {
         if let Some(addr) = address {
             let (entry, abi) = Self::load_registered_abi(chain_id, &addr)?;
@@ -797,9 +909,21 @@
                 })?;
             return Ok((addr.to_string(), entry, abi));
         }
+        if let Some(q) = contract_query {
+            let (entry, abi) = Self::resolve_contract_by_query(chain_id, &q, accept_best_match)?;
+            let addr = entry
+                .get("address")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Registry entry missing address"),
+                    data: None,
+                })?;
+            return Ok((addr.to_string(), entry, abi));
+        }
         Err(ErrorData {
             code: ErrorCode(-32602),
-            message: Cow::from("Must provide address or contract_name"),
+            message: Cow::from("Must provide address, contract_name, or contract_query"),
             data: None,
         })
     }
@@ -839,6 +963,8 @@
             request.chain_id,
             request.address.clone(),
             request.contract_name.clone(),
+            request.contract_query.clone(),
+            request.accept_best_match.unwrap_or(false),
         )?;
         let contract = Self::parse_evm_address(&address_norm)?;
 
@@ -911,6 +1037,8 @@
             request.chain_id,
             request.address.clone(),
             request.contract_name.clone(),
+            request.contract_query.clone(),
+            request.accept_best_match.unwrap_or(false),
         )?;
         let contract = Self::parse_evm_address(&address_norm)?;
 

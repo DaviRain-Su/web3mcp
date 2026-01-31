@@ -1338,10 +1338,20 @@ struct EvmGetContractRequest {
 struct EvmCallViewRequest {
     #[schemars(description = "EVM chain id")]
     chain_id: u64,
-    #[schemars(description = "Contract address (optional if contract_name is provided)")]
+    #[schemars(
+        description = "Contract address (optional if contract_name/contract_query is provided)"
+    )]
     address: Option<String>,
     #[schemars(description = "Contract name/alias in ABI registry (optional)")]
     contract_name: Option<String>,
+    #[schemars(
+        description = "Contract fuzzy query (e.g. 'usdc', 'cetus', partial address). Used if address/contract_name not provided."
+    )]
+    contract_query: Option<String>,
+    #[schemars(
+        description = "If true, pick the top fuzzy match automatically when contract_query returns multiple results"
+    )]
+    accept_best_match: Option<bool>,
     #[schemars(description = "Function name (e.g. 'balanceOf')")]
     function: String,
     #[schemars(description = "Optional exact function signature (e.g. 'balanceOf(address)')")]
@@ -1358,10 +1368,20 @@ struct EvmExecuteContractCallRequest {
     chain_id: u64,
     #[schemars(description = "Sender address")]
     sender: String,
-    #[schemars(description = "Contract address (optional if contract_name is provided)")]
+    #[schemars(
+        description = "Contract address (optional if contract_name/contract_query is provided)"
+    )]
     address: Option<String>,
     #[schemars(description = "Contract name/alias in ABI registry (optional)")]
     contract_name: Option<String>,
+    #[schemars(
+        description = "Contract fuzzy query (e.g. 'usdc', 'cetus', partial address). Used if address/contract_name not provided."
+    )]
+    contract_query: Option<String>,
+    #[schemars(
+        description = "If true, pick the top fuzzy match automatically when contract_query returns multiple results"
+    )]
+    accept_best_match: Option<bool>,
     #[schemars(description = "Function name")]
     function: String,
     #[schemars(
