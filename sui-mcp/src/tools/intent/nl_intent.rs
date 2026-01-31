@@ -461,6 +461,8 @@
                 "arbitrum-sepolia".to_string()
             } else if lower.contains("bsc") || lower.contains("bnb") {
                 "bsc-testnet".to_string()
+            } else if lower.contains("kava") {
+                "kava".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
                 // safer default: Sepolia
                 "sepolia".to_string()
@@ -505,6 +507,13 @@
             let is_main = inferred.contains("mainnet") || inferred.contains("主网");
             let cid = if is_main { 56 } else if is_test { 97 } else { 97 };
             ("evm", Some(cid), if cid == 56 { "bsc" } else { "bsc-testnet" })
+        } else if inferred.contains("kava") {
+            let is_test = inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            let cid = if is_main { 2222 } else if is_test { 2221 } else { 2222 };
+            ("evm", Some(cid), if cid == 2222 { "kava" } else { "kava-testnet" })
         } else if inferred.contains("sepolia") {
             // Ethereum Sepolia
             ("evm", Some(11155111), "sepolia")

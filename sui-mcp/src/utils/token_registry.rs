@@ -120,6 +120,9 @@ impl SuiMcpServer {
             // Avalanche C-Chain Mainnet
             43114 => Some("0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"),
 
+            // Kava EVM Mainnet
+            2222 => Some("0x919c1c267bc06a7039e03fcc2ef738525769109c"),
+
             _ => None,
         }
     }
