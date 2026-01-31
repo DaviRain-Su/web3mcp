@@ -409,6 +409,10 @@ pub struct EvmExecuteContractCallRequest {
     pub value_wei: Option<String>,
     #[schemars(description = "Optional gas limit override")]
     pub gas_limit: Option<u64>,
+    #[schemars(
+        description = "If true, only build+preflight and return tx without signing/broadcasting"
+    )]
+    pub dry_run_only: Option<bool>,
     #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
     pub allow_sender_mismatch: Option<bool>,
 }

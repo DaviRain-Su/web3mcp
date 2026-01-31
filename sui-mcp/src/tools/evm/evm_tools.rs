@@ -1757,7 +1757,7 @@ fn abi_entry_json(
         &self,
         Parameters(request): Parameters<EvmBuildContractTxRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let (address_norm, _entry, abi) = Self::resolve_contract_for_call(
+        let (address_norm, entry, abi) = Self::resolve_contract_for_call(
             request.chain_id,
             request.address.clone(),
             request.contract_name.clone(),
@@ -1818,7 +1818,18 @@ fn abi_entry_json(
 
         let tx = Self::tx_request_to_evm_tx(&tx_request, request.chain_id);
 
+        let resolved = json!({
+            "chain_id": request.chain_id,
+            "address": address_norm,
+            "name": entry.get("name").and_then(Value::as_str),
+            "path": entry.get("path").and_then(Value::as_str)
+        });
+
         let response = Self::pretty_json(&json!({
+            "contract": resolved,
+            "function": request.function,
+            "function_signature": request.function_signature.clone().unwrap_or_else(|| Self::function_signature(func)),
+            "args": args_arr,
             "tx": tx,
             "note": "Run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction"
         }))?;
@@ -1851,7 +1862,10 @@ fn abi_entry_json(
             message: Cow::from("Failed to parse built tx"),
             data: None,
         })?;
-        let tx: EvmTxRequest = serde_json::from_value(built_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+        let tx: EvmTxRequest = serde_json::from_value(
+            built_json.get("tx").cloned().unwrap_or(Value::Null),
+        )
+        .map_err(|e| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from(format!("Failed to decode tx: {}", e)),
             data: None,
@@ -1865,11 +1879,22 @@ fn abi_entry_json(
             message: Cow::from("Failed to parse preflight"),
             data: None,
         })?;
-        let tx: EvmTxRequest = serde_json::from_value(preflight_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+        let tx: EvmTxRequest = serde_json::from_value(
+            preflight_json.get("tx").cloned().unwrap_or(Value::Null),
+        )
+        .map_err(|e| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
             data: None,
         })?;
+
+        if request.dry_run_only.unwrap_or(false) {
+            let response = Self::pretty_json(&json!({
+                "tx": tx,
+                "note": "dry_run_only=true: tx is built and preflighted, but NOT signed/broadcasted"
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let signed = self
             .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
