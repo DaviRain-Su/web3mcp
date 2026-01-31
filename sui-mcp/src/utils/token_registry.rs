@@ -78,8 +78,7 @@ impl SuiMcpServer {
         let symbol = symbol.trim().to_lowercase();
         match symbol.as_str() {
             "usdc" => Self::builtin_evm_usdc_address(chain_id).map(|s| s.to_string()),
-            // Circle does not publish USDT addresses; support env-only.
-            "usdt" => None,
+            "usdt" => Self::builtin_evm_usdt_address(chain_id).map(|s| s.to_string()),
             _ => None,
         }
     }
@@ -104,6 +103,18 @@ impl SuiMcpServer {
             10 => Some("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
             11155420 => Some("0x5fd84259d66Cd46123540766Be93DFE6D43130D7"),
 
+            _ => None,
+        }
+    }
+
+    fn builtin_evm_usdt_address(chain_id: u64) -> Option<&'static str> {
+        // We only add values when we have a trusted, network-specific source.
+        //
+        // Kaia (mainnet): user-provided address (needs upstream canonical source to expand further).
+        // Chain id source (Kaia Mainnet = 8217): chainid.network
+        // https://chainid.network/chains.json
+        match chain_id {
+            8217 => Some("0xd077a400968890eacc75cdc901f0356c943e4fdb"),
             _ => None,
         }
     }

@@ -98,7 +98,7 @@
                     })?;
 
                     // For EVM, map common coin words to ERC20s.
-                    // Currently supports USDC (built-in Circle list) and env overrides.
+                    // Supports USDC (Circle defaults) and USDT (partial defaults + env overrides).
                     let token_address = if lower.contains("usdc") {
                         Self::resolve_evm_token_address("usdc", chain_id)
                     } else if lower.contains("usdt") {
