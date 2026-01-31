@@ -7,7 +7,21 @@
 pub use base64::engine::general_purpose::STANDARD as Base64Engine;
 pub use base64::Engine;
 
+pub use serde_json::{json, Value};
+
+pub use std::borrow::Cow;
+pub use std::collections::HashMap;
+pub use std::str::FromStr;
+
+pub use fastcrypto_zkp::bn254::zk_login::ZkLoginInputs;
+
+pub use move_core_types::identifier::Identifier;
 pub use move_core_types::language_storage::{StructTag, TypeTag};
+
+pub use sui_crypto::simple::SimpleVerifier;
+pub use sui_crypto::Verifier;
+
+pub use sui_graphql::Client as GraphqlClient;
 
 pub use sui_json_rpc_types::{
     CheckpointId,
@@ -25,6 +39,11 @@ pub use sui_json_rpc_types::{
     TransactionFilter,
     ZkLoginIntentScope,
 };
+
+pub use sui_keys::keystore::AccountKeystore;
+
+pub use sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest as RpcGetServiceInfoRequest;
+pub use sui_rpc::Client as RpcClient;
 
 pub use sui_sdk_types::SimpleSignature;
 

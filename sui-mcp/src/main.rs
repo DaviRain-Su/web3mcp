@@ -2,32 +2,20 @@ use anyhow::Result;
 
 #[path = "intent/adapters.rs"]
 mod intent_adapters;
-// (moved) Base64Engine/Engine imported via router_prelude
-use fastcrypto_zkp::bn254::zk_login::ZkLoginInputs;
-use move_core_types::identifier::Identifier;
-// NOTE: these imports are required by generated router_impl.rs (even if impls live in modules)
-// (moved) StructTag/TypeTag imported via router_prelude
+// (moved) Base64Engine/Engine + various chain/tool types imported via router_prelude
 use rmcp::{
     handler::server::wrapper::Parameters, model::*, tool, tool_handler, tool_router, ServerHandler,
     ServiceExt,
 };
 // (moved) tool request schemas live in src/types.rs
-use serde_json::{json, Value};
-use std::borrow::Cow;
-use std::collections::HashMap;
 // (moved) Future used in src/sui/dynamic_fields.rs
 // (moved) std::io::Write used in utils/audit.rs
 // (moved) Pin used in src/sui/dynamic_fields.rs
-use std::str::FromStr;
+// (moved) FromStr used by some helpers
 // (moved) SystemTime/UNIX_EPOCH used in utils/audit.rs
-use sui_crypto::simple::SimpleVerifier;
-use sui_crypto::Verifier;
-use sui_graphql::Client as GraphqlClient;
+// (moved) SimpleVerifier/Verifier + GraphQL client imported via router_prelude
 // (moved) SuiJsonValue parsing in utils/sui_parse.rs
-// Many Sui/Sui-types imports are provided via router_prelude for generated router_impl.rs
-use sui_keys::keystore::AccountKeystore;
-use sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest as RpcGetServiceInfoRequest;
-use sui_rpc::Client as RpcClient;
+// (moved) Many Sui/Sui-types imports are provided via router_prelude for generated router_impl.rs
 // SuiClient is part of SuiMcpServer in src/server.rs
 // (moved) digests parsing in utils/sui_parse.rs
 // (moved) dynamic_field helpers in src/sui/dynamic_fields.rs
