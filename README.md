@@ -152,10 +152,39 @@ web3mpc/
 2. 按顺序阅读所有文档
 
 ### 开发与文档驱动
-- 当前进行中：v0.1.0 MCP Skeleton（Zig 0.15 + mcp.zig）
+- 当前进行中：Rust 版本链上 MCP（`sui-mcp/`，逐步扩展为多链）
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Story: [stories/v0.1.0-mcp-skeleton.md](stories/v0.1.0-mcp-skeleton.md)
 - 设计: [docs/design/mcp-skeleton.md](docs/design/mcp-skeleton.md)
+
+### Claude / 自然语言网络选择（Human-friendly Network Mapping）
+
+为了让普通用户在 Claude 里直接说“Base/以太坊/BSC/Arbitrum…”，我们在 intent 层做了 **network → chain_id** 的映射。
+
+**推荐用法（更口语）**：
+- “在 **Base 测试网** 给 0x… 转 0.001 ETH”
+- “查一下 **以太坊测试网（Sepolia）** 上 0x… 的余额”
+- “在 **Arbitrum 测试网** 转 0.01 ETH 到 0x…”
+
+**当前内置映射（默认更偏向 testnet，避免误操作主网）**：
+- Base
+  - Base 测试网 / Base Sepolia → `chain_id=84532`
+  - Base 主网 → `chain_id=8453`
+- Ethereum
+  - Sepolia / 以太坊测试网 → `chain_id=11155111`
+  - Ethereum 主网 → `chain_id=1`
+- Arbitrum
+  - Arbitrum Sepolia / Arbitrum 测试网 → `chain_id=421614`
+  - Arbitrum One 主网 → `chain_id=42161`
+- BSC
+  - BSC Testnet / BNB 测试网 → `chain_id=97`
+  - BSC 主网 → `chain_id=56`
+
+**EVM RPC 配置（按 chain_id 区分）**：
+- `EVM_RPC_URL_<chainId>`（例如 `EVM_RPC_URL_84532=https://sepolia.base.org`）
+- `EVM_DEFAULT_CHAIN_ID`（不指定 network/chain_id 时的默认值，建议 `84532`）
+
+> 执行 EVM 转账时需要本地私钥：`EVM_PRIVATE_KEY=0x...`（建议使用测试网小号）。
 
 ### 下一步行动
 
