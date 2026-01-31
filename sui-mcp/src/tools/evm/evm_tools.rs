@@ -1718,10 +1718,26 @@ fn abi_entry_json(
         .await
         .map_err(|e| Self::sdk_error("evm_call_view:eth_call", e))?;
 
-        let decoded = func
-            .decode_output(raw.as_ref())
-            .ok()
+        let decoded_tokens = func.decode_output(raw.as_ref()).ok();
+        let decoded = decoded_tokens
+            .as_ref()
             .map(|tokens| tokens.iter().map(Self::token_to_json).collect::<Vec<_>>());
+
+        let decoded_named = decoded_tokens.as_ref().map(|tokens| {
+            func.outputs
+                .iter()
+                .enumerate()
+                .map(|(i, out)| {
+                    let name = if out.name.is_empty() {
+                        format!("out_{}", i)
+                    } else {
+                        out.name.clone()
+                    };
+                    let value = tokens.get(i).map(Self::token_to_json).unwrap_or(Value::Null);
+                    (name, value)
+                })
+                .collect::<serde_json::Map<String, Value>>()
+        });
 
         let response = Self::pretty_json(&json!({
             "chain_id": request.chain_id,
@@ -1730,7 +1746,8 @@ fn abi_entry_json(
             "function_signature": request.function_signature.unwrap_or_else(|| Self::function_signature(func)),
             "args": args_arr,
             "result_hex": format!("0x{}", hex::encode(raw.as_ref())),
-            "decoded": decoded
+            "decoded": decoded,
+            "decoded_named": decoded_named
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
