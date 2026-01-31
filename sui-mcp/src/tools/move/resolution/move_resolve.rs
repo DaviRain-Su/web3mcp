@@ -24,34 +24,7 @@
         let (_module_def, function_def) =
             Self::get_normalized_move_function_def(&modules, &request.module, &request.function)?;
 
-        if request.arguments.len() > function_def.parameters.len() {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Too many arguments for function"),
-                data: None,
-            });
-        }
-
-        for (index, (value, param)) in request
-            .arguments
-            .iter()
-            .zip(function_def.parameters.iter())
-            .enumerate()
-        {
-            if let Err(_) = Self::validate_pure_arg(param, value) {
-                let value_str = serde_json::to_string(value).unwrap_or_else(|_| "<unprintable>".to_string());
-                return Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(format!(
-                        "Invalid argument at index {}: expected {}, got {}",
-                        index,
-                        Self::format_move_type(param),
-                        value_str
-                    )),
-                    data: None,
-                });
-            }
-        }
+        Self::validate_move_call_arguments(function_def, &request.arguments)?;
 
         let call_args = Self::parse_json_args(&request.arguments)?;
 

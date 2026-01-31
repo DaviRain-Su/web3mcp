@@ -64,9 +64,49 @@
             .iter()
             .map(|param| {
                 let (_kind, placeholder, is_object) = Self::move_param_hint(param);
-                if is_object { json!("<auto>") } else { placeholder }
+                if is_object {
+                    json!("<auto>")
+                } else {
+                    placeholder
+                }
             })
             .collect::<Vec<_>>();
 
         (type_args, arguments)
+    }
+
+    fn validate_move_call_arguments(
+        function_def: &SuiMoveNormalizedFunction,
+        arguments: &[Value],
+    ) -> Result<(), ErrorData> {
+        if arguments.len() > function_def.parameters.len() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Too many arguments for function"),
+                data: None,
+            });
+        }
+
+        for (index, (value, param)) in arguments
+            .iter()
+            .zip(function_def.parameters.iter())
+            .enumerate()
+        {
+            if Self::validate_pure_arg(param, value).is_err() {
+                let value_str =
+                    serde_json::to_string(value).unwrap_or_else(|_| "<unprintable>".to_string());
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "Invalid argument at index {}: expected {}, got {}",
+                        index,
+                        Self::format_move_type(param),
+                        value_str
+                    )),
+                    data: None,
+                });
+            }
+        }
+
+        Ok(())
     }
