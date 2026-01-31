@@ -745,6 +745,48 @@ fn abi_entry_json(
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM ABI Registry: register a contract ABI from a local file path")]
+    async fn evm_register_contract_from_path(
+        &self,
+        Parameters(request): Parameters<EvmRegisterContractFromPathRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let bytes = std::fs::read(&request.abi_path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read abi_path: {}", e)),
+            data: None,
+        })?;
+
+        let v: Value = serde_json::from_slice(&bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid ABI JSON file: {}", e)),
+            data: None,
+        })?;
+
+        // Accept either:
+        // 1) Raw ABI array (standard), or
+        // 2) Full registry entry JSON with { abi: [...] }
+        let abi_json = if v.get("abi").is_some() {
+            v.get("abi").cloned().unwrap_or(Value::Null)
+        } else {
+            v
+        };
+
+        let abi_json_string = serde_json::to_string(&abi_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize ABI JSON: {}", e)),
+            data: None,
+        })?;
+
+        // Delegate to the canonical register tool to keep output consistent.
+        self.evm_register_contract(Parameters(EvmRegisterContractRequest {
+            chain_id: request.chain_id,
+            address: request.address,
+            name: request.name,
+            abi_json: abi_json_string,
+        }))
+        .await
+    }
+
     #[tool(description = "EVM ABI Registry: list registered contracts (optionally filter by chain_id)")]
     async fn evm_list_contracts(
         &self,

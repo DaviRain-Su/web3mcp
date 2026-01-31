@@ -246,6 +246,20 @@ pub struct EvmRegisterContractRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmRegisterContractFromPathRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Contract address")]
+    pub address: String,
+    #[schemars(description = "Optional human-friendly name")]
+    pub name: Option<String>,
+    #[schemars(
+        description = "Path to ABI JSON file (either an ABI array, or a full registry entry with {abi: [...]})"
+    )]
+    pub abi_path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmListContractsRequest {
     #[schemars(description = "Optional chain id filter")]
     pub chain_id: Option<u64>,
