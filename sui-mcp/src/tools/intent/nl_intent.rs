@@ -192,6 +192,8 @@
                     .evm_get_transaction_receipt(Parameters(EvmGetTransactionReceiptRequest {
                         tx_hash: tx_hash.to_string(),
                         chain_id,
+                        include_receipt: Some(false),
+                        decoded_logs_limit: None,
                     }))
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);

@@ -77,6 +77,12 @@ pub struct EvmGetTransactionReceiptRequest {
         description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
     )]
     pub chain_id: Option<u64>,
+
+    #[schemars(description = "Include full receipt object in response (default: false)")]
+    pub include_receipt: Option<bool>,
+
+    #[schemars(description = "Max decoded logs to return (default: 50)")]
+    pub decoded_logs_limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -87,6 +93,9 @@ pub struct EvmDecodeTransactionReceiptRequest {
         description = "Transaction receipt JSON (as returned by evm_get_transaction_receipt)"
     )]
     pub receipt_json: Value,
+
+    #[schemars(description = "Max decoded logs to return (default: 50)")]
+    pub decoded_logs_limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

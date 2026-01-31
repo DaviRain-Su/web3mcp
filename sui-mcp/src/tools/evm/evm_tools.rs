@@ -1,6 +1,6 @@
 /// EVM tools (Base / EVM-compatible chains)
     ///
-    /// NOTE: This server is currently named `sui-mcp`, but we’re gradually expanding it into a
+    /// NOTE: This server is currently named `sui-mcp`, but we're gradually expanding it into a
     /// multi-chain MCP server. These EVM tools are the first step.
 
     fn evm_default_chain_id() -> Result<u64, ErrorData> {
@@ -291,18 +291,22 @@
             .await
             .map_err(|e| Self::sdk_error("evm_get_transaction_receipt:get_transaction_receipt", e))?;
 
-        let decoded_logs = if let Some(receipt) = &receipt {
-            Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>())?
+        let limit = request.decoded_logs_limit.unwrap_or(50);
+        let (decoded_logs, decoded_logs_truncated, decoded_logs_total) = if let Some(receipt) = &receipt {
+            Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>(), limit)?
         } else {
-            Vec::new()
+            (Vec::new(), false, 0)
         };
 
-        // ethers::types::TransactionReceipt serializes via serde.
+        let include_receipt = request.include_receipt.unwrap_or(false);
+
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
             "tx_hash": request.tx_hash,
-            "receipt": receipt,
-            "decoded_logs": decoded_logs
+            "decoded_logs": decoded_logs,
+            "decoded_logs_truncated": decoded_logs_truncated,
+            "decoded_logs_total": decoded_logs_total,
+            "receipt": if include_receipt { receipt } else { None }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
@@ -327,12 +331,16 @@
             data: None,
         })?;
 
-        let decoded_logs = Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>())?;
+        let limit = request.decoded_logs_limit.unwrap_or(50);
+        let (decoded_logs, decoded_logs_truncated, decoded_logs_total) =
+            Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>(), limit)?;
 
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
-            "tx_hash": format!("0x{}", hex::encode(receipt.transaction_hash.as_bytes())), 
-            "decoded_logs": decoded_logs
+            "tx_hash": format!("0x{}", hex::encode(receipt.transaction_hash.as_bytes())),
+            "decoded_logs": decoded_logs,
+            "decoded_logs_truncated": decoded_logs_truncated,
+            "decoded_logs_total": decoded_logs_total
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
@@ -598,9 +606,12 @@
     fn decode_receipt_logs(
         chain_id: u64,
         logs: Vec<&ethers::types::Log>,
-    ) -> Result<Vec<Value>, ErrorData> {
+        limit: usize,
+    ) -> Result<(Vec<Value>, bool, usize), ErrorData> {
+        let total = logs.len();
         let mut out = Vec::new();
-        for log in logs {
+
+        for log in logs.into_iter().take(limit) {
             let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
             if let Ok(Some(abi)) = Self::evm_load_contract_abi(chain_id, &addr) {
                 if let Some(decoded) = Self::evm_decode_log_with_abi(log, &abi) {
@@ -608,7 +619,9 @@
                 }
             }
         }
-        Ok(out)
+
+        let truncated = total > limit;
+        Ok((out, truncated, total))
     }
 
     fn evm_decode_log_with_abi(
