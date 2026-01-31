@@ -127,6 +127,7 @@
                         message: Cow::from("Failed to parse EVM build result"),
                         data: None,
                     })?;
+                    let built_json_for_return = built_json.clone();
                     let mut tx: EvmTxRequest = serde_json::from_value(built_json).map_err(|e| ErrorData {
                         code: ErrorCode(-32603),
                         message: Cow::from(format!("Failed to decode EVM tx: {}", e)),
@@ -141,7 +142,9 @@
                         message: Cow::from("Failed to parse EVM preflight result"),
                         data: None,
                     })?;
-                    tx = serde_json::from_value(pre_json.get("tx").cloned().unwrap_or(pre_json)).map_err(|e| ErrorData {
+                    let pre_json_for_return = pre_json.clone();
+                    let tx_val = pre_json.get("tx").cloned().unwrap_or_else(|| pre_json.clone());
+                    tx = serde_json::from_value(tx_val).map_err(|e| ErrorData {
                         code: ErrorCode(-32603),
                         message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
                         data: None,
@@ -160,20 +163,36 @@
                     })?;
                     let raw_tx = signed_json
                         .get("raw_tx")
-                        .and_then(|v| v.as_str())
+                        .and_then(Value::as_str)
                         .ok_or_else(|| ErrorData {
                             code: ErrorCode(-32603),
                             message: Cow::from("Missing raw_tx from signer"),
                             data: None,
                         })?
                         .to_string();
+                    let raw_tx_prefix = raw_tx.chars().take(18).collect::<String>();
 
-                    return self
+                    let sent = self
                         .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
-                            raw_tx,
+                            raw_tx: raw_tx.clone(),
                             chain_id,
                         }))
-                        .await;
+                        .await?;
+                    let sent_json = Self::extract_first_json(&sent).ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Failed to parse EVM send result"),
+                        data: None,
+                    })?;
+
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "tx_built": built_json_for_return,
+                        "tx_preflight": pre_json_for_return,
+                        "raw_tx_prefix": raw_tx_prefix,
+                        "send": sent_json
+                    }))?;
+
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
                 }
 
                 // Sui default (zkLogin flow)
