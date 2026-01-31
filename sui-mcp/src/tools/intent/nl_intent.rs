@@ -200,6 +200,80 @@
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
+            "evm_confirm_execution" => {
+                let chain_id = chain_id.ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("chain_id is required for confirm"),
+                    data: None,
+                })?;
+
+                let id = Self::extract_confirmation_id(&text).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "Missing confirmation id. Paste the evm_dryrun_<...> id from the previous dry-run response.",
+                    ),
+                    data: None,
+                })?;
+
+                let tx = {
+                    let mut guard = Self::evm_pending_store()
+                        .lock()
+                        .map_err(|_| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from("Pending store lock poisoned"),
+                            data: None,
+                        })?;
+                    guard.remove(&id).ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Unknown/expired confirmation id (not found). Run the dry-run again to regenerate.",
+                        ),
+                        data: None,
+                    })?
+                };
+
+                if tx.chain_id != chain_id {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!(
+                            "Confirmation chain_id mismatch: stored={} current={}",
+                            tx.chain_id, chain_id
+                        )),
+                        data: None,
+                    });
+                }
+
+                let signed = self
+                    .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
+                        tx,
+                        allow_sender_mismatch: Some(false),
+                    }))
+                    .await?;
+
+                let signed_json = Self::extract_first_json(&signed).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse signed result"),
+                    data: None,
+                })?;
+                let raw_tx = signed_json
+                    .get("raw_tx")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Missing raw_tx"),
+                        data: None,
+                    })?
+                    .to_string();
+
+                let sent = self
+                    .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
+                        chain_id: Some(chain_id),
+                        raw_tx,
+                    }))
+                    .await?;
+
+                return Self::wrap_resolved_network_result(&resolved_network, &sent);
+            }
             "evm_contract_dry_run" => {
                 let chain_id = chain_id.ok_or_else(|| ErrorData {
                     code: ErrorCode(-32602),
@@ -353,13 +427,39 @@
                     data: None,
                 })?;
 
+                let tx: EvmTxRequest = serde_json::from_value(
+                    preflight_json.get("tx").cloned().unwrap_or(Value::Null),
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+                    data: None,
+                })?;
+
+                let confirmation_id = Self::evm_next_confirmation_id();
+                {
+                    let mut guard = Self::evm_pending_store()
+                        .lock()
+                        .map_err(|_| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from("Pending store lock poisoned"),
+                            data: None,
+                        })?;
+                    guard.insert(confirmation_id.clone(), tx);
+                }
+
                 let response = Self::pretty_json(&json!({
                     "resolved_network": resolved_network,
                     "mode": "dry_run_only",
+                    "confirmation_id": confirmation_id,
                     "plan": planned_json,
                     "build": built_json,
                     "preflight": preflight_json,
-                    "note": "Safe default: not signed or broadcast. If this looks correct, explicitly confirm before executing." 
+                    "next": {
+                        "how_to_confirm": "Send: confirm <confirmation_id> (and include the same network like 'on Base')",
+                        "warning": "Confirm step will SIGN+BROADCASТ using EVM_PRIVATE_KEY"
+                    },
+                    "note": "Safe default: not signed or broadcast. Confirmation is required to execute." 
                 }))?;
                 return Ok(CallToolResult::success(vec![Content::text(response)]));
             }
@@ -953,6 +1053,12 @@
             },
             // Generic EVM contract interaction (safe by default: dry-run only).
             IntentRule {
+                intent: "evm_confirm_execution",
+                action: None,
+                confidence: 0.6,
+                keywords: &["confirm", "确认", "确认执行", "确认发送", "broadcast"],
+            },
+            IntentRule {
                 intent: "evm_contract_dry_run",
                 action: None,
                 confidence: 0.55,
@@ -1541,4 +1647,34 @@
     fn extract_first_json(result: &CallToolResult) -> Option<Value> {
         let text = Self::extract_text(result)?;
         serde_json::from_str::<Value>(&text).ok()
+    }
+
+    fn evm_pending_store() -> &'static std::sync::Mutex<std::collections::HashMap<String, EvmTxRequest>> {
+        static STORE: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<String, EvmTxRequest>>,
+        > = std::sync::OnceLock::new();
+        STORE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+    }
+
+    fn evm_next_confirmation_id() -> String {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_millis(0))
+            .as_millis();
+        format!("evm_dryrun_{}_{}", now_ms, n)
+    }
+
+    fn extract_confirmation_id(text: &str) -> Option<String> {
+        for raw in text.split_whitespace() {
+            let t = raw.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c));
+            if t.starts_with("evm_dryrun_") {
+                return Some(t.to_string());
+            }
+            if t.starts_with("confirm_") {
+                return Some(t.to_string());
+            }
+        }
+        None
     }
