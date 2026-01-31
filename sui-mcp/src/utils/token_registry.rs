@@ -78,6 +78,8 @@ impl SuiMcpServer {
         let symbol = symbol.trim().to_lowercase();
         match symbol.as_str() {
             "usdc" => Self::builtin_evm_usdc_address(chain_id).map(|s| s.to_string()),
+            // Circle does not publish USDT addresses; support env-only.
+            "usdt" => None,
             _ => None,
         }
     }

@@ -64,6 +64,7 @@ Sui:
 EVM:
 - `EVM_USDC_ADDRESS_<chain_id>` - Override USDC ERC20 contract address for a specific chain id (e.g. `EVM_USDC_ADDRESS_8453=0x...`).
   (We ship built-in defaults for several Circle-supported chains; see source link below.)
+- `EVM_USDT_ADDRESS_<chain_id>` - Optional override for USDT ERC20 contract address (env-only; no built-in defaults).
 
 Built-in defaults (can be overridden):
 - USDC mainnet: `0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC`

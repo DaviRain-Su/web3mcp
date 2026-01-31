@@ -101,13 +101,15 @@
                     // Currently supports USDC (built-in Circle list) and env overrides.
                     let token_address = if lower.contains("usdc") {
                         Self::resolve_evm_token_address("usdc", chain_id)
+                    } else if lower.contains("usdt") {
+                        Self::resolve_evm_token_address("usdt", chain_id)
                     } else {
                         None
                     }
                     .ok_or_else(|| ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(
-                            "Unsupported EVM coin query. Try: 'balance usdc on Base' or set EVM_USDC_ADDRESS_<chain_id>",
+                            "Unsupported EVM coin query. Try: 'balance usdc on Base' or set EVM_USDC_ADDRESS_<chain_id> / EVM_USDT_ADDRESS_<chain_id>",
                         ),
                         data: None,
                     })?;
@@ -735,6 +737,8 @@
                     let token_address = chain_id.and_then(|cid| {
                         if lower.contains("usdc") {
                             Self::resolve_evm_token_address("usdc", cid)
+                        } else if lower.contains("usdt") {
+                            Self::resolve_evm_token_address("usdt", cid)
                         } else {
                             None
                         }
