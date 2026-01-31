@@ -114,7 +114,12 @@ impl SuiMcpServer {
         // Chain id source (Kaia Mainnet = 8217): chainid.network
         // https://chainid.network/chains.json
         match chain_id {
+            // Kaia Mainnet
             8217 => Some("0xd077a400968890eacc75cdc901f0356c943e4fdb"),
+
+            // Avalanche C-Chain Mainnet
+            43114 => Some("0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"),
+
             _ => None,
         }
     }
