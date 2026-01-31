@@ -188,6 +188,21 @@
             });
         }
 
+        if let Ok(default_signer) = std::env::var("SUI_DEFAULT_SIGNER") {
+            let identity = default_signer
+                .parse::<sui_keys::key_identity::KeyIdentity>()
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid SUI_DEFAULT_SIGNER: {}", e)),
+                    data: None,
+                })?;
+            return keystore.get_by_identity(&identity).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Unable to resolve SUI_DEFAULT_SIGNER: {}", e)),
+                data: None,
+            });
+        }
+
         let addresses = keystore.addresses();
         if addresses.len() == 1 {
             return Ok(addresses[0]);
@@ -195,7 +210,7 @@
 
         Err(ErrorData {
             code: ErrorCode(-32602),
-            message: Cow::from("Multiple keystore accounts found; provide signer"),
+            message: Cow::from("Multiple keystore accounts found; provide signer or set SUI_DEFAULT_SIGNER"),
             data: None,
         })
     }

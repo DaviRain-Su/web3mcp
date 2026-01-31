@@ -79,7 +79,10 @@
                         recipient,
                         input_coins,
                         amount,
-                        gas_budget,
+                        gas_budget: Some(gas_budget),
+                        auto_select_coins: Some(false),
+                        confirm_large_transfer: Some(false),
+                        large_transfer_threshold: None,
                     }))
                     .await?;
                 let tx_bytes = Self::extract_tx_bytes(&tx).ok_or_else(|| ErrorData {
@@ -130,7 +133,7 @@
                         sender: sender.clone(),
                         object_id,
                         recipient,
-                        gas_budget,
+                        gas_budget: Some(gas_budget),
                         gas_object_id: request.gas_object_id.clone(),
                     }))
                     .await?;
@@ -183,7 +186,7 @@
                         validator,
                         coins,
                         amount,
-                        gas_budget,
+                        gas_budget: Some(gas_budget),
                         gas_object_id: request.gas_object_id.clone(),
                     }))
                     .await?;
@@ -229,7 +232,7 @@
                     .build_withdraw_stake(Parameters(BuildWithdrawStakeRequest {
                         sender: sender.clone(),
                         staked_sui,
-                        gas_budget,
+                        gas_budget: Some(gas_budget),
                         gas_object_id: request.gas_object_id.clone(),
                     }))
                     .await?;

@@ -1,12 +1,14 @@
 use anyhow::{bail, Result};
+use base64::engine::general_purpose::STANDARD as Base64Engine;
+use base64::Engine;
+use fastcrypto_zkp::bn254::zk_login::ZkLoginInputs;
+use move_core_types::identifier::Identifier;
+use move_core_types::language_storage::{StructTag, TypeTag};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     tool, tool_handler, tool_router, ServerHandler, ServiceExt,
 };
-use base64::engine::general_purpose::STANDARD as Base64Engine;
-use base64::Engine;
-use fastcrypto_zkp::bn254::zk_login::ZkLoginInputs;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -15,20 +17,17 @@ use std::fs;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
-use move_core_types::identifier::Identifier;
-use move_core_types::language_storage::{StructTag, TypeTag};
 use sui_crypto::simple::SimpleVerifier;
 use sui_crypto::Verifier;
 use sui_graphql::Client as GraphqlClient;
 use sui_json::SuiJsonValue;
-use sui_keys::keystore::AccountKeystore;
 use sui_json_rpc_types::{
     CheckpointId, EventFilter, RPCTransactionRequestParams, SuiMoveNormalizedFunction,
-    SuiMoveNormalizedModule, SuiMoveNormalizedType, SuiObjectDataOptions,
-    SuiObjectResponseQuery, SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse,
-    SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery, SuiTypeTag,
-    TransactionFilter, ZkLoginIntentScope,
+    SuiMoveNormalizedModule, SuiMoveNormalizedType, SuiObjectDataOptions, SuiObjectResponseQuery,
+    SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
+    SuiTransactionBlockResponseQuery, SuiTypeTag, TransactionFilter, ZkLoginIntentScope,
 };
+use sui_keys::keystore::AccountKeystore;
 use sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest as RpcGetServiceInfoRequest;
 use sui_rpc::Client as RpcClient;
 use sui_sdk::{SuiClient, SuiClientBuilder};
@@ -41,7 +40,9 @@ use sui_types::object::Owner;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_types::signature::GenericSignature;
 use sui_types::sui_serde::BigInt;
-use sui_types::transaction::{CallArg, ObjectArg, Transaction, TransactionData, TransactionDataAPI};
+use sui_types::transaction::{
+    CallArg, ObjectArg, Transaction, TransactionData, TransactionDataAPI,
+};
 use sui_types::zk_login_authenticator::ZkLoginAuthenticator;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -95,11 +96,41 @@ impl SuiMcpServer {
     }
 
     fn sdk_error(context: &str, error: impl std::fmt::Display) -> ErrorData {
+        let error_string = error.to_string();
+        let mut message = format!("{} failed: {}", context, error_string);
+        if let Some(hint) = Self::error_hint(&error_string) {
+            message = format!("{} (hint: {})", message, hint);
+        }
         ErrorData {
             code: ErrorCode(-32603),
-            message: Cow::from(format!("{} failed: {}", context, error)),
+            message: Cow::from(message),
             data: None,
         }
+    }
+
+    fn error_hint(error: &str) -> Option<&'static str> {
+        let lower = error.to_lowercase();
+        if lower.contains("insufficient gas") || lower.contains("insufficientgas") {
+            return Some("Increase gas_budget or ensure your gas coin has enough balance");
+        }
+        if lower.contains("insufficient funds") || lower.contains("insufficientbalance") {
+            return Some("Check sender balance or select different input coins");
+        }
+        if lower.contains("objectnotfound") || lower.contains("object not found") {
+            return Some("Verify the object id and ownership, and ensure it still exists");
+        }
+        if lower.contains("locked") || lower.contains("sequencenumber") || lower.contains("version")
+        {
+            return Some(
+                "The object may be locked or outdated; retry later or fetch the latest version",
+            );
+        }
+        if lower.contains("signature") && lower.contains("invalid") {
+            return Some(
+                "Ensure the signer matches the transaction sender and the signature is correct",
+            );
+        }
+        None
     }
 
     fn decode_base64(label: &str, value: &str) -> Result<Vec<u8>, ErrorData> {
@@ -400,11 +431,10 @@ impl SuiMcpServer {
             return (requires_mutable, vec![]);
         }
 
-        if matches!(ty, SuiMoveNormalizedType::MutableReference(_)) || matches!(ty, SuiMoveNormalizedType::Struct { .. }) {
-            (
-                true,
-                vec!["owned", "object_owner", "shared", "consensus"],
-            )
+        if matches!(ty, SuiMoveNormalizedType::MutableReference(_))
+            || matches!(ty, SuiMoveNormalizedType::Struct { .. })
+        {
+            (true, vec!["owned", "object_owner", "shared", "consensus"])
         } else {
             (
                 false,
@@ -459,11 +489,7 @@ impl SuiMcpServer {
         function: Option<String>,
     ) -> Result<(String, String, String), ErrorData> {
         if package_id.is_some() && module.is_some() && function.is_some() {
-            return Ok((
-                package_id.unwrap(),
-                module.unwrap(),
-                function.unwrap(),
-            ));
+            return Ok((package_id.unwrap(), module.unwrap(), function.unwrap()));
         }
 
         let Some(config) = config else {
@@ -478,11 +504,14 @@ impl SuiMcpServer {
             message: Cow::from(format!("Cetus config missing network '{}'", network)),
             data: None,
         })?;
-        let action_config = network_config.actions.get(action).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Cetus config missing action '{}'", action)),
-            data: None,
-        })?;
+        let action_config = network_config
+            .actions
+            .get(action)
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Cetus config missing action '{}'", action)),
+                data: None,
+            })?;
 
         Ok((
             package_id.unwrap_or_else(|| network_config.package_id.clone()),
@@ -572,7 +601,10 @@ impl SuiMcpServer {
                     let _ = Self::merge_type_args(&mut type_mapping, mapping);
                 }
 
-                let needs_fill = filled_args.get(index).map(Self::is_auto_arg).unwrap_or(true);
+                let needs_fill = filled_args
+                    .get(index)
+                    .map(Self::is_auto_arg)
+                    .unwrap_or(true);
                 if needs_fill {
                     if filled_args.len() <= index {
                         filled_args.resize(index + 1, Value::Null);
@@ -595,15 +627,13 @@ impl SuiMcpServer {
         };
 
         let gas = if let Some(gas_budget) = request.gas_budget {
-            let gas_price = request
-                .gas_price
-                .unwrap_or(
-                    self.client
-                        .read_api()
-                        .get_reference_gas_price()
-                        .await
-                        .map_err(|e| Self::sdk_error("auto_fill_move_call", e))?,
-                );
+            let gas_price = request.gas_price.unwrap_or(
+                self.client
+                    .read_api()
+                    .get_reference_gas_price()
+                    .await
+                    .map_err(|e| Self::sdk_error("auto_fill_move_call", e))?,
+            );
             let gas_object = if let Some(gas_object_id) = request.gas_object_id.clone() {
                 Some(json!({"object_id": gas_object_id}))
             } else {
@@ -643,7 +673,10 @@ impl SuiMcpServer {
     fn validate_pure_arg(ty: &SuiMoveNormalizedType, value: &Value) -> Result<(), ErrorData> {
         let invalid = || ErrorData {
             code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid value for type {}", Self::format_move_type(ty))),
+            message: Cow::from(format!(
+                "Invalid value for type {}",
+                Self::format_move_type(ty)
+            )),
             data: None,
         };
 
@@ -685,7 +718,8 @@ impl SuiMcpServer {
                 _ => Err(invalid()),
             },
             SuiMoveNormalizedType::TypeParameter(_) => Ok(()),
-            SuiMoveNormalizedType::Reference(inner) | SuiMoveNormalizedType::MutableReference(inner) => {
+            SuiMoveNormalizedType::Reference(inner)
+            | SuiMoveNormalizedType::MutableReference(inner) => {
                 if matches!(inner.as_ref(), SuiMoveNormalizedType::Struct { .. }) {
                     match value {
                         Value::String(s) if s.starts_with("0x") => Ok(()),
@@ -764,16 +798,15 @@ impl SuiMcpServer {
                 "type": "string",
                 "x-move-type": format!("T{}", index)
             }),
-            SuiMoveNormalizedType::Reference(inner) | SuiMoveNormalizedType::MutableReference(inner) => {
-                match inner.as_ref() {
-                    SuiMoveNormalizedType::Struct { .. } => json!({
-                        "type": "string",
-                        "description": "object id",
-                        "x-move-type": Self::format_move_type(inner)
-                    }),
-                    _ => Self::move_type_schema(inner, modules, depth + 1, max_depth),
-                }
-            }
+            SuiMoveNormalizedType::Reference(inner)
+            | SuiMoveNormalizedType::MutableReference(inner) => match inner.as_ref() {
+                SuiMoveNormalizedType::Struct { .. } => json!({
+                    "type": "string",
+                    "description": "object id",
+                    "x-move-type": Self::format_move_type(inner)
+                }),
+                _ => Self::move_type_schema(inner, modules, depth + 1, max_depth),
+            },
             SuiMoveNormalizedType::Struct { inner } => {
                 let struct_name = format!("{}::{}::{}", inner.address, inner.module, inner.name);
                 if depth >= max_depth {
@@ -895,9 +928,8 @@ impl SuiMcpServer {
 
     fn is_object_param_match(param: &SuiMoveNormalizedType, tag: &StructTag) -> bool {
         let inner = match param {
-            SuiMoveNormalizedType::Reference(inner) | SuiMoveNormalizedType::MutableReference(inner) => {
-                inner.as_ref()
-            }
+            SuiMoveNormalizedType::Reference(inner)
+            | SuiMoveNormalizedType::MutableReference(inner) => inner.as_ref(),
             _ => return false,
         };
 
@@ -905,7 +937,8 @@ impl SuiMcpServer {
             return false;
         };
 
-        let address_match = inner.address.to_lowercase() == tag.address.to_hex_literal().to_lowercase();
+        let address_match =
+            inner.address.to_lowercase() == tag.address.to_hex_literal().to_lowercase();
         let module_match = inner.module == tag.module.to_string();
         let name_match = inner.name == tag.name.to_string();
         let type_arg_match = inner.type_arguments.len() == tag.type_params.len();
@@ -932,7 +965,8 @@ impl SuiMcpServer {
                 Self::match_type_param(inner, actual_inner, mapping)
             }
             (SuiMoveNormalizedType::Struct { inner }, TypeTag::Struct(actual_struct)) => {
-                if inner.address.to_lowercase() != actual_struct.address.to_hex_literal().to_lowercase()
+                if inner.address.to_lowercase()
+                    != actual_struct.address.to_hex_literal().to_lowercase()
                     || inner.module != actual_struct.module.to_string()
                     || inner.name != actual_struct.name.to_string()
                     || inner.type_arguments.len() != actual_struct.type_params.len()
@@ -940,7 +974,11 @@ impl SuiMcpServer {
                     return false;
                 }
 
-                for (param_arg, actual_arg) in inner.type_arguments.iter().zip(actual_struct.type_params.iter()) {
+                for (param_arg, actual_arg) in inner
+                    .type_arguments
+                    .iter()
+                    .zip(actual_struct.type_params.iter())
+                {
                     if !Self::match_type_param(param_arg, actual_arg, mapping) {
                         return false;
                     }
@@ -996,7 +1034,12 @@ impl SuiMcpServer {
 
     fn type_args_from_mapping(mapping: &HashMap<usize, TypeTag>, count: usize) -> Vec<String> {
         (0..count)
-            .map(|index| mapping.get(&index).map(|tag| tag.to_string()).unwrap_or_else(|| format!("<T{}>", index)))
+            .map(|index| {
+                mapping
+                    .get(&index)
+                    .map(|tag| tag.to_string())
+                    .unwrap_or_else(|| format!("<T{}>", index))
+            })
             .collect()
     }
 
@@ -1120,9 +1163,13 @@ struct GetCoinsRequest {
 struct WalletOverviewRequest {
     #[schemars(description = "Optional Sui address to query")]
     address: Option<String>,
-    #[schemars(description = "Optional signer address or alias (used if address is omitted and keystore has multiple accounts)")]
+    #[schemars(
+        description = "Optional signer address or alias (used if address is omitted and keystore has multiple accounts)"
+    )]
     signer: Option<String>,
-    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
     keystore_path: Option<String>,
     #[schemars(description = "Optional coin type for balance/coins (defaults to 0x2::sui::SUI)")]
     coin_type: Option<String>,
@@ -1180,13 +1227,17 @@ struct VerifyZkLoginSignatureRequest {
     signature: String,
     #[schemars(description = "Sui address that should match the zkLogin address")]
     address: String,
-    #[schemars(description = "Intent scope: transaction or personal_message (default: transaction)")]
+    #[schemars(
+        description = "Intent scope: transaction or personal_message (default: transaction)"
+    )]
     intent_scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct KeystoreAccountsRequest {
-    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
     keystore_path: Option<String>,
 }
 
@@ -1194,9 +1245,13 @@ struct KeystoreAccountsRequest {
 struct KeystoreSignTransactionRequest {
     #[schemars(description = "Base64-encoded transaction bytes (BCS TransactionData)")]
     tx_bytes: String,
-    #[schemars(description = "Signer address or alias (required if multiple accounts in keystore)")]
+    #[schemars(
+        description = "Signer address or alias (required if multiple accounts in keystore)"
+    )]
     signer: Option<String>,
-    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
@@ -1206,9 +1261,13 @@ struct KeystoreSignTransactionRequest {
 struct KeystoreExecuteTransactionRequest {
     #[schemars(description = "Base64-encoded transaction bytes (BCS TransactionData)")]
     tx_bytes: String,
-    #[schemars(description = "Signer address or alias (required if multiple accounts in keystore)")]
+    #[schemars(
+        description = "Signer address or alias (required if multiple accounts in keystore)"
+    )]
     signer: Option<String>,
-    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
@@ -1222,8 +1281,8 @@ struct BuildTransferObjectRequest {
     object_id: String,
     #[schemars(description = "Recipient address")]
     recipient: String,
-    #[schemars(description = "Gas budget for the transaction")]
-    gas_budget: u64,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
     #[schemars(description = "Optional gas object ID")]
     gas_object_id: Option<String>,
 }
@@ -1238,14 +1297,138 @@ struct BuildTransferSuiRequest {
     amount: Option<u64>,
     #[schemars(description = "Input coin object IDs used for payment")]
     input_coins: Vec<String>,
-    #[schemars(description = "Gas budget for the transaction")]
-    gas_budget: u64,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
     #[schemars(description = "Automatically select input coins when empty (default: true)")]
     auto_select_coins: Option<bool>,
-    #[schemars(description = "Confirm large transfer when amount exceeds threshold (default: false)")]
+    #[schemars(
+        description = "Confirm large transfer when amount exceeds threshold (default: false)"
+    )]
     confirm_large_transfer: Option<bool>,
-    #[schemars(description = "Large transfer threshold in raw SUI (default: 1_000_000_000 = 1 SUI)")]
+    #[schemars(
+        description = "Large transfer threshold in raw SUI (default: 1_000_000_000 = 1 SUI)"
+    )]
     large_transfer_threshold: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecuteTransferSuiRequest {
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Recipient address")]
+    recipient: String,
+    #[schemars(description = "Optional amount to transfer; omit to transfer all")]
+    amount: Option<u64>,
+    #[schemars(description = "Input coin object IDs used for payment")]
+    input_coins: Vec<String>,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Automatically select input coins when empty (default: true)")]
+    auto_select_coins: Option<bool>,
+    #[schemars(
+        description = "Confirm large transfer when amount exceeds threshold (default: false)"
+    )]
+    confirm_large_transfer: Option<bool>,
+    #[schemars(
+        description = "Large transfer threshold in raw SUI (default: 1_000_000_000 = 1 SUI)"
+    )]
+    large_transfer_threshold: Option<u64>,
+    #[schemars(description = "Signer address or alias (defaults to sender)")]
+    signer: Option<String>,
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
+    keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecuteTransferObjectRequest {
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Object ID to transfer")]
+    object_id: String,
+    #[schemars(description = "Recipient address")]
+    recipient: String,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Optional gas object id")]
+    gas_object_id: Option<String>,
+    #[schemars(description = "Signer address or alias (defaults to sender)")]
+    signer: Option<String>,
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
+    keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecutePaySuiRequest {
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Recipients")]
+    recipients: Vec<String>,
+    #[schemars(description = "Amounts in raw SUI")]
+    amounts: Vec<u64>,
+    #[schemars(description = "Input coin object IDs used for payment")]
+    input_coins: Vec<String>,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Signer address or alias (defaults to sender)")]
+    signer: Option<String>,
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
+    keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecuteAddStakeRequest {
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Validator address")]
+    validator: String,
+    #[schemars(description = "Input coin object IDs used for stake")]
+    coins: Vec<String>,
+    #[schemars(description = "Optional amount to stake")]
+    amount: Option<u64>,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Optional gas object id")]
+    gas_object_id: Option<String>,
+    #[schemars(description = "Signer address or alias (defaults to sender)")]
+    signer: Option<String>,
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
+    keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecuteWithdrawStakeRequest {
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Staked SUI object id")]
+    staked_sui: String,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Optional gas object id")]
+    gas_object_id: Option<String>,
+    #[schemars(description = "Signer address or alias (defaults to sender)")]
+    signer: Option<String>,
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
+    keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1258,8 +1441,8 @@ struct BuildPaySuiRequest {
     amounts: Vec<u64>,
     #[schemars(description = "Input coin object IDs used for payment (first coin used as gas)")]
     input_coins: Vec<String>,
-    #[schemars(description = "Gas budget for the transaction")]
-    gas_budget: u64,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1360,8 +1543,8 @@ struct BuildAddStakeRequest {
     coins: Vec<String>,
     #[schemars(description = "Optional amount to stake (uses all if omitted)")]
     amount: Option<u64>,
-    #[schemars(description = "Gas budget for the transaction")]
-    gas_budget: u64,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
     #[schemars(description = "Optional gas object ID")]
     gas_object_id: Option<String>,
 }
@@ -1372,8 +1555,8 @@ struct BuildWithdrawStakeRequest {
     sender: String,
     #[schemars(description = "Staked SUI object ID")]
     staked_sui: String,
-    #[schemars(description = "Gas budget for the transaction")]
-    gas_budget: u64,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
     #[schemars(description = "Optional gas object ID")]
     gas_object_id: Option<String>,
 }
@@ -1802,7 +1985,9 @@ struct CetusConfigRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct CetusPrepareRequest {
-    #[schemars(description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote")]
+    #[schemars(
+        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
+    )]
     action: String,
     #[schemars(description = "Network override")]
     network: Option<String>,
@@ -1828,7 +2013,9 @@ struct CetusPrepareRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct CetusExecuteRequest {
-    #[schemars(description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote")]
+    #[schemars(
+        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
+    )]
     action: String,
     #[schemars(description = "Network override")]
     network: Option<String>,
@@ -1884,7 +2071,9 @@ struct CetusQuoteRequest {
 struct GraphqlHelperRequest {
     #[schemars(description = "GraphQL endpoint (defaults to SUI_GRAPHQL_URL)")]
     endpoint: Option<String>,
-    #[schemars(description = "Helper type: chain_info|object|balance|transaction|checkpoint|events|coins")]
+    #[schemars(
+        description = "Helper type: chain_info|object|balance|transaction|checkpoint|events|coins"
+    )]
     helper: String,
     #[schemars(description = "Optional address for balance")]
     address: Option<String>,
@@ -1966,7 +2155,9 @@ struct CetusGenerateConfigRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct CetusGeneratePayloadRequest {
-    #[schemars(description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote")]
+    #[schemars(
+        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
+    )]
     action: String,
     #[schemars(description = "Network override")]
     network: Option<String>,
@@ -1986,7 +2177,9 @@ struct CetusGeneratePayloadRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct CetusValidatePayloadRequest {
-    #[schemars(description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote")]
+    #[schemars(
+        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
+    )]
     action: String,
     #[schemars(description = "Network override")]
     network: Option<String>,
@@ -2004,7 +2197,9 @@ struct CetusValidatePayloadRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct CetusActionParamsRequest {
-    #[schemars(description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote")]
+    #[schemars(
+        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
+    )]
     action: String,
     #[schemars(description = "Network override")]
     network: Option<String>,

@@ -4,22 +4,20 @@
         &self,
         Parameters(request): Parameters<BuildTransferObjectRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let sender = Self::parse_address(&request.sender)?;
-        let object_id = Self::parse_object_id(&request.object_id)?;
-        let recipient = Self::parse_address(&request.recipient)?;
-        let gas = match request.gas_object_id {
-            Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
-            None => None,
-        };
+        let (tx_data, gas_budget) = self
+            .build_transfer_object_data(
+                &request.sender,
+                &request.object_id,
+                &request.recipient,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
 
-        let tx_data = self
-            .client
-            .transaction_builder()
-            .transfer_object(sender, object_id, gas, request.gas_budget, recipient)
-            .await
-            .map_err(|e| Self::sdk_error("build_transfer_object", e))?;
-
-        let response = Self::tx_response(&tx_data)?;
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "gas_budget": gas_budget
+        }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
@@ -29,11 +27,269 @@
         &self,
         Parameters(request): Parameters<BuildTransferSuiRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let sender = Self::parse_address(&request.sender)?;
-        let recipient = Self::parse_address(&request.recipient)?;
-        if let Some(amount) = request.amount {
-            let threshold = request.large_transfer_threshold.unwrap_or(1_000_000_000);
-            let confirmed = request.confirm_large_transfer.unwrap_or(false);
+        let (tx_data, input_coin_ids, gas_budget) = self
+            .build_transfer_sui_data(
+                &request.sender,
+                &request.recipient,
+                request.amount,
+                request.gas_budget,
+                &request.input_coins,
+                request.auto_select_coins,
+                request.confirm_large_transfer,
+                request.large_transfer_threshold,
+            )
+            .await?;
+
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "input_coins": input_coin_ids,
+            "gas_budget": gas_budget
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Execute a transfer SUI transaction using local keystore
+    #[tool(description = "Execute a transfer SUI transaction using local keystore")]
+    async fn execute_transfer_sui(
+        &self,
+        Parameters(request): Parameters<ExecuteTransferSuiRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (tx_data, input_coin_ids, _) = self
+            .build_transfer_sui_data(
+                &request.sender,
+                &request.recipient,
+                request.amount,
+                request.gas_budget,
+                &request.input_coins,
+                request.auto_select_coins,
+                request.confirm_large_transfer,
+                request.large_transfer_threshold,
+            )
+            .await?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(signer) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            Self::parse_address(&request.sender)?
+        };
+
+        let tx_sender = tx_data.sender();
+        if tx_sender != signer && !request.allow_sender_mismatch.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Signer {} does not match transaction sender {}. Set allow_sender_mismatch=true to proceed",
+                    signer, tx_sender
+                )),
+                data: None,
+            });
+        }
+
+        let result = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                "execute_transfer_sui",
+            )
+            .await?;
+
+        let summary = Self::summarize_transaction(&result);
+        let response = Self::pretty_json(&json!({
+            "input_coins": input_coin_ids,
+            "result": result,
+            "summary": summary
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Execute a transfer object transaction using local keystore
+    #[tool(description = "Execute a transfer object transaction using local keystore")]
+    async fn execute_transfer_object(
+        &self,
+        Parameters(request): Parameters<ExecuteTransferObjectRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (tx_data, _) = self
+            .build_transfer_object_data(
+                &request.sender,
+                &request.object_id,
+                &request.recipient,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(signer) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            Self::parse_address(&request.sender)?
+        };
+
+        let result = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                "execute_transfer_object",
+            )
+            .await?;
+
+        let summary = Self::summarize_transaction(&result);
+        let response = Self::pretty_json(&json!({
+            "result": result,
+            "summary": summary
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Execute a pay SUI transaction using local keystore
+    #[tool(description = "Execute a pay SUI transaction using local keystore")]
+    async fn execute_pay_sui(
+        &self,
+        Parameters(request): Parameters<ExecutePaySuiRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (tx_data, _) = self
+            .build_pay_sui_data(
+                &request.sender,
+                &request.recipients,
+                &request.amounts,
+                &request.input_coins,
+                request.gas_budget,
+            )
+            .await?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(signer) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            Self::parse_address(&request.sender)?
+        };
+
+        let result = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                "execute_pay_sui",
+            )
+            .await?;
+
+        let summary = Self::summarize_transaction(&result);
+        let response = Self::pretty_json(&json!({
+            "result": result,
+            "summary": summary
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Execute a stake transaction using local keystore
+    #[tool(description = "Execute a stake transaction using local keystore")]
+    async fn execute_add_stake(
+        &self,
+        Parameters(request): Parameters<ExecuteAddStakeRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (tx_data, _) = self
+            .build_add_stake_data(
+                &request.sender,
+                &request.validator,
+                &request.coins,
+                request.amount,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(signer) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            Self::parse_address(&request.sender)?
+        };
+
+        let result = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                "execute_add_stake",
+            )
+            .await?;
+
+        let summary = Self::summarize_transaction(&result);
+        let response = Self::pretty_json(&json!({
+            "result": result,
+            "summary": summary
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Execute a withdraw stake transaction using local keystore
+    #[tool(description = "Execute a withdraw stake transaction using local keystore")]
+    async fn execute_withdraw_stake(
+        &self,
+        Parameters(request): Parameters<ExecuteWithdrawStakeRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (tx_data, _) = self
+            .build_withdraw_stake_data(
+                &request.sender,
+                &request.staked_sui,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(signer) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            Self::parse_address(&request.sender)?
+        };
+
+        let result = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                "execute_withdraw_stake",
+            )
+            .await?;
+
+        let summary = Self::summarize_transaction(&result);
+        let response = Self::pretty_json(&json!({
+            "result": result,
+            "summary": summary
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    async fn build_transfer_sui_data(
+        &self,
+        sender: &str,
+        recipient: &str,
+        amount: Option<u64>,
+        gas_budget: Option<u64>,
+        input_coins: &[String],
+        auto_select_coins: Option<bool>,
+        confirm_large_transfer: Option<bool>,
+        large_transfer_threshold: Option<u64>,
+    ) -> Result<(TransactionData, Vec<String>, u64), ErrorData> {
+        let sender = Self::parse_address(sender)?;
+        let recipient = Self::parse_address(recipient)?;
+        if let Some(amount) = amount {
+            let threshold = large_transfer_threshold.unwrap_or(1_000_000_000);
+            let confirmed = confirm_large_transfer.unwrap_or(false);
             if amount >= threshold && !confirmed {
                 return Err(ErrorData {
                     code: ErrorCode(-32602),
@@ -45,51 +301,334 @@
                 });
             }
         }
-        let auto_select = request.auto_select_coins.unwrap_or(true);
-        let input_coin_ids = if request.input_coins.is_empty() && auto_select {
+
+        let mut resolved_gas_budget = gas_budget.unwrap_or(1_000_000);
+        let auto_select = auto_select_coins.unwrap_or(true);
+        let mut selected_total_balance: Option<u128> = None;
+        let input_coin_ids = if input_coins.is_empty() && auto_select {
             let coins = self
                 .client
                 .coin_read_api()
                 .get_coins(sender, None, None, None)
                 .await
                 .map_err(|e| Self::sdk_error("build_transfer_sui", e))?;
-            let coin_ids = coins
-                .data
-                .iter()
-                .map(|coin| coin.coin_object_id.to_string())
-                .collect::<Vec<_>>();
-            if coin_ids.is_empty() {
+            let mut coin_list = coins.data;
+            if coin_list.is_empty() {
                 return Err(ErrorData {
                     code: ErrorCode(-32602),
                     message: Cow::from("No SUI coins found for sender"),
                     data: None,
                 });
             }
-            coin_ids
+
+            coin_list.sort_by(|a, b| b.balance.cmp(&a.balance));
+
+            if amount.is_none() {
+                selected_total_balance = Some(coin_list[0].balance as u128);
+                vec![coin_list[0].coin_object_id.to_string()]
+            } else {
+                let required = amount.unwrap_or(0) as u128 + resolved_gas_budget as u128;
+                let mut total: u128 = 0;
+                let mut selected = Vec::new();
+                for coin in coin_list {
+                    selected.push(coin.coin_object_id.to_string());
+                    total += coin.balance as u128;
+                    if total >= required {
+                        break;
+                    }
+                }
+                if total < required {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("Insufficient SUI balance to cover amount and gas"),
+                        data: None,
+                    });
+                }
+                selected_total_balance = Some(total);
+                selected
+            }
         } else {
-            request.input_coins.clone()
+            input_coins.to_vec()
         };
+
         let input_coins = Self::parse_object_ids(&input_coin_ids)?;
-
-        let tx_data = if let Some(amount) = request.amount {
+        let tx_data = if let Some(amount) = amount {
             self.client
                 .transaction_builder()
-                .pay_sui(sender, input_coins, vec![recipient], vec![amount], request.gas_budget)
+                .pay_sui(sender, input_coins.clone(), vec![recipient], vec![amount], resolved_gas_budget)
                 .await
                 .map_err(|e| Self::sdk_error("build_transfer_sui", e))?
         } else {
             self.client
                 .transaction_builder()
-                .pay_all_sui(sender, input_coins, recipient, request.gas_budget)
+                .pay_all_sui(sender, input_coins.clone(), recipient, resolved_gas_budget)
                 .await
                 .map_err(|e| Self::sdk_error("build_transfer_sui", e))?
         };
 
-        let response = Self::pretty_json(&json!({
-            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
-            "input_coins": input_coin_ids
-        }))?;
-        Ok(CallToolResult::success(vec![Content::text(response)]))
+        if gas_budget.is_none() {
+            let estimated = self.estimate_gas_budget(&tx_data).await?;
+            resolved_gas_budget = Self::gas_budget_with_buffer(estimated);
+            if let (Some(amount), Some(total)) = (amount, selected_total_balance) {
+                let required = amount as u128 + resolved_gas_budget as u128;
+                if total < required {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("Insufficient SUI balance to cover amount and estimated gas"),
+                        data: None,
+                    });
+                }
+            }
+            let rebuilt = if let Some(amount) = amount {
+                self.client
+                    .transaction_builder()
+                    .pay_sui(sender, input_coins, vec![recipient], vec![amount], resolved_gas_budget)
+                    .await
+                    .map_err(|e| Self::sdk_error("build_transfer_sui", e))?
+            } else {
+                self.client
+                    .transaction_builder()
+                    .pay_all_sui(sender, input_coins, recipient, resolved_gas_budget)
+                    .await
+                    .map_err(|e| Self::sdk_error("build_transfer_sui", e))?
+            };
+            return Ok((rebuilt, input_coin_ids, resolved_gas_budget));
+        }
+
+        Ok((tx_data, input_coin_ids, resolved_gas_budget))
+    }
+
+    async fn build_transfer_object_data(
+        &self,
+        sender: &str,
+        object_id: &str,
+        recipient: &str,
+        gas_budget: Option<u64>,
+        gas_object_id: Option<&str>,
+    ) -> Result<(TransactionData, u64), ErrorData> {
+        let sender = Self::parse_address(sender)?;
+        let object_id = Self::parse_object_id(object_id)?;
+        let recipient = Self::parse_address(recipient)?;
+        let gas = match gas_object_id {
+            Some(gas_id) => Some(Self::parse_object_id(gas_id)?),
+            None => None,
+        };
+
+        let mut resolved_gas_budget = gas_budget.unwrap_or(1_000_000);
+        let tx_data = self
+            .client
+            .transaction_builder()
+            .transfer_object(sender, object_id, gas, resolved_gas_budget, recipient)
+            .await
+            .map_err(|e| Self::sdk_error("build_transfer_object", e))?;
+
+        if gas_budget.is_none() {
+            let estimated = self.estimate_gas_budget(&tx_data).await?;
+            resolved_gas_budget = Self::gas_budget_with_buffer(estimated);
+            let rebuilt = self
+                .client
+                .transaction_builder()
+                .transfer_object(sender, object_id, gas, resolved_gas_budget, recipient)
+                .await
+                .map_err(|e| Self::sdk_error("build_transfer_object", e))?;
+            return Ok((rebuilt, resolved_gas_budget));
+        }
+
+        Ok((tx_data, resolved_gas_budget))
+    }
+
+    async fn build_pay_sui_data(
+        &self,
+        sender: &str,
+        recipients: &[String],
+        amounts: &[u64],
+        input_coins: &[String],
+        gas_budget: Option<u64>,
+    ) -> Result<(TransactionData, u64), ErrorData> {
+        if recipients.len() != amounts.len() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Recipients and amounts length mismatch"),
+                data: None,
+            });
+        }
+
+        let sender = Self::parse_address(sender)?;
+        let recipients = Self::parse_addresses(recipients)?;
+        let input_coins = Self::parse_object_ids(input_coins)?;
+
+        let mut resolved_gas_budget = gas_budget.unwrap_or(1_000_000);
+        let tx_data = self
+            .client
+            .transaction_builder()
+            .pay_sui(
+                sender,
+                input_coins.clone(),
+                recipients.clone(),
+                amounts.to_vec(),
+                resolved_gas_budget,
+            )
+            .await
+            .map_err(|e| Self::sdk_error("build_pay_sui", e))?;
+
+        if gas_budget.is_none() {
+            let estimated = self.estimate_gas_budget(&tx_data).await?;
+            resolved_gas_budget = Self::gas_budget_with_buffer(estimated);
+            let rebuilt = self
+                .client
+                .transaction_builder()
+                .pay_sui(sender, input_coins, recipients, amounts.to_vec(), resolved_gas_budget)
+                .await
+                .map_err(|e| Self::sdk_error("build_pay_sui", e))?;
+            return Ok((rebuilt, resolved_gas_budget));
+        }
+
+        Ok((tx_data, resolved_gas_budget))
+    }
+
+    async fn build_add_stake_data(
+        &self,
+        sender: &str,
+        validator: &str,
+        coins: &[String],
+        amount: Option<u64>,
+        gas_budget: Option<u64>,
+        gas_object_id: Option<&str>,
+    ) -> Result<(TransactionData, u64), ErrorData> {
+        let sender = Self::parse_address(sender)?;
+        let validator = Self::parse_address(validator)?;
+        let coins = Self::parse_object_ids(coins)?;
+        let gas = match gas_object_id {
+            Some(gas_id) => Some(Self::parse_object_id(gas_id)?),
+            None => None,
+        };
+
+        let mut resolved_gas_budget = gas_budget.unwrap_or(1_000_000);
+        let tx_data = self
+            .client
+            .transaction_builder()
+            .request_add_stake(sender, coins.clone(), amount, validator, gas, resolved_gas_budget)
+            .await
+            .map_err(|e| Self::sdk_error("build_add_stake", e))?;
+
+        if gas_budget.is_none() {
+            let estimated = self.estimate_gas_budget(&tx_data).await?;
+            resolved_gas_budget = Self::gas_budget_with_buffer(estimated);
+            let rebuilt = self
+                .client
+                .transaction_builder()
+                .request_add_stake(sender, coins, amount, validator, gas, resolved_gas_budget)
+                .await
+                .map_err(|e| Self::sdk_error("build_add_stake", e))?;
+            return Ok((rebuilt, resolved_gas_budget));
+        }
+
+        Ok((tx_data, resolved_gas_budget))
+    }
+
+    async fn build_withdraw_stake_data(
+        &self,
+        sender: &str,
+        staked_sui: &str,
+        gas_budget: Option<u64>,
+        gas_object_id: Option<&str>,
+    ) -> Result<(TransactionData, u64), ErrorData> {
+        let sender = Self::parse_address(sender)?;
+        let staked_sui = Self::parse_object_id(staked_sui)?;
+        let gas = match gas_object_id {
+            Some(gas_id) => Some(Self::parse_object_id(gas_id)?),
+            None => None,
+        };
+
+        let mut resolved_gas_budget = gas_budget.unwrap_or(1_000_000);
+        let tx_data = self
+            .client
+            .transaction_builder()
+            .request_withdraw_stake(sender, staked_sui, gas, resolved_gas_budget)
+            .await
+            .map_err(|e| Self::sdk_error("build_withdraw_stake", e))?;
+
+        if gas_budget.is_none() {
+            let estimated = self.estimate_gas_budget(&tx_data).await?;
+            resolved_gas_budget = Self::gas_budget_with_buffer(estimated);
+            let rebuilt = self
+                .client
+                .transaction_builder()
+                .request_withdraw_stake(sender, staked_sui, gas, resolved_gas_budget)
+                .await
+                .map_err(|e| Self::sdk_error("build_withdraw_stake", e))?;
+            return Ok((rebuilt, resolved_gas_budget));
+        }
+
+        Ok((tx_data, resolved_gas_budget))
+    }
+
+    async fn estimate_gas_budget(
+        &self,
+        tx_data: &TransactionData,
+    ) -> Result<u64, ErrorData> {
+        let result = self
+            .client
+            .read_api()
+            .dry_run_transaction_block(tx_data.clone())
+            .await
+            .map_err(|e| Self::sdk_error("estimate_gas_budget", e))?;
+        let summary = result.effects.gas_cost_summary();
+        Ok(summary.gas_used())
+    }
+
+    fn gas_budget_with_buffer(estimate: u64) -> u64 {
+        estimate
+            .saturating_add(estimate / 5)
+            .saturating_add(1_000)
+    }
+
+    async fn sign_and_execute_tx_data(
+        &self,
+        keystore: &sui_keys::keystore::FileBasedKeystore,
+        signer: SuiAddress,
+        tx_data: TransactionData,
+        allow_sender_mismatch: Option<bool>,
+        context: &str,
+    ) -> Result<SuiTransactionBlockResponse, ErrorData> {
+        let tx_sender = tx_data.sender();
+        if tx_sender != signer && !allow_sender_mismatch.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Signer {} does not match transaction sender {}. Set allow_sender_mismatch=true to proceed",
+                    signer, tx_sender
+                )),
+                data: None,
+            });
+        }
+
+        let signature = keystore
+            .sign_secure(&signer, &tx_data, shared_crypto::intent::Intent::sui_transaction())
+            .await
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to sign transaction: {}", e)),
+                data: None,
+            })?;
+
+        let tx = Transaction::from_generic_sig_data(
+            tx_data,
+            vec![GenericSignature::Signature(signature)],
+        );
+
+        let options = SuiTransactionBlockResponseOptions::new()
+            .with_input()
+            .with_effects()
+            .with_events()
+            .with_object_changes()
+            .with_balance_changes();
+
+        self.client
+            .quorum_driver_api()
+            .execute_transaction_block(tx, options, None)
+            .await
+            .map_err(|e| Self::sdk_error(context, e))
     }
 
     /// Build a pay SUI transaction
@@ -98,32 +637,20 @@
         &self,
         Parameters(request): Parameters<BuildPaySuiRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        if request.recipients.len() != request.amounts.len() {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Recipients and amounts length mismatch"),
-                data: None,
-            });
-        }
-
-        let sender = Self::parse_address(&request.sender)?;
-        let recipients = Self::parse_addresses(&request.recipients)?;
-        let input_coins = Self::parse_object_ids(&request.input_coins)?;
-
-        let tx_data = self
-            .client
-            .transaction_builder()
-            .pay_sui(
-                sender,
-                input_coins,
-                recipients,
-                request.amounts,
+        let (tx_data, gas_budget) = self
+            .build_pay_sui_data(
+                &request.sender,
+                &request.recipients,
+                &request.amounts,
+                &request.input_coins,
                 request.gas_budget,
             )
-            .await
-            .map_err(|e| Self::sdk_error("build_pay_sui", e))?;
+            .await?;
 
-        let response = Self::tx_response(&tx_data)?;
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "gas_budget": gas_budget
+        }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
@@ -319,29 +846,21 @@
         &self,
         Parameters(request): Parameters<BuildAddStakeRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let sender = Self::parse_address(&request.sender)?;
-        let validator = Self::parse_address(&request.validator)?;
-        let coins = Self::parse_object_ids(&request.coins)?;
-        let gas = match request.gas_object_id {
-            Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
-            None => None,
-        };
-
-        let tx_data = self
-            .client
-            .transaction_builder()
-            .request_add_stake(
-                sender,
-                coins,
+        let (tx_data, gas_budget) = self
+            .build_add_stake_data(
+                &request.sender,
+                &request.validator,
+                &request.coins,
                 request.amount,
-                validator,
-                gas,
                 request.gas_budget,
+                request.gas_object_id.as_deref(),
             )
-            .await
-            .map_err(|e| Self::sdk_error("build_add_stake", e))?;
+            .await?;
 
-        let response = Self::tx_response(&tx_data)?;
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "gas_budget": gas_budget
+        }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
@@ -351,21 +870,19 @@
         &self,
         Parameters(request): Parameters<BuildWithdrawStakeRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let sender = Self::parse_address(&request.sender)?;
-        let staked_sui = Self::parse_object_id(&request.staked_sui)?;
-        let gas = match request.gas_object_id {
-            Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
-            None => None,
-        };
+        let (tx_data, gas_budget) = self
+            .build_withdraw_stake_data(
+                &request.sender,
+                &request.staked_sui,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
 
-        let tx_data = self
-            .client
-            .transaction_builder()
-            .request_withdraw_stake(sender, staked_sui, gas, request.gas_budget)
-            .await
-            .map_err(|e| Self::sdk_error("build_withdraw_stake", e))?;
-
-        let response = Self::tx_response(&tx_data)?;
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "gas_budget": gas_budget
+        }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 

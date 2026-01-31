@@ -104,10 +104,39 @@ Chinese version: `docs/intent-router.zh.md`.
 }
 ```
 
+### Example: Execute transfer with local keystore
+
+```json
+{
+  "tool": "execute_transfer_sui",
+  "params": {
+    "sender": "0x...",
+    "recipient": "0x...",
+    "amount": 10000000,
+    "input_coins": [],
+    "auto_select_coins": true,
+    "confirm_large_transfer": true,
+    "gas_budget": 10000000,
+    "signer": "0x..."
+  }
+}
+```
+
+Other one-step execute tools:
+
+- `execute_transfer_object`
+- `execute_pay_sui`
+- `execute_add_stake`
+- `execute_withdraw_stake`
+
 ### Safety checks
 
 - `build_transfer_sui` will require `confirm_large_transfer=true` when the amount exceeds the threshold (default: 1 SUI).
 - `sign_transaction_with_keystore` and `execute_transaction_with_keystore` require `allow_sender_mismatch=true` if the signer differs from the transaction sender.
+
+### Gas estimation
+
+When `gas_budget` is omitted on build/execute tools, the server will dry-run the transaction, estimate gas usage, and apply a buffer.
 
 ### Example: Wallet overview
 
@@ -142,6 +171,7 @@ This server can sign and execute transactions using your local Sui keystore (e.g
 ### Environment Variables
 
 - `SUI_KEYSTORE_PATH` - Optional keystore path override
+- `SUI_DEFAULT_SIGNER` - Default signer address or alias when multiple accounts exist
 
 ### Tools
 
