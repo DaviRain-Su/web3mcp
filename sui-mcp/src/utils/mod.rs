@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod base64;
 pub mod errors;
+pub mod evm_confirm_store;
 pub mod json;
 pub mod network;
 pub mod sui_parse;

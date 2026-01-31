@@ -1,0 +1,410 @@
+use crate::types::EvmTxRequest;
+use rmcp::model::{ErrorCode, ErrorData};
+use serde_json::Value;
+use std::borrow::Cow;
+
+#[derive(Clone, Debug)]
+pub struct PendingRow {
+    pub id: String,
+    pub chain_id: u64,
+    pub tx: EvmTxRequest,
+    pub created_at_ms: u128,
+    pub updated_at_ms: u128,
+    pub expires_at_ms: u128,
+    pub tx_summary_hash: String,
+    pub status: String,
+    pub tx_hash: Option<String>,
+    pub last_error: Option<String>,
+}
+
+pub fn now_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_millis(0))
+        .as_millis()
+}
+
+pub fn default_ttl_ms() -> u128 {
+    10 * 60 * 1000
+}
+
+pub fn pending_db_path_from_cwd() -> Result<std::path::PathBuf, ErrorData> {
+    let cwd = std::env::current_dir().map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to get current_dir: {}", e)),
+        data: None,
+    })?;
+    Ok(cwd.join(".data").join("pending.sqlite"))
+}
+
+pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
+    let path = pending_db_path_from_cwd()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to create data dir: {}", e)),
+            data: None,
+        })?;
+    }
+
+    let conn = rusqlite::Connection::open(path).map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to open sqlite db: {}", e)),
+        data: None,
+    })?;
+
+    // Base table (older versions).
+    conn.execute_batch(
+        "BEGIN;
+         CREATE TABLE IF NOT EXISTS evm_pending_confirmations (
+           id TEXT PRIMARY KEY,
+           chain_id INTEGER NOT NULL,
+           tx_json TEXT NOT NULL,
+           created_at_ms INTEGER NOT NULL,
+           expires_at_ms INTEGER NOT NULL,
+           tx_summary_hash TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_evm_pending_expires ON evm_pending_confirmations(expires_at_ms);
+         COMMIT;",
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to init sqlite schema: {}", e)),
+        data: None,
+    })?;
+
+    // Migrations: add new columns if missing.
+    // SQLite is permissive: we can attempt ALTER TABLE and ignore duplicate-column errors.
+    for stmt in [
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN updated_at_ms INTEGER",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN status TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN tx_hash TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN last_error TEXT",
+    ] {
+        let _ = conn.execute(stmt, []);
+    }
+
+    // Backfill defaults if needed.
+    let _ = conn.execute(
+        "UPDATE evm_pending_confirmations
+         SET updated_at_ms = COALESCE(updated_at_ms, created_at_ms),
+             status = COALESCE(status, 'pending')
+         WHERE updated_at_ms IS NULL OR status IS NULL",
+        [],
+    );
+
+    Ok(conn)
+}
+
+pub fn cleanup_expired(conn: &rusqlite::Connection, now_ms: u128) -> Result<(), ErrorData> {
+    conn.execute(
+        "DELETE FROM evm_pending_confirmations WHERE expires_at_ms < ?1",
+        [now_ms as i64],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to cleanup expired confirmations: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn insert_pending(
+    id: &str,
+    tx: &EvmTxRequest,
+    created_at_ms: u128,
+    expires_at_ms: u128,
+    tx_summary_hash: &str,
+) -> Result<(), ErrorData> {
+    let conn = connect()?;
+    cleanup_expired(&conn, now_ms())?;
+
+    let tx_json = serde_json::to_string(tx).map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to serialize tx: {}", e)),
+        data: None,
+    })?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO evm_pending_confirmations
+         (id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', NULL, NULL)",
+        rusqlite::params![
+            id,
+            tx.chain_id as i64,
+            tx_json,
+            created_at_ms as i64,
+            created_at_ms as i64,
+            expires_at_ms as i64,
+            tx_summary_hash
+        ],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to insert pending confirmation: {}", e)),
+        data: None,
+    })?;
+
+    Ok(())
+}
+
+pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRow>, ErrorData> {
+    cleanup_expired(conn, now_ms())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error
+             FROM evm_pending_confirmations
+             WHERE id = ?1",
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to prepare select: {}", e)),
+            data: None,
+        })?;
+
+    let row = match stmt.query_row([id], |row| {
+        let id: String = row.get(0)?;
+        let chain_id: i64 = row.get(1)?;
+        let tx_json: String = row.get(2)?;
+        let created_at_ms: i64 = row.get(3)?;
+        let updated_at_ms: i64 = row.get(4)?;
+        let expires_at_ms: i64 = row.get(5)?;
+        let tx_summary_hash: String = row.get(6)?;
+        let status: String = row.get(7)?;
+        let tx_hash: Option<String> = row.get(8)?;
+        let last_error: Option<String> = row.get(9)?;
+        Ok((
+            id,
+            chain_id,
+            tx_json,
+            created_at_ms,
+            updated_at_ms,
+            expires_at_ms,
+            tx_summary_hash,
+            status,
+            tx_hash,
+            last_error,
+        ))
+    }) {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to query row: {}", e)),
+                data: None,
+            })
+        }
+    };
+
+    let Some((
+        id,
+        chain_id,
+        tx_json,
+        created_at_ms,
+        updated_at_ms,
+        expires_at_ms,
+        tx_summary_hash,
+        status,
+        tx_hash,
+        last_error,
+    )) = row
+    else {
+        return Ok(None);
+    };
+
+    let tx: EvmTxRequest = serde_json::from_str(&tx_json).map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to parse tx_json: {}", e)),
+        data: None,
+    })?;
+
+    Ok(Some(PendingRow {
+        id,
+        chain_id: chain_id as u64,
+        tx,
+        created_at_ms: created_at_ms as u128,
+        updated_at_ms: updated_at_ms as u128,
+        expires_at_ms: expires_at_ms as u128,
+        tx_summary_hash,
+        status,
+        tx_hash,
+        last_error,
+    }))
+}
+
+pub fn update_pending(
+    conn: &rusqlite::Connection,
+    id: &str,
+    tx: &EvmTxRequest,
+    expires_at_ms: u128,
+    tx_summary_hash: &str,
+) -> Result<(), ErrorData> {
+    cleanup_expired(conn, now_ms())?;
+
+    let tx_json = serde_json::to_string(tx).map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to serialize tx: {}", e)),
+        data: None,
+    })?;
+
+    let updated_at_ms = now_ms() as i64;
+
+    conn.execute(
+        "UPDATE evm_pending_confirmations
+         SET tx_json = ?2,
+             updated_at_ms = ?3,
+             expires_at_ms = ?4,
+             tx_summary_hash = ?5,
+             status = 'pending',
+             tx_hash = NULL,
+             last_error = NULL
+         WHERE id = ?1",
+        rusqlite::params![
+            id,
+            tx_json,
+            updated_at_ms,
+            expires_at_ms as i64,
+            tx_summary_hash
+        ],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to update pending confirmation: {}", e)),
+        data: None,
+    })?;
+
+    Ok(())
+}
+
+pub fn mark_consumed(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorData> {
+    let updated_at_ms = now_ms() as i64;
+    conn.execute(
+        "UPDATE evm_pending_confirmations SET status='consumed', updated_at_ms=?2 WHERE id=?1",
+        rusqlite::params![id, updated_at_ms],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to mark consumed: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn mark_sent(conn: &rusqlite::Connection, id: &str, tx_hash: &str) -> Result<(), ErrorData> {
+    let updated_at_ms = now_ms() as i64;
+    conn.execute(
+        "UPDATE evm_pending_confirmations SET status='sent', tx_hash=?2, updated_at_ms=?3 WHERE id=?1",
+        rusqlite::params![id, tx_hash, updated_at_ms],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to mark sent: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn mark_failed(conn: &rusqlite::Connection, id: &str, err: &str) -> Result<(), ErrorData> {
+    let updated_at_ms = now_ms() as i64;
+    conn.execute(
+        "UPDATE evm_pending_confirmations SET status='failed', last_error=?2, updated_at_ms=?3 WHERE id=?1",
+        rusqlite::params![id, err, updated_at_ms],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to mark failed: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn tx_summary_hash(tx: &EvmTxRequest) -> String {
+    let s = format!(
+        "chain_id={}|from={}|to={}|value_wei={}|nonce={:?}|gas_limit={:?}|max_fee_per_gas_wei={:?}|max_priority_fee_per_gas_wei={:?}|data_hex={:?}",
+        tx.chain_id,
+        tx.from.to_lowercase(),
+        tx.to.to_lowercase(),
+        tx.value_wei,
+        tx.nonce,
+        tx.gas_limit,
+        tx.max_fee_per_gas_wei,
+        tx.max_priority_fee_per_gas_wei,
+        tx.data_hex.as_ref().map(|d| d.to_lowercase())
+    );
+    let h = ethers::utils::keccak256(s.as_bytes());
+    format!("0x{}", hex::encode(h))
+}
+
+pub fn extract_tx_summary_hash(text: &str) -> Option<String> {
+    for raw in text.split_whitespace() {
+        let t = raw.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c));
+        let t = t.strip_prefix("hash:").unwrap_or(t);
+        let t = t.strip_prefix("summary:").unwrap_or(t);
+        if t.starts_with("0x") && t.len() == 66 {
+            return Some(t.to_lowercase());
+        }
+    }
+    None
+}
+
+pub fn extract_confirmation_id(text: &str) -> Option<String> {
+    for raw in text.split_whitespace() {
+        let t = raw.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c));
+        if t.starts_with("evm_dryrun_") {
+            return Some(t.to_string());
+        }
+        if t.starts_with("confirm_") {
+            return Some(t.to_string());
+        }
+    }
+    None
+}
+
+pub fn tx_summary_for_response(tx: &EvmTxRequest) -> Value {
+    serde_json::json!({
+        "chain_id": tx.chain_id,
+        "from": tx.from,
+        "to": tx.to,
+        "value_wei": tx.value_wei,
+        "nonce": tx.nonce,
+        "gas_limit": tx.gas_limit,
+        "max_fee_per_gas_wei": tx.max_fee_per_gas_wei,
+        "max_priority_fee_per_gas_wei": tx.max_priority_fee_per_gas_wei,
+        "data_prefix": tx.data_hex.as_ref().map(|d| d.chars().take(18).collect::<String>()),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_tx_summary_hash() {
+        let t = "confirm evm_dryrun_1_2 hash:0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef on base";
+        assert_eq!(
+            extract_tx_summary_hash(t).unwrap(),
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        );
+    }
+
+    #[test]
+    fn test_tx_summary_hash_stable() {
+        let tx = EvmTxRequest {
+            chain_id: 84532,
+            from: "0x1111111111111111111111111111111111111111".to_string(),
+            to: "0x2222222222222222222222222222222222222222".to_string(),
+            value_wei: "0".to_string(),
+            data_hex: Some("0x1234".to_string()),
+            nonce: Some(1),
+            gas_limit: Some(21000),
+            max_fee_per_gas_wei: Some("1".to_string()),
+            max_priority_fee_per_gas_wei: Some("0".to_string()),
+        };
+        let h1 = tx_summary_hash(&tx);
+        let h2 = tx_summary_hash(&tx);
+        assert_eq!(h1, h2);
+        assert!(h1.starts_with("0x") && h1.len() == 66);
+    }
+}

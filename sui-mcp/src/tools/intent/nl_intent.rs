@@ -207,45 +207,52 @@
                     data: None,
                 })?;
 
-                let id = Self::extract_confirmation_id(&text).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(
-                        "Missing confirmation id. Paste the evm_dryrun_<...> id from the previous dry-run response.",
-                    ),
-                    data: None,
+                let id = crate::utils::evm_confirm_store::extract_confirmation_id(&text)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Missing confirmation id. Paste the evm_dryrun_<...> id from the previous dry-run response.",
+                        ),
+                        data: None,
+                    })?;
+
+                let provided_hash = crate::utils::evm_confirm_store::extract_tx_summary_hash(&text)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Missing tx_summary_hash. Send: confirm <confirmation_id> hash:<tx_summary_hash>",
+                        ),
+                        data: None,
+                    })?;
+
+                let conn = crate::utils::evm_confirm_store::connect()?;
+                crate::utils::evm_confirm_store::cleanup_expired(
+                    &conn,
+                    crate::utils::evm_confirm_store::now_ms(),
+                )?;
+
+                let row = crate::utils::evm_confirm_store::get_row(&conn, &id)?.ok_or_else(|| {
+                    ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Unknown/expired confirmation id (not found). Run the dry-run again to regenerate.",
+                        ),
+                        data: None,
+                    }
                 })?;
 
-                let pending = Self::evm_pending_db_get(&id)?.ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(
-                        "Unknown/expired confirmation id (not found). Run the dry-run again to regenerate.",
-                    ),
-                    data: None,
-                })?;
-
-                let (tx, _created_at_ms, expires_at_ms, expected_hash) = pending;
-
-                let provided_hash = Self::extract_tx_summary_hash(&text).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(
-                        "Missing tx_summary_hash. Send: confirm <confirmation_id> hash:<tx_summary_hash>",
-                    ),
-                    data: None,
-                })?;
-
-                if provided_hash != expected_hash.to_lowercase() {
+                if row.chain_id != chain_id {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(format!(
-                            "tx_summary_hash mismatch. expected={} got={}",
-                            expected_hash, provided_hash
+                            "Confirmation chain_id mismatch: stored={} current={}",
+                            row.chain_id, chain_id
                         )),
                         data: None,
                     });
                 }
 
-                // Expiry guard (safe by default)
-                if Self::now_ms() > expires_at_ms {
+                if crate::utils::evm_confirm_store::now_ms() > row.expires_at_ms {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(
@@ -255,16 +262,30 @@
                     });
                 }
 
-                if tx.chain_id != chain_id {
+                // Status handling.
+                if row.status == "sent" {
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "status": "sent",
+                        "confirmation_id": id,
+                        "tx_hash": row.tx_hash,
+                        "note": "Already broadcast (recorded in sqlite)"
+                    }))?;
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+
+                if row.tx_summary_hash.to_lowercase() != provided_hash {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(format!(
-                            "Confirmation chain_id mismatch: stored={} current={}",
-                            tx.chain_id, chain_id
+                            "tx_summary_hash mismatch. expected={} got={}",
+                            row.tx_summary_hash, provided_hash
                         )),
                         data: None,
                     });
                 }
+
+                let mut tx = row.tx;
 
                 // Re-preflight at confirm time (nonce/fees may have changed since dry-run).
                 let preflight = self
@@ -275,34 +296,38 @@
                     message: Cow::from("Failed to parse evm_preflight response during confirm"),
                     data: None,
                 })?;
-                let tx: EvmTxRequest = serde_json::from_value(
-                    preflight_json.get("tx").cloned().unwrap_or(Value::Null),
-                )
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("Failed to decode preflight tx during confirm: {}", e)),
-                    data: None,
-                })?;
-
-                // If confirm-time preflight changes the tx summary hash, force re-confirm.
-                let new_hash = Self::evm_tx_summary_hash(&tx);
-                if new_hash != provided_hash {
-                    // Update stored tx+hash and extend expiry, so user can re-confirm with same confirmation_id.
-                    let new_expires = Self::now_ms() + Self::evm_confirmation_ttl_ms();
-                    Self::evm_pending_db_update(&id, &tx, new_expires, &new_hash)?;
-
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(format!(
-                            "Tx changed during confirm-time preflight (likely nonce/fees). Re-confirm with same id using new hash: {}",
-                            new_hash
-                        )),
+                tx = serde_json::from_value(preflight_json.get("tx").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to decode preflight tx during confirm: {}", e)),
                         data: None,
-                    });
+                    })?;
+
+                let new_hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
+                if new_hash != provided_hash {
+                    let new_expires = crate::utils::evm_confirm_store::now_ms()
+                        + crate::utils::evm_confirm_store::default_ttl_ms();
+                    crate::utils::evm_confirm_store::update_pending(
+                        &conn,
+                        &id,
+                        &tx,
+                        new_expires,
+                        &new_hash,
+                    )?;
+
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "status": "pending",
+                        "confirmation_id": id,
+                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                        "tx_summary_hash": new_hash,
+                        "note": "Tx changed during confirm-time preflight (likely nonce/fees). Re-confirm with new hash." 
+                    }))?;
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
                 }
 
-                // Consume the confirmation id before signing/broadcasting (prevents replay).
-                Self::evm_pending_db_delete(&id)?;
+                // Mark as consumed (atomic-ish): we keep the row, but status changes.
+                crate::utils::evm_confirm_store::mark_consumed(&conn, &id)?;
 
                 let signed = self
                     .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
@@ -331,9 +356,22 @@
                         chain_id: Some(chain_id),
                         raw_tx,
                     }))
-                    .await?;
+                    .await;
 
-                return Self::wrap_resolved_network_result(&resolved_network, &sent);
+                match sent {
+                    Ok(ok) => {
+                        if let Some(v) = Self::extract_first_json(&ok) {
+                            if let Some(tx_hash) = v.get("tx_hash").and_then(Value::as_str) {
+                                let _ = crate::utils::evm_confirm_store::mark_sent(&conn, &id, tx_hash);
+                            }
+                        }
+                        return Self::wrap_resolved_network_result(&resolved_network, &ok);
+                    }
+                    Err(e) => {
+                        let _ = crate::utils::evm_confirm_store::mark_failed(&conn, &id, &e.message);
+                        return Err(e);
+                    }
+                }
             }
             "evm_contract_dry_run" => {
                 let chain_id = chain_id.ok_or_else(|| ErrorData {
@@ -498,12 +536,12 @@
                 })?;
 
                 let confirmation_id = Self::evm_next_confirmation_id();
-                let now_ms = Self::now_ms();
-                let ttl_ms = Self::evm_confirmation_ttl_ms();
+                let now_ms = crate::utils::evm_confirm_store::now_ms();
+                let ttl_ms = crate::utils::evm_confirm_store::default_ttl_ms();
                 let expires_at_ms = now_ms + ttl_ms;
 
-                let tx_summary_hash = Self::evm_tx_summary_hash(&tx);
-                Self::evm_pending_db_insert(
+                let tx_summary_hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
+                crate::utils::evm_confirm_store::insert_pending(
                     &confirmation_id,
                     &tx,
                     now_ms,
@@ -512,19 +550,9 @@
                 )?;
 
                 // Human-friendly summary for quick review.
-                let tx_summary = json!({
-                    "chain_id": tx.chain_id,
-                    "from": tx.from,
-                    "to": tx.to,
-                    "value_wei": tx.value_wei,
-                    "nonce": tx.nonce,
-                    "gas_limit": tx.gas_limit,
-                    "max_fee_per_gas_wei": tx.max_fee_per_gas_wei,
-                    "max_priority_fee_per_gas_wei": tx.max_priority_fee_per_gas_wei,
-                    "data_prefix": tx.data_hex.as_ref().map(|d| d.chars().take(18).collect::<String>()),
-                });
+                let tx_summary = crate::utils::evm_confirm_store::tx_summary_for_response(&tx);
 
-                let tx_summary_hash = Self::evm_tx_summary_hash(&tx);
+                let tx_summary_hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
 
                 let response = Self::pretty_json(&json!({
                     "resolved_network": resolved_network,

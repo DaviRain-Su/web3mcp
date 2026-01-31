@@ -144,167 +144,140 @@
         ethers::types::Bytes::from(out)
     }
 
-    fn evm_intent_pending_db_path_from_cwd() -> Result<std::path::PathBuf, ErrorData> {
-        let cwd = std::env::current_dir().map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to get current_dir: {}", e)),
-            data: None,
-        })?;
-        Ok(cwd.join(".data").join("pending.sqlite"))
-    }
-
-    fn evm_intent_pending_db_connect() -> Result<rusqlite::Connection, ErrorData> {
-        let path = Self::evm_intent_pending_db_path_from_cwd()?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| ErrorData {
-                code: ErrorCode(-32603),
-                message: Cow::from(format!("Failed to create data dir: {}", e)),
-                data: None,
-            })?;
-        }
-
-        let conn = rusqlite::Connection::open(path).map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to open sqlite db: {}", e)),
-            data: None,
-        })?;
-
-        conn.execute_batch(
-            "BEGIN;
-             CREATE TABLE IF NOT EXISTS evm_pending_confirmations (
-               id TEXT PRIMARY KEY,
-               chain_id INTEGER NOT NULL,
-               tx_json TEXT NOT NULL,
-               created_at_ms INTEGER NOT NULL,
-               expires_at_ms INTEGER NOT NULL,
-               tx_summary_hash TEXT NOT NULL
-             );
-             CREATE INDEX IF NOT EXISTS idx_evm_pending_expires ON evm_pending_confirmations(expires_at_ms);
-             COMMIT;",
-        )
-        .map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to init sqlite schema: {}", e)),
-            data: None,
-        })?;
-
-        Ok(conn)
-    }
-
     #[tool(description = "EVM: list pending intent confirmations (sqlite-backed)")]
     async fn evm_list_pending_confirmations(
         &self,
         Parameters(request): Parameters<EvmListPendingConfirmationsRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let conn = Self::evm_intent_pending_db_connect()?;
+        let conn = crate::utils::evm_confirm_store::connect()?;
+        crate::utils::evm_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
 
-        // Cleanup expired first.
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_else(|_| std::time::Duration::from_millis(0))
-            .as_millis() as i64;
-        conn.execute(
-            "DELETE FROM evm_pending_confirmations WHERE expires_at_ms < ?1",
-            [now_ms],
-        )
-        .map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to cleanup expired confirmations: {}", e)),
-            data: None,
-        })?;
-
+        let now_ms = crate::utils::evm_confirm_store::now_ms() as i64;
         let limit = request.limit.unwrap_or(20).min(200) as i64;
 
         let mut items: Vec<Value> = Vec::new();
 
-        if let Some(chain_id) = request.chain_id {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash
-                     FROM evm_pending_confirmations
-                     WHERE chain_id = ?1
-                     ORDER BY created_at_ms DESC
-                     LIMIT ?2",
-                )
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("Failed to prepare select: {}", e)),
-                    data: None,
-                })?;
-
-            let rows = stmt
-                .query_map(rusqlite::params![chain_id as i64, limit], |row| {
-                    let id: String = row.get(0)?;
-                    let chain_id: i64 = row.get(1)?;
-                    let created_at_ms: i64 = row.get(2)?;
-                    let expires_at_ms: i64 = row.get(3)?;
-                    let tx_summary_hash: String = row.get(4)?;
-                    Ok((id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash))
-                })
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("Failed to query_map: {}", e)),
-                    data: None,
-                })?;
-
-            for r in rows.flatten() {
-                let expires_in_ms = (r.3 - now_ms).max(0);
-                items.push(json!({
-                    "id": r.0,
-                    "chain_id": r.1,
-                    "created_at_ms": r.2,
-                    "expires_at_ms": r.3,
-                    "expires_in_ms": expires_in_ms,
-                    "tx_summary_hash": r.4
-                }));
-            }
+        let (sql, params): (String, Vec<rusqlite::types::Value>) = if let Some(chain_id) = request.chain_id {
+            (
+                "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json
+                 FROM evm_pending_confirmations
+                 WHERE chain_id = ?1
+                 ORDER BY created_at_ms DESC
+                 LIMIT ?2"
+                    .to_string(),
+                vec![
+                    rusqlite::types::Value::Integer(chain_id as i64),
+                    rusqlite::types::Value::Integer(limit),
+                ],
+            )
         } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash
-                     FROM evm_pending_confirmations
-                     ORDER BY created_at_ms DESC
-                     LIMIT ?1",
-                )
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("Failed to prepare select: {}", e)),
-                    data: None,
-                })?;
+            (
+                "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json
+                 FROM evm_pending_confirmations
+                 ORDER BY created_at_ms DESC
+                 LIMIT ?1"
+                    .to_string(),
+                vec![rusqlite::types::Value::Integer(limit)],
+            )
+        };
 
-            let rows = stmt
-                .query_map([limit], |row| {
-                    let id: String = row.get(0)?;
-                    let chain_id: i64 = row.get(1)?;
-                    let created_at_ms: i64 = row.get(2)?;
-                    let expires_at_ms: i64 = row.get(3)?;
-                    let tx_summary_hash: String = row.get(4)?;
-                    Ok((id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash))
-                })
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("Failed to query_map: {}", e)),
-                    data: None,
-                })?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to prepare select: {}", e)),
+            data: None,
+        })?;
 
-            for r in rows.flatten() {
-                let expires_in_ms = (r.3 - now_ms).max(0);
-                items.push(json!({
-                    "id": r.0,
-                    "chain_id": r.1,
-                    "created_at_ms": r.2,
-                    "expires_at_ms": r.3,
-                    "expires_in_ms": expires_in_ms,
-                    "tx_summary_hash": r.4
-                }));
-            }
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params), |row| {
+                let id: String = row.get(0)?;
+                let chain_id: i64 = row.get(1)?;
+                let created_at_ms: i64 = row.get(2)?;
+                let updated_at_ms: i64 = row.get(3)?;
+                let expires_at_ms: i64 = row.get(4)?;
+                let tx_summary_hash: String = row.get(5)?;
+                let status: String = row.get(6)?;
+                let tx_hash: Option<String> = row.get(7)?;
+                let last_error: Option<String> = row.get(8)?;
+                let tx_json: String = row.get(9)?;
+                Ok((
+                    id,
+                    chain_id,
+                    created_at_ms,
+                    updated_at_ms,
+                    expires_at_ms,
+                    tx_summary_hash,
+                    status,
+                    tx_hash,
+                    last_error,
+                    tx_json,
+                ))
+            })
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to query_map: {}", e)),
+                data: None,
+            })?;
+
+        for r in rows.flatten() {
+            let expires_in_ms = (r.4 - now_ms).max(0);
+            let tx: Option<EvmTxRequest> = serde_json::from_str::<EvmTxRequest>(&r.9).ok();
+            items.push(json!({
+                "id": r.0,
+                "chain_id": r.1,
+                "created_at_ms": r.2,
+                "updated_at_ms": r.3,
+                "expires_at_ms": r.4,
+                "expires_in_ms": expires_in_ms,
+                "status": r.6,
+                "tx_hash": r.7,
+                "last_error": r.8,
+                "tx_summary_hash": r.5,
+                "tx_summary": tx.as_ref().map(crate::utils::evm_confirm_store::tx_summary_for_response)
+            }));
         }
 
         let response = Self::pretty_json(&json!({
-            "db_path": Self::evm_intent_pending_db_path_from_cwd()?.to_string_lossy(),
+            "db_path": crate::utils::evm_confirm_store::pending_db_path_from_cwd()?.to_string_lossy(),
             "count": items.len(),
             "items": items
         }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: get a pending intent confirmation by id (sqlite-backed)")]
+    async fn evm_get_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<EvmGetPendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = crate::utils::evm_confirm_store::connect()?;
+        crate::utils::evm_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
+
+        let row = crate::utils::evm_confirm_store::get_row(&conn, request.id.trim())?;
+
+        let response = Self::pretty_json(&json!({
+            "db_path": crate::utils::evm_confirm_store::pending_db_path_from_cwd()?.to_string_lossy(),
+            "item": row.map(|r| json!({
+                "id": r.id,
+                "chain_id": r.chain_id,
+                "created_at_ms": r.created_at_ms,
+                "updated_at_ms": r.updated_at_ms,
+                "expires_at_ms": r.expires_at_ms,
+                "expires_in_ms": (r.expires_at_ms as i128 - crate::utils::evm_confirm_store::now_ms() as i128).max(0),
+                "status": r.status,
+                "tx_hash": r.tx_hash,
+                "last_error": r.last_error,
+                "tx_summary_hash": r.tx_summary_hash,
+                "tx": r.tx,
+                "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&r.tx)
+            }))
+        }))?;
+
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
