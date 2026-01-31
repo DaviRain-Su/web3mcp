@@ -408,6 +408,25 @@
             return Ok(CallToolResult::success(vec![Content::text(response)]));
         }
 
+        // Large-value double confirmation (requires token)
+        if crate::utils::evm_confirm_store::is_large_value(&tx) {
+            let token = crate::utils::evm_confirm_store::make_confirm_token(id, &provided_hash);
+            let provided = request.confirm_token.clone();
+            if provided.as_deref() != Some(&token) {
+                let response = Self::pretty_json(&json!({
+                    "status": "pending",
+                    "confirmation_id": id,
+                    "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                    "tx_summary_hash": provided_hash,
+                    "note": "Second confirmation required for large-value tx",
+                    "next": {
+                        "how_to_retry": format!("Call evm_retry_pending_confirmation again with confirm_token='{}'", token)
+                    }
+                }))?;
+                return Ok(CallToolResult::success(vec![Content::text(response)]));
+            }
+        }
+
         // Consume.
         crate::utils::evm_confirm_store::mark_consumed(&conn, id)?;
 
@@ -432,6 +451,8 @@
                 data: None,
             })?
             .to_string();
+
+        let _ = crate::utils::evm_confirm_store::mark_signed(&conn, id, &raw_tx);
 
         // Broadcast.
         let sent = self

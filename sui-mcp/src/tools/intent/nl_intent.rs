@@ -326,6 +326,26 @@
                     return Ok(CallToolResult::success(vec![Content::text(response)]));
                 }
 
+                // Large-value double confirmation (requires token:...)
+                if let Some((_token, msg)) = crate::utils::evm_confirm_store::ensure_second_confirmation(
+                    &conn,
+                    &id,
+                    &provided_hash,
+                    &text,
+                    &tx,
+                )? {
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "status": "pending",
+                        "confirmation_id": id,
+                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                        "tx_summary_hash": provided_hash,
+                        "note": "Second confirmation required for large-value tx",
+                        "next": { "how_to_confirm": msg }
+                    }))?;
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+
                 // Mark as consumed (atomic-ish): we keep the row, but status changes.
                 crate::utils::evm_confirm_store::mark_consumed(&conn, &id)?;
 
@@ -350,6 +370,9 @@
                         data: None,
                     })?
                     .to_string();
+
+                // Record signed prefix for observability (option C: no full raw_tx stored).
+                let _ = crate::utils::evm_confirm_store::mark_signed(&conn, &id, &raw_tx);
 
                 let sent = self
                     .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {

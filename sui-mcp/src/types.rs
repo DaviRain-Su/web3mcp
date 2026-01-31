@@ -97,6 +97,8 @@ pub struct EvmRetryPendingConfirmationRequest {
     pub id: String,
     #[schemars(description = "tx_summary_hash from the pending record (0x...)")]
     pub tx_summary_hash: String,
+    #[schemars(description = "Optional second-confirm token for large-value tx (token:...)")]
+    pub confirm_token: Option<String>,
     #[schemars(description = "Optional chain id sanity check")]
     pub chain_id: Option<u64>,
 }

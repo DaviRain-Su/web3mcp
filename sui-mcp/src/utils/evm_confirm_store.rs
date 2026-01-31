@@ -80,6 +80,10 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         "ALTER TABLE evm_pending_confirmations ADD COLUMN status TEXT",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN tx_hash TEXT",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN last_error TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN raw_tx_prefix TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN signed_at_ms INTEGER",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirm_token TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirmed INTEGER",
     ] {
         let _ = conn.execute(stmt, []);
     }
@@ -88,8 +92,9 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
     let _ = conn.execute(
         "UPDATE evm_pending_confirmations
          SET updated_at_ms = COALESCE(updated_at_ms, created_at_ms),
-             status = COALESCE(status, 'pending')
-         WHERE updated_at_ms IS NULL OR status IS NULL",
+             status = COALESCE(status, 'pending'),
+             second_confirmed = COALESCE(second_confirmed, 0)
+         WHERE updated_at_ms IS NULL OR status IS NULL OR second_confirmed IS NULL",
         [],
     );
 
@@ -153,7 +158,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error
+            "SELECT id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error,
+                    raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed
              FROM evm_pending_confirmations
              WHERE id = ?1",
         )
@@ -174,6 +180,10 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         let status: String = row.get(7)?;
         let tx_hash: Option<String> = row.get(8)?;
         let last_error: Option<String> = row.get(9)?;
+        let _raw_tx_prefix: Option<String> = row.get(10)?;
+        let _signed_at_ms: Option<i64> = row.get(11)?;
+        let second_confirm_token: Option<String> = row.get(12)?;
+        let second_confirmed: Option<i64> = row.get(13)?;
         Ok((
             id,
             chain_id,
@@ -185,6 +195,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
             status,
             tx_hash,
             last_error,
+            second_confirm_token,
+            second_confirmed.unwrap_or(0),
         ))
     }) {
         Ok(v) => Some(v),
@@ -209,6 +221,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         status,
         tx_hash,
         last_error,
+        _second_confirm_token,
+        _second_confirmed,
     )) = row
     else {
         return Ok(None);
@@ -232,6 +246,96 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         tx_hash,
         last_error,
     }))
+}
+
+pub fn ensure_second_confirmation(
+    conn: &rusqlite::Connection,
+    id: &str,
+    tx_summary_hash: &str,
+    user_text: &str,
+    tx: &EvmTxRequest,
+) -> Result<Option<(String, String)>, ErrorData> {
+    // If not a large value tx, no second confirm needed.
+    if !is_large_value(tx) {
+        return Ok(None);
+    }
+
+    // Get current state.
+    let mut stmt = conn
+        .prepare(
+            "SELECT second_confirm_token, second_confirmed FROM evm_pending_confirmations WHERE id = ?1",
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to prepare select: {}", e)),
+            data: None,
+        })?;
+
+    let row = match stmt.query_row([id], |row| {
+        let token: Option<String> = row.get(0)?;
+        let confirmed: Option<i64> = row.get(1)?;
+        Ok((token, confirmed.unwrap_or(0)))
+    }) {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to query row: {}", e)),
+                data: None,
+            })
+        }
+    };
+
+    let Some((token, confirmed)) = row else {
+        return Ok(None);
+    };
+
+    if confirmed == 1 {
+        return Ok(None);
+    }
+
+    // Ensure token exists.
+    let token = token.unwrap_or_else(|| make_confirm_token(id, tx_summary_hash));
+
+    // If user provided token, validate.
+    let provided = extract_confirm_token(user_text);
+    if let Some(p) = provided {
+        if p == token {
+            conn.execute(
+                "UPDATE evm_pending_confirmations
+                 SET second_confirm_token=?2, second_confirmed=1, updated_at_ms=?3
+                 WHERE id=?1",
+                rusqlite::params![id, token, now_ms() as i64],
+            )
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to set second_confirmed: {}", e)),
+                data: None,
+            })?;
+            return Ok(None);
+        }
+    }
+
+    // Persist token (if not already).
+    conn.execute(
+        "UPDATE evm_pending_confirmations
+         SET second_confirm_token=?2, second_confirmed=0, updated_at_ms=?3
+         WHERE id=?1",
+        rusqlite::params![id, token, now_ms() as i64],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to store second_confirm_token: {}", e)),
+        data: None,
+    })?;
+
+    // Return (token, message) to prompt user.
+    let msg = format!(
+        "Large value tx detected. Re-confirm with: confirm {} hash:{} token:{}",
+        id, tx_summary_hash, token
+    );
+    Ok(Some((token, msg)))
 }
 
 pub fn update_pending(
@@ -281,7 +385,9 @@ pub fn update_pending(
 pub fn mark_consumed(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorData> {
     let updated_at_ms = now_ms() as i64;
     conn.execute(
-        "UPDATE evm_pending_confirmations SET status='consumed', updated_at_ms=?2 WHERE id=?1",
+        "UPDATE evm_pending_confirmations
+         SET status='consumed', updated_at_ms=?2
+         WHERE id=?1",
         rusqlite::params![id, updated_at_ms],
     )
     .map_err(|e| ErrorData {
@@ -295,12 +401,32 @@ pub fn mark_consumed(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorD
 pub fn mark_sent(conn: &rusqlite::Connection, id: &str, tx_hash: &str) -> Result<(), ErrorData> {
     let updated_at_ms = now_ms() as i64;
     conn.execute(
-        "UPDATE evm_pending_confirmations SET status='sent', tx_hash=?2, updated_at_ms=?3 WHERE id=?1",
+        "UPDATE evm_pending_confirmations
+         SET status='sent', tx_hash=?2, updated_at_ms=?3
+         WHERE id=?1",
         rusqlite::params![id, tx_hash, updated_at_ms],
     )
     .map_err(|e| ErrorData {
         code: ErrorCode(-32603),
         message: Cow::from(format!("Failed to mark sent: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn mark_signed(conn: &rusqlite::Connection, id: &str, raw_tx: &str) -> Result<(), ErrorData> {
+    let updated_at_ms = now_ms() as i64;
+    let signed_at_ms = updated_at_ms;
+    let prefix = raw_tx.chars().take(18).collect::<String>();
+    conn.execute(
+        "UPDATE evm_pending_confirmations
+         SET raw_tx_prefix=?2, signed_at_ms=?3, updated_at_ms=?4
+         WHERE id=?1",
+        rusqlite::params![id, prefix, signed_at_ms, updated_at_ms],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to mark signed: {}", e)),
         data: None,
     })?;
     Ok(())
@@ -370,6 +496,44 @@ pub fn extract_confirmation_id(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+pub fn large_value_threshold_wei() -> ethers::types::U256 {
+    // default: 0.01 ETH
+    let default = ethers::types::U256::from_dec_str("10000000000000000").unwrap();
+    let Ok(v) = std::env::var("EVM_CONFIRM_LARGE_VALUE_THRESHOLD_WEI") else {
+        return default;
+    };
+    if let Ok(u) = ethers::types::U256::from_dec_str(v.trim()) {
+        return u;
+    }
+    default
+}
+
+pub fn is_large_value(tx: &EvmTxRequest) -> bool {
+    match ethers::types::U256::from_dec_str(tx.value_wei.trim()) {
+        Ok(v) => v > large_value_threshold_wei(),
+        Err(_) => false,
+    }
+}
+
+pub fn extract_confirm_token(text: &str) -> Option<String> {
+    for raw in text.split_whitespace() {
+        let t = raw.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c));
+        if let Some(rest) = t.strip_prefix("token:") {
+            if !rest.trim().is_empty() {
+                return Some(rest.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+pub fn make_confirm_token(id: &str, tx_summary_hash: &str) -> String {
+    let s = format!("{}:{}:{}", id, tx_summary_hash, now_ms());
+    let h = ethers::utils::keccak256(s.as_bytes());
+    // short token for human typing
+    hex::encode(h)[0..10].to_string()
 }
 
 pub fn tx_summary_for_response(tx: &EvmTxRequest) -> Value {
