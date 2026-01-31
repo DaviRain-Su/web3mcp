@@ -110,18 +110,12 @@ mod sui;
 mod types;
 mod utils;
 
+// AutoFilledMoveCall type lives in move_auto_fill.rs (router_impl can still see it via crate path)
+
 pub use server::SuiMcpServer;
 pub use types::*;
 
-struct AutoFilledMoveCall {
-    type_args: Vec<String>,
-    arguments: Vec<Value>,
-    gas_budget: Option<u64>,
-    gas_object_id: Option<String>,
-    gas_price: Option<u64>,
-    warnings: Vec<Value>,
-    gas: Option<Value>,
-}
+// AutoFilledMoveCall moved to src/move_auto_fill.rs
 
 include!(concat!(env!("OUT_DIR"), "/router_impl.rs"));
 #[tool_handler]

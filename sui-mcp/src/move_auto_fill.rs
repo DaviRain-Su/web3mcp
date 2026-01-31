@@ -1,4 +1,4 @@
-use crate::{AutoFillMoveCallRequest, AutoFilledMoveCall, SuiMcpServer};
+use crate::{AutoFillMoveCallRequest, SuiMcpServer};
 use move_core_types::language_storage::{StructTag, TypeTag};
 use rmcp::model::*;
 use serde_json::{json, Value};
@@ -7,6 +7,17 @@ use std::collections::HashMap;
 use sui_json_rpc_types::{SuiObjectDataOptions, SuiObjectResponseQuery};
 use sui_types::base_types::ObjectID;
 use sui_types::object::Owner;
+
+#[derive(Debug, Clone)]
+pub(crate) struct AutoFilledMoveCall {
+    pub type_args: Vec<String>,
+    pub arguments: Vec<Value>,
+    pub gas_budget: Option<u64>,
+    pub gas_object_id: Option<String>,
+    pub gas_price: Option<u64>,
+    pub warnings: Vec<Value>,
+    pub gas: Option<Value>,
+}
 
 impl SuiMcpServer {
     pub(crate) async fn auto_fill_move_call_internal(
