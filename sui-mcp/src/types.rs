@@ -60,6 +60,12 @@ pub struct EvmGetGasPriceRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmEventTopic0Request {
+    #[schemars(description = "Event signature string (e.g. Transfer(address,address,uint256))")]
+    pub signature: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,

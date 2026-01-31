@@ -144,6 +144,33 @@
         ethers::types::Bytes::from(out)
     }
 
+    #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
+    async fn evm_event_topic0(
+        &self,
+        Parameters(request): Parameters<EvmEventTopic0Request>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let sig = request.signature.trim();
+        if !sig.contains('(') || !sig.contains(')') {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "Invalid event signature. Expected something like Transfer(address,address,uint256)",
+                ),
+                data: None,
+            });
+        }
+
+        let hash = ethers::utils::keccak256(sig);
+        let topic0 = format!("0x{}", hex::encode(hash));
+
+        let response = Self::pretty_json(&json!({
+            "signature": sig,
+            "topic0": topic0
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     fn tx_request_to_evm_tx(tx: &ethers::types::TransactionRequest, chain_id: u64) -> EvmTxRequest {
         let from = tx
             .from
