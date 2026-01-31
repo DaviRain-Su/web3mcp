@@ -66,6 +66,14 @@ pub struct EvmEventTopic0Request {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmListPendingConfirmationsRequest {
+    #[schemars(description = "Optional EVM chain id filter")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Optional max results (default 20)")]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,

@@ -144,6 +144,170 @@
         ethers::types::Bytes::from(out)
     }
 
+    fn evm_intent_pending_db_path_from_cwd() -> Result<std::path::PathBuf, ErrorData> {
+        let cwd = std::env::current_dir().map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to get current_dir: {}", e)),
+            data: None,
+        })?;
+        Ok(cwd.join(".data").join("pending.sqlite"))
+    }
+
+    fn evm_intent_pending_db_connect() -> Result<rusqlite::Connection, ErrorData> {
+        let path = Self::evm_intent_pending_db_path_from_cwd()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to create data dir: {}", e)),
+                data: None,
+            })?;
+        }
+
+        let conn = rusqlite::Connection::open(path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to open sqlite db: {}", e)),
+            data: None,
+        })?;
+
+        conn.execute_batch(
+            "BEGIN;
+             CREATE TABLE IF NOT EXISTS evm_pending_confirmations (
+               id TEXT PRIMARY KEY,
+               chain_id INTEGER NOT NULL,
+               tx_json TEXT NOT NULL,
+               created_at_ms INTEGER NOT NULL,
+               expires_at_ms INTEGER NOT NULL,
+               tx_summary_hash TEXT NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_evm_pending_expires ON evm_pending_confirmations(expires_at_ms);
+             COMMIT;",
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to init sqlite schema: {}", e)),
+            data: None,
+        })?;
+
+        Ok(conn)
+    }
+
+    #[tool(description = "EVM: list pending intent confirmations (sqlite-backed)")]
+    async fn evm_list_pending_confirmations(
+        &self,
+        Parameters(request): Parameters<EvmListPendingConfirmationsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = Self::evm_intent_pending_db_connect()?;
+
+        // Cleanup expired first.
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_millis(0))
+            .as_millis() as i64;
+        conn.execute(
+            "DELETE FROM evm_pending_confirmations WHERE expires_at_ms < ?1",
+            [now_ms],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to cleanup expired confirmations: {}", e)),
+            data: None,
+        })?;
+
+        let limit = request.limit.unwrap_or(20).min(200) as i64;
+
+        let mut items: Vec<Value> = Vec::new();
+
+        if let Some(chain_id) = request.chain_id {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash
+                     FROM evm_pending_confirmations
+                     WHERE chain_id = ?1
+                     ORDER BY created_at_ms DESC
+                     LIMIT ?2",
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to prepare select: {}", e)),
+                    data: None,
+                })?;
+
+            let rows = stmt
+                .query_map(rusqlite::params![chain_id as i64, limit], |row| {
+                    let id: String = row.get(0)?;
+                    let chain_id: i64 = row.get(1)?;
+                    let created_at_ms: i64 = row.get(2)?;
+                    let expires_at_ms: i64 = row.get(3)?;
+                    let tx_summary_hash: String = row.get(4)?;
+                    Ok((id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash))
+                })
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to query_map: {}", e)),
+                    data: None,
+                })?;
+
+            for r in rows.flatten() {
+                let expires_in_ms = (r.3 - now_ms).max(0);
+                items.push(json!({
+                    "id": r.0,
+                    "chain_id": r.1,
+                    "created_at_ms": r.2,
+                    "expires_at_ms": r.3,
+                    "expires_in_ms": expires_in_ms,
+                    "tx_summary_hash": r.4
+                }));
+            }
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash
+                     FROM evm_pending_confirmations
+                     ORDER BY created_at_ms DESC
+                     LIMIT ?1",
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to prepare select: {}", e)),
+                    data: None,
+                })?;
+
+            let rows = stmt
+                .query_map([limit], |row| {
+                    let id: String = row.get(0)?;
+                    let chain_id: i64 = row.get(1)?;
+                    let created_at_ms: i64 = row.get(2)?;
+                    let expires_at_ms: i64 = row.get(3)?;
+                    let tx_summary_hash: String = row.get(4)?;
+                    Ok((id, chain_id, created_at_ms, expires_at_ms, tx_summary_hash))
+                })
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to query_map: {}", e)),
+                    data: None,
+                })?;
+
+            for r in rows.flatten() {
+                let expires_in_ms = (r.3 - now_ms).max(0);
+                items.push(json!({
+                    "id": r.0,
+                    "chain_id": r.1,
+                    "created_at_ms": r.2,
+                    "expires_at_ms": r.3,
+                    "expires_in_ms": expires_in_ms,
+                    "tx_summary_hash": r.4
+                }));
+            }
+        }
+
+        let response = Self::pretty_json(&json!({
+            "db_path": Self::evm_intent_pending_db_path_from_cwd()?.to_string_lossy(),
+            "count": items.len(),
+            "items": items
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
     async fn evm_event_topic0(
         &self,
