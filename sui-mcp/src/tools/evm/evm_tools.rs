@@ -554,6 +554,210 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn parse_decimal_to_u256(amount: &str, decimals: u8) -> Result<ethers::types::U256, ErrorData> {
+        // Parse a decimal string like "1.23" into integer with `decimals` fractional digits.
+        // No scientific notation.
+        let s = amount.trim();
+        if s.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("amount is required"),
+                data: None,
+            });
+        }
+        if let Some((whole, frac)) = s.split_once('.') {
+            let whole = whole.trim();
+            let frac = frac.trim();
+            let mut frac_clean = frac.to_string();
+            if frac_clean.len() > decimals as usize {
+                // truncate extra precision (tolerant mode)
+                frac_clean.truncate(decimals as usize);
+            }
+            while frac_clean.len() < decimals as usize {
+                frac_clean.push('0');
+            }
+            let whole_u = if whole.is_empty() {
+                ethers::types::U256::from(0)
+            } else {
+                ethers::types::U256::from_dec_str(whole).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid whole amount: {}", e)),
+                    data: None,
+                })?
+            };
+            let frac_u = if decimals == 0 {
+                ethers::types::U256::from(0)
+            } else {
+                ethers::types::U256::from_dec_str(&frac_clean).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid fractional amount: {}", e)),
+                    data: None,
+                })?
+            };
+
+            let base = ethers::types::U256::from(10)
+                .checked_pow(ethers::types::U256::from(decimals))
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Overflow computing decimals base"),
+                    data: None,
+                })?;
+
+            Ok(whole_u * base + frac_u)
+        } else {
+            // integer string
+            let whole_u = ethers::types::U256::from_dec_str(s).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid amount: {}", e)),
+                data: None,
+            })?;
+            let base = ethers::types::U256::from(10)
+                .checked_pow(ethers::types::U256::from(decimals))
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Overflow computing decimals base"),
+                    data: None,
+                })?;
+            Ok(whole_u * base)
+        }
+    }
+
+    async fn evm_read_erc20_decimals(
+        &self,
+        chain_id: u64,
+        token: ethers::types::Address,
+    ) -> Result<u8, ErrorData> {
+        let provider = self.evm_provider(chain_id).await?;
+        // decimals() selector = 0x313ce567
+        let data = ethers::types::Bytes::from(hex::decode("313ce567").unwrap());
+        let call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(data),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call.into();
+
+        let raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_read_erc20_decimals:eth_call", e))?;
+
+        // uint8 returns padded to 32 bytes.
+        if raw.0.len() < 32 {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Invalid decimals() return"),
+                data: None,
+            });
+        }
+        Ok(raw.0[31])
+    }
+
+    #[tool(description = "EVM: parse a human amount into wei (supports ETH via 18 decimals; ERC20 via decimals())")]
+    async fn evm_parse_amount(
+        &self,
+        Parameters(request): Parameters<EvmParseAmountRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let symbol = request.symbol.as_deref().map(|s| s.trim().to_lowercase());
+
+        let token_address = if let Some(addr) = request.token_address.as_deref() {
+            Some(Self::parse_evm_address(addr)?)
+        } else if let Some(sym) = symbol.as_deref() {
+            if sym == "eth" {
+                None
+            } else {
+                // tolerant: only known symbols
+                Self::resolve_evm_erc20_address(sym, request.chain_id)
+                    .and_then(|a| Self::parse_evm_address(&a).ok())
+            }
+        } else {
+            None
+        };
+
+        let decimals = if let Some(d) = request.decimals {
+            d
+        } else if token_address.is_none() {
+            18
+        } else {
+            self.evm_read_erc20_decimals(request.chain_id, token_address.unwrap())
+                .await?
+        };
+
+        let wei = Self::parse_decimal_to_u256(&request.amount, decimals)?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id,
+            "amount": request.amount,
+            "symbol": request.symbol,
+            "token_address": token_address.map(|a| format!("0x{}", hex::encode(a.as_bytes()))),
+            "decimals": decimals,
+            "amount_wei": wei.to_string()
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: parse a deadline input into unix seconds (supports relative durations like 20m/2h)")]
+    async fn evm_parse_deadline(
+        &self,
+        Parameters(request): Parameters<EvmParseDeadlineRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let s = request.input.trim().to_lowercase();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+            .as_secs();
+
+        // If it parses as integer, treat as unix seconds unless relative=true.
+        let is_plain_int = s.chars().all(|c| c.is_ascii_digit());
+        let relative = request.relative.unwrap_or(!is_plain_int);
+
+        let deadline = if !relative {
+            s.parse::<u64>().map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Invalid unix timestamp"),
+                data: None,
+            })?
+        } else {
+            let (num_str, unit) = s
+                .chars()
+                .partition::<String, _>(|c| c.is_ascii_digit());
+            let n: u64 = num_str.parse().map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Invalid duration number"),
+                data: None,
+            })?;
+
+            let seconds = if unit == "s" || unit == "sec" || unit == "secs" {
+                n
+            } else if unit == "m" || unit == "min" || unit == "mins" {
+                n * 60
+            } else if unit == "h" || unit == "hr" || unit == "hrs" {
+                n * 3600
+            } else if unit == "d" || unit == "day" || unit == "days" {
+                n * 86400
+            } else {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Unsupported duration unit (use s|m|min|h|d)"),
+                    data: None,
+                });
+            };
+            now + seconds
+        };
+
+        let response = Self::pretty_json(&json!({
+            "input": request.input,
+            "now": now,
+            "deadline": deadline,
+            "relative": relative
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
     async fn evm_event_topic0(
         &self,

@@ -470,12 +470,54 @@
                     })?
                     .to_string();
 
-                let filled_args = top.get("filled_args").cloned().unwrap_or(json!([]));
+                let mut filled_args = top.get("filled_args").cloned().unwrap_or(json!([]));
                 let missing = top
                     .get("missing")
                     .and_then(Value::as_array)
                     .cloned()
                     .unwrap_or_default();
+
+                // Tolerant mode: try to auto-convert obvious amount strings (e.g. "1.5" with usdc/usdt/eth in text)
+                // into uint256 wei-like strings before building.
+                if let Value::Array(ref mut arr) = filled_args {
+                    // infer a symbol from the overall text
+                    let sym = if lower.contains("usdc") {
+                        Some("usdc".to_string())
+                    } else if lower.contains("usdt") {
+                        Some("usdt".to_string())
+                    } else if lower.contains("eth") {
+                        Some("eth".to_string())
+                    } else {
+                        None
+                    };
+
+                    if let Some(sym) = sym {
+                        for v in arr.iter_mut() {
+                            if let Value::String(s) = v {
+                                let s_trim = s.trim();
+                                // only attempt if it looks like a number
+                                if s_trim.chars().any(|c| c.is_ascii_digit()) && !s_trim.starts_with("0x") {
+                                    if let Ok(result) = self
+                                        .evm_parse_amount(Parameters(EvmParseAmountRequest {
+                                            chain_id,
+                                            amount: s_trim.to_string(),
+                                            symbol: Some(sym.clone()),
+                                            token_address: None,
+                                            decimals: None,
+                                        }))
+                                        .await
+                                    {
+                                        if let Some(j) = Self::extract_first_json(&result) {
+                                            if let Some(w) = j.get("amount_wei").and_then(Value::as_str) {
+                                                *v = Value::String(w.to_string());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // If there are missing args, stop here (safe by default).
                 if !missing.is_empty() {

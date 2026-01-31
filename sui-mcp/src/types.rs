@@ -104,6 +104,30 @@ pub struct EvmRetryPendingConfirmationRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmParseAmountRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Human amount (e.g. '1.5', '0.1')")]
+    pub amount: String,
+    #[schemars(description = "Unit symbol (e.g. 'eth', 'usdc', 'usdt')")]
+    pub symbol: Option<String>,
+    #[schemars(description = "Token address (0x...) - overrides symbol")]
+    pub token_address: Option<String>,
+    #[schemars(description = "Optional decimals override")]
+    pub decimals: Option<u8>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmParseDeadlineRequest {
+    #[schemars(description = "Duration string (e.g. '20m', '5min', '2h', '30s') or unix seconds")]
+    pub input: String,
+    #[schemars(
+        description = "If true, interpret input as relative duration (default true when suffix present)"
+    )]
+    pub relative: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,
