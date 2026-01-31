@@ -515,6 +515,106 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM ABI Registry: fuzzy search contracts by name/address/path (helps natural-language workflows)")]
+    async fn evm_find_contracts(
+        &self,
+        Parameters(request): Parameters<EvmFindContractsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let root = Self::evm_abi_registry_dir();
+        let query = request.query.trim().to_lowercase();
+        let limit = request.limit.unwrap_or(10).min(50);
+
+        if query.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("query is required"),
+                data: None,
+            });
+        }
+
+        let chain_dirs: Vec<std::path::PathBuf> = if let Some(chain_id) = request.chain_id {
+            vec![root.join(chain_id.to_string())]
+        } else {
+            match std::fs::read_dir(&root) {
+                Ok(rd) => rd.filter_map(|e| e.ok()).map(|e| e.path()).collect(),
+                Err(_) => vec![],
+            }
+        };
+
+        let mut scored: Vec<(i64, Value)> = Vec::new();
+
+        for dir in chain_dirs {
+            let chain_id = dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<u64>().ok());
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                    continue;
+                }
+                let path_str = p.to_string_lossy().to_string();
+                let Ok(bytes) = std::fs::read(&p) else { continue };
+                let Ok(v) = serde_json::from_slice::<Value>(&bytes) else { continue };
+
+                let name = v.get("name").and_then(Value::as_str).unwrap_or("");
+                let address = v.get("address").and_then(Value::as_str).unwrap_or("");
+
+                let hay_name = name.to_lowercase();
+                let hay_addr = address.to_lowercase();
+                let hay_path = path_str.to_lowercase();
+
+                let mut score: i64 = 0;
+                // Address exact match wins.
+                if hay_addr == query {
+                    score += 1000;
+                }
+                // Prefix matches.
+                if hay_name.starts_with(&query) {
+                    score += 300;
+                }
+                if hay_addr.starts_with(&query) {
+                    score += 300;
+                }
+                // Substring matches.
+                if hay_name.contains(&query) {
+                    score += 120;
+                }
+                if hay_path.contains(&query) {
+                    score += 60;
+                }
+                if hay_addr.contains(&query) {
+                    score += 120;
+                }
+
+                if score > 0 {
+                    scored.push((
+                        score,
+                        json!({
+                            "score": score,
+                            "chain_id": chain_id.or_else(|| v.get("chain_id").and_then(Value::as_u64)),
+                            "address": address,
+                            "name": name,
+                            "path": path_str
+                        }),
+                    ));
+                }
+            }
+        }
+
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        let items: Vec<Value> = scored.into_iter().take(limit).map(|(_, v)| v).collect();
+
+        let response = Self::pretty_json(&json!({
+            "root": root.to_string_lossy(),
+            "query": request.query,
+            "items": items
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM ABI Registry: get a registered contract entry")]
     async fn evm_get_contract(
         &self,

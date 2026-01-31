@@ -1317,6 +1317,16 @@ struct EvmListContractsRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmFindContractsRequest {
+    #[schemars(description = "Optional chain id filter")]
+    chain_id: Option<u64>,
+    #[schemars(description = "Search query (matched against name/address/path)")]
+    query: String,
+    #[schemars(description = "Optional max results (default 10)")]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct EvmGetContractRequest {
     #[schemars(description = "EVM chain id")]
     chain_id: u64,
