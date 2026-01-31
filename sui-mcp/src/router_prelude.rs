@@ -26,20 +26,11 @@ pub use sui_graphql::Client as GraphqlClient;
 pub use sui_json::SuiJsonValue;
 
 pub use sui_json_rpc_types::{
-    CheckpointId,
-    DryRunTransactionBlockResponse,
-    EventFilter,
-    RPCTransactionRequestParams,
-    // (Move normalized types live in move_schema.rs; keep router prelude minimal)
-    SuiObjectDataOptions,
-    SuiObjectResponseQuery,
-    SuiTransactionBlockEffectsAPI,
-    SuiTransactionBlockResponse,
-    SuiTransactionBlockResponseOptions,
-    SuiTransactionBlockResponseQuery,
-    SuiTypeTag,
-    TransactionFilter,
-    ZkLoginIntentScope,
+    CheckpointId, DryRunTransactionBlockResponse, EventFilter, RPCTransactionRequestParams,
+    SuiMoveNormalizedFunction, SuiMoveNormalizedModule, SuiObjectDataOptions,
+    SuiObjectResponseQuery, SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse,
+    SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery, SuiTypeTag,
+    TransactionFilter, ZkLoginIntentScope,
 };
 
 pub use sui_keys::keystore::AccountKeystore;

@@ -19,24 +19,10 @@
         let type_args = Self::parse_type_args_to_typetag(request.type_args)?;
 
         let modules = self
-            .client
-            .read_api()
-            .get_normalized_move_modules_by_package(package)
-            .await
-            .map_err(|e| Self::sdk_error("resolve_move_call_args", e))?;
-        let module_def = modules.get(&request.module).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Module not found: {}", request.module)),
-            data: None,
-        })?;
-        let function_def = module_def
-            .exposed_functions
-            .get(&request.function)
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Function not found: {}", request.function)),
-                data: None,
-            })?;
+            .load_normalized_move_modules(package, "resolve_move_call_args")
+            .await?;
+        let (_module_def, function_def) =
+            Self::get_normalized_move_function_def(&modules, &request.module, &request.function)?;
 
         if request.arguments.len() > function_def.parameters.len() {
             return Err(ErrorData {
@@ -170,24 +156,10 @@
     ) -> Result<CallToolResult, ErrorData> {
         let package = Self::parse_object_id(&request.package)?;
         let modules = self
-            .client
-            .read_api()
-            .get_normalized_move_modules_by_package(package)
-            .await
-            .map_err(|e| Self::sdk_error("generate_move_call_payload", e))?;
-        let module = modules.get(&request.module).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Module not found: {}", request.module)),
-            data: None,
-        })?;
-        let function_def = module
-            .exposed_functions
-            .get(&request.function)
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Function not found: {}", request.function)),
-                data: None,
-            })?;
+            .load_normalized_move_modules(package, "generate_move_call_payload")
+            .await?;
+        let (_module_def, function_def) =
+            Self::get_normalized_move_function_def(&modules, &request.module, &request.function)?;
 
         let type_args = (0..function_def.type_parameters.len())
             .map(|index| format!("<T{}>", index))
