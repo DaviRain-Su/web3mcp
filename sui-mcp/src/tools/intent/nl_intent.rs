@@ -275,6 +275,37 @@
                     });
                 }
 
+                // Re-preflight at confirm time (nonce/fees may have changed since dry-run).
+                let preflight = self
+                    .evm_preflight(Parameters(EvmPreflightRequest { tx }))
+                    .await?;
+                let preflight_json = Self::extract_first_json(&preflight).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse evm_preflight response during confirm"),
+                    data: None,
+                })?;
+                let tx: EvmTxRequest = serde_json::from_value(
+                    preflight_json.get("tx").cloned().unwrap_or(Value::Null),
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to decode preflight tx during confirm: {}", e)),
+                    data: None,
+                })?;
+
+                // If confirm-time preflight changes the tx summary hash, force re-confirm.
+                let new_hash = Self::evm_tx_summary_hash(&tx);
+                if new_hash != provided_hash {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!(
+                            "Tx changed during confirm-time preflight (likely nonce/fees). Please confirm again with new hash: {}",
+                            new_hash
+                        )),
+                        data: None,
+                    });
+                }
+
                 let signed = self
                     .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
                         tx,
