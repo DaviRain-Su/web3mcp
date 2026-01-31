@@ -291,11 +291,27 @@
             .await
             .map_err(|e| Self::sdk_error("evm_get_transaction_receipt:get_transaction_receipt", e))?;
 
+        let decoded_logs = if let Some(receipt) = &receipt {
+            let mut out = Vec::new();
+            for log in receipt.logs.iter() {
+                let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
+                if let Ok(Some(abi)) = Self::evm_load_contract_abi(chain_id, &addr) {
+                    if let Some(decoded) = Self::evm_decode_log_with_abi(log, &abi) {
+                        out.push(decoded);
+                    }
+                }
+            }
+            out
+        } else {
+            Vec::new()
+        };
+
         // ethers::types::TransactionReceipt serializes via serde.
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
             "tx_hash": request.tx_hash,
-            "receipt": receipt
+            "receipt": receipt,
+            "decoded_logs": decoded_logs
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
@@ -515,7 +531,111 @@
             .join(format!("{}.json", addr)))
     }
 
-    fn abi_entry_json(
+    fn evm_load_contract_abi(
+        chain_id: u64,
+        address: &str,
+    ) -> Result<Option<ethers::abi::Abi>, ErrorData> {
+        let path = Self::evm_abi_path(chain_id, address)?;
+        if !path.exists() {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(&path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read ABI entry: {}", e)),
+            data: None,
+        })?;
+        let v: Value = serde_json::from_slice(&bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to parse ABI entry JSON: {}", e)),
+            data: None,
+        })?;
+
+        let abi_val = v.get("abi").cloned().unwrap_or(Value::Null);
+        if abi_val.is_null() {
+            return Ok(None);
+        }
+
+        // The registry is expected to store a standard ABI JSON array.
+        // If someone stored nested arrays, we treat it as unsupported.
+        if let Value::Array(items) = abi_val {
+            let looks_like_abi = items
+                .iter()
+                .any(|it| it.get("type").and_then(Value::as_str).is_some());
+            if looks_like_abi {
+                let abi: ethers::abi::Abi = serde_json::from_value(Value::Array(items)).map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to parse ABI: {}", e)),
+                    data: None,
+                })?;
+                return Ok(Some(abi));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn evm_decode_log_with_abi(
+        log: &ethers::types::Log,
+        abi: &ethers::abi::Abi,
+    ) -> Option<Value> {
+        // Try to decode by matching topic0 against known event signatures.
+        let topic0 = log.topics.get(0).cloned()?;
+
+        // ethers::abi::Abi::events() yields an iterator of all events (flattened).
+        for event in abi.events() {
+            let sig = event.signature();
+            let sig_hash = ethers::utils::keccak256(sig);
+            let sig_topic = ethers::types::H256::from_slice(&sig_hash);
+            if sig_topic != topic0 {
+                continue;
+            }
+
+            // Decode topics+data.
+            let raw = ethers::abi::RawLog {
+                topics: log.topics.clone(),
+                data: log.data.to_vec(),
+            };
+            if let Ok(parsed) = event.parse_log(raw) {
+                // Build a stable JSON representation.
+                let params = parsed
+                    .params
+                    .into_iter()
+                    .map(|p| {
+                        let value = match p.value {
+                            ethers::abi::Token::Address(a) => {
+                                json!(format!("0x{}", hex::encode(a.as_bytes())))
+                            }
+                            ethers::abi::Token::Uint(u) => json!(u.to_string()),
+                            ethers::abi::Token::Int(i) => json!(i.to_string()),
+                            ethers::abi::Token::Bool(b) => json!(b),
+                            ethers::abi::Token::String(s) => json!(s),
+                            ethers::abi::Token::Bytes(b) => json!(format!("0x{}", hex::encode(b))),
+                            ethers::abi::Token::FixedBytes(b) => {
+                                json!(format!("0x{}", hex::encode(b)))
+                            }
+                            other => json!(format!("{:?}", other)),
+                        };
+                        json!({
+                            "name": p.name,
+                            "value": value
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                let address = log.address;
+                return Some(json!({
+                    "event": event.name,
+                    "signature": sig,
+                    "address": format!("0x{}", hex::encode(address.as_bytes())),
+                    "params": params
+                }));
+            }
+        }
+
+        None
+    }
+
+fn abi_entry_json(
         chain_id: u64,
         address: &str,
         name: Option<String>,
