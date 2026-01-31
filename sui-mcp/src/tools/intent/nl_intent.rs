@@ -336,16 +336,7 @@
                     }))
                     .await?;
 
-                let payload = Self::extract_first_json(&exec).unwrap_or(json!({
-                    "raw": Self::extract_text(&exec)
-                }));
-
-                let response = Self::pretty_json(&json!({
-                    "resolved_network": resolved_network,
-                    "result": payload
-                }))?;
-
-                return Ok(CallToolResult::success(vec![Content::text(response)]));
+                return Self::wrap_resolved_network_result(&resolved_network, &exec);
             }
             _ => {
                 return Err(ErrorData {
