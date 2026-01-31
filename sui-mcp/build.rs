@@ -8,6 +8,7 @@ fn main() {
     let helper_sections = [
         "src/tools/move/automation/move_auto_helpers.rs",
         "src/tools/move/resolution/move_resolve_helpers.rs",
+        "src/tools/intent/intent_helpers.rs",
     ];
 
     let sections = [
