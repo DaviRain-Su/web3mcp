@@ -821,6 +821,66 @@
             items = fallback;
         }
 
+        // Add stable candidate_id + recommended execute payload.
+        let mut candidates: Vec<Value> = Vec::new();
+        for (i, mut v) in items.into_iter().enumerate() {
+            let signature = v
+                .get("signature")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let function = v
+                .get("function")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let args = v.get("filled_args").cloned().unwrap_or(Value::Null);
+            let missing = v
+                .get("missing")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+
+            let mut questions: Vec<String> = Vec::new();
+            for m in missing.iter() {
+                let name = m.get("name").and_then(Value::as_str).unwrap_or("arg");
+                let ty = m.get("type").and_then(Value::as_str).unwrap_or("value");
+                questions.push(format!("Provide {} ({})", name, ty));
+            }
+
+            if let Value::Object(ref mut map) = v {
+                map.insert("candidate_id".to_string(), json!(i));
+                map.insert(
+                    "recommended_execute_payload".to_string(),
+                    json!({
+                        "chain_id": request.chain_id,
+                        "sender": "<sender>",
+                        "address": address,
+                        "function": function,
+                        "function_signature": signature,
+                        "args": args,
+                        "value_wei": null,
+                        "gas_limit": null,
+                        "allow_sender_mismatch": false
+                    }),
+                );
+                map.insert("questions".to_string(), json!(questions));
+            }
+
+            candidates.push(v);
+        }
+
+        // Convenience: suggest a next step using the top candidate.
+        let next_step = candidates
+            .get(0)
+            .and_then(|c| c.get("recommended_execute_payload"))
+            .cloned();
+        let next_questions = candidates
+            .get(0)
+            .and_then(|c| c.get("questions"))
+            .cloned()
+            .unwrap_or(json!([]));
+
         let response = Self::pretty_json(&json!({
             "chain_id": request.chain_id,
             "contract": {
@@ -830,8 +890,13 @@
             },
             "text": request.text,
             "function_hint": request.function_hint,
-            "candidates": items,
-            "note": "This tool only plans. Use evm_call_view / evm_execute_contract_call with contract_name/address/contract_query + function_signature + args to execute. Default behavior is safe: if contract_query is ambiguous, require explicit confirmation unless accept_best_match=true."
+            "candidates": candidates,
+            "next": {
+                "recommended_execute_payload": next_step,
+                "questions": next_questions,
+                "how_to_execute": "Pick a candidate_id (or function_signature) and call evm_execute_contract_call with sender + function_signature + args. If questions is non-empty, fill those first."
+            },
+            "note": "This tool only plans; it never executes. Default behavior is safe: if contract_query is ambiguous, require explicit confirmation unless accept_best_match=true."
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
