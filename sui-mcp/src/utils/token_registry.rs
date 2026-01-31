@@ -118,6 +118,9 @@ impl SuiMcpServer {
             // World Chain Mainnet
             480 => Some("0x79A02482A880bCe3F13E09da970dC34dB4cD24D1"),
 
+            // Polygon PoS Mainnet
+            137 => Some("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
+
             _ => None,
         }
     }

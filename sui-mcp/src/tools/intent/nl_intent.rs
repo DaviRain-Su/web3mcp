@@ -471,6 +471,8 @@
                 "hyperevm".to_string()
             } else if lower.contains("world chain") || lower.contains("worldchain") {
                 "worldchain".to_string()
+            } else if lower.contains("polygon") || lower.contains("matic") {
+                "polygon".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
                 // safer default: Sepolia
                 "sepolia".to_string()
@@ -593,6 +595,26 @@
                 "evm",
                 Some(cid),
                 if cid == 480 { "worldchain" } else { "worldchain-sepolia" },
+            )
+        } else if inferred.contains("polygon") || inferred.contains("matic") {
+            let is_test = inferred.contains("amoy")
+                || inferred.contains("mumbai")
+                || inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            let cid = if is_main {
+                137
+            } else if is_test {
+                // Prefer Amoy for safe defaults.
+                80002
+            } else {
+                137
+            };
+            (
+                "evm",
+                Some(cid),
+                if cid == 137 { "polygon" } else { "polygon-amoy" },
             )
         } else if inferred.contains("sepolia") {
             // Ethereum Sepolia
