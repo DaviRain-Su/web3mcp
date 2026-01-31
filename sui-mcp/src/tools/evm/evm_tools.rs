@@ -935,6 +935,102 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn parse_slippage_bps(input: &str) -> Result<u64, ErrorData> {
+        let s = input.trim().to_lowercase();
+        if s.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("slippage is required"),
+                data: None,
+            });
+        }
+
+        if let Some(pct) = s.strip_suffix('%') {
+            let pct = pct.trim();
+            // allow decimals like 0.5%
+            let v: f64 = pct.parse().map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Invalid percent slippage"),
+                data: None,
+            })?;
+            if v < 0.0 {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("slippage must be non-negative"),
+                    data: None,
+                });
+            }
+            // bps = percent * 100
+            let bps = (v * 100.0).round() as i64;
+            if bps < 0 {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("slippage must be non-negative"),
+                    data: None,
+                });
+            }
+            return Ok(bps as u64);
+        }
+
+        if let Some(bps) = s.strip_suffix("bps") {
+            let bps = bps.trim();
+            let v: u64 = bps.parse().map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Invalid bps slippage"),
+                data: None,
+            })?;
+            return Ok(v);
+        }
+
+        // fallback: treat as percent number (e.g. "1" == 1%)
+        let v: f64 = s.parse().map_err(|_| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Invalid slippage"),
+            data: None,
+        })?;
+        if v < 0.0 {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("slippage must be non-negative"),
+                data: None,
+            });
+        }
+        Ok((v * 100.0).round() as u64)
+    }
+
+    #[tool(description = "EVM: apply slippage to an expected amountOut (compute amountOutMin).")]
+    async fn evm_apply_slippage(
+        &self,
+        Parameters(request): Parameters<EvmApplySlippageRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let expected = ethers::types::U256::from_dec_str(request.expected_amount_out_wei.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid expected_amount_out_wei: {}", e)),
+                data: None,
+            })?;
+        let bps = Self::parse_slippage_bps(&request.slippage)?;
+        if bps > 10_000 {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("slippage too large (>100%)"),
+                data: None,
+            });
+        }
+
+        let numerator = ethers::types::U256::from(10_000u64.saturating_sub(bps));
+        let min_out = expected * numerator / ethers::types::U256::from(10_000u64);
+
+        let response = Self::pretty_json(&json!({
+            "expected_amount_out_wei": expected.to_string(),
+            "slippage": request.slippage,
+            "slippage_bps": bps,
+            "amount_out_min_wei": min_out.to_string()
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
     async fn evm_event_topic0(
         &self,

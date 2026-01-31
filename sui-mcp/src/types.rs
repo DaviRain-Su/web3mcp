@@ -136,6 +136,14 @@ pub struct EvmParsePathRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmApplySlippageRequest {
+    #[schemars(description = "Expected amount out in wei (decimal string)")]
+    pub expected_amount_out_wei: String,
+    #[schemars(description = "Slippage input (e.g. '1%', '50bps', '0.5%')")]
+    pub slippage: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,
