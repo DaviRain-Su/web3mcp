@@ -69,8 +69,20 @@ pub struct EvmEventTopic0Request {
 pub struct EvmListPendingConfirmationsRequest {
     #[schemars(description = "Optional EVM chain id filter")]
     pub chain_id: Option<u64>,
+    #[schemars(description = "Optional status filter (pending|consumed|sent|failed)")]
+    pub status: Option<String>,
+    #[schemars(description = "Include tx_summary in each item (default true)")]
+    pub include_tx_summary: Option<bool>,
     #[schemars(description = "Optional max results (default 20)")]
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmCleanupPendingConfirmationsRequest {
+    #[schemars(description = "Optional chain id filter")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "If provided, delete failed entries older than this age (ms)")]
+    pub delete_failed_older_than_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

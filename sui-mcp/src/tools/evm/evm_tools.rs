@@ -157,32 +157,41 @@
 
         let now_ms = crate::utils::evm_confirm_store::now_ms() as i64;
         let limit = request.limit.unwrap_or(20).min(200) as i64;
+        let include_tx_summary = request.include_tx_summary.unwrap_or(true);
+
+        let status = request.status.as_deref().map(|s| s.trim().to_lowercase());
+        if let Some(st) = status.as_deref() {
+            let allowed = ["pending", "consumed", "sent", "failed"];
+            if !allowed.contains(&st) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("status must be one of: pending|consumed|sent|failed"),
+                    data: None,
+                });
+            }
+        }
 
         let mut items: Vec<Value> = Vec::new();
 
-        let (sql, params): (String, Vec<rusqlite::types::Value>) = if let Some(chain_id) = request.chain_id {
-            (
-                "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json
-                 FROM evm_pending_confirmations
-                 WHERE chain_id = ?1
-                 ORDER BY created_at_ms DESC
-                 LIMIT ?2"
-                    .to_string(),
-                vec![
-                    rusqlite::types::Value::Integer(chain_id as i64),
-                    rusqlite::types::Value::Integer(limit),
-                ],
-            )
-        } else {
-            (
-                "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json
-                 FROM evm_pending_confirmations
-                 ORDER BY created_at_ms DESC
-                 LIMIT ?1"
-                    .to_string(),
-                vec![rusqlite::types::Value::Integer(limit)],
-            )
-        };
+        let mut sql = "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json FROM evm_pending_confirmations".to_string();
+        let mut params: Vec<rusqlite::types::Value> = Vec::new();
+        let mut where_clauses: Vec<String> = Vec::new();
+
+        if let Some(chain_id) = request.chain_id {
+            where_clauses.push(format!("chain_id = ?{}", params.len() + 1));
+            params.push(rusqlite::types::Value::Integer(chain_id as i64));
+        }
+        if let Some(st) = status {
+            where_clauses.push(format!("status = ?{}", params.len() + 1));
+            params.push(rusqlite::types::Value::Text(st));
+        }
+        if !where_clauses.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&where_clauses.join(" AND "));
+        }
+        sql.push_str(" ORDER BY created_at_ms DESC");
+        sql.push_str(&format!(" LIMIT ?{}", params.len() + 1));
+        params.push(rusqlite::types::Value::Integer(limit));
 
         let mut stmt = conn.prepare(&sql).map_err(|e| ErrorData {
             code: ErrorCode(-32603),
@@ -223,7 +232,12 @@
 
         for r in rows.flatten() {
             let expires_in_ms = (r.4 - now_ms).max(0);
-            let tx: Option<EvmTxRequest> = serde_json::from_str::<EvmTxRequest>(&r.9).ok();
+            let tx: Option<EvmTxRequest> = if include_tx_summary {
+                serde_json::from_str::<EvmTxRequest>(&r.9).ok()
+            } else {
+                None
+            };
+
             items.push(json!({
                 "id": r.0,
                 "chain_id": r.1,
@@ -441,6 +455,65 @@
                 Err(e)
             }
         }
+    }
+
+    #[tool(description = "EVM: cleanup pending confirmations (delete expired; optionally delete old failed entries)")]
+    async fn evm_cleanup_pending_confirmations(
+        &self,
+        Parameters(request): Parameters<EvmCleanupPendingConfirmationsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = crate::utils::evm_confirm_store::connect()?;
+        let now = crate::utils::evm_confirm_store::now_ms();
+
+        // Always cleanup expired.
+        crate::utils::evm_confirm_store::cleanup_expired(&conn, now)?;
+
+        // Optional: delete failed older than threshold.
+        let mut deleted_failed: i64 = 0;
+        if let Some(age) = request.delete_failed_older_than_ms {
+            let cutoff = (now as i128 - age as i128).max(0) as i64;
+            if let Some(chain_id) = request.chain_id {
+                deleted_failed = conn
+                    .execute(
+                        "DELETE FROM evm_pending_confirmations
+                         WHERE status='failed' AND updated_at_ms < ?1 AND chain_id = ?2",
+                        rusqlite::params![cutoff, chain_id as i64],
+                    )
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to delete old failed: {}", e)),
+                        data: None,
+                    })? as i64;
+            } else {
+                deleted_failed = conn
+                    .execute(
+                        "DELETE FROM evm_pending_confirmations
+                         WHERE status='failed' AND updated_at_ms < ?1",
+                        rusqlite::params![cutoff],
+                    )
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to delete old failed: {}", e)),
+                        data: None,
+                    })? as i64;
+            }
+        }
+
+        // Report counts.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evm_pending_confirmations",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let response = Self::pretty_json(&json!({
+            "db_path": crate::utils::evm_confirm_store::pending_db_path_from_cwd()?.to_string_lossy(),
+            "remaining": count,
+            "deleted_failed": deleted_failed
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]

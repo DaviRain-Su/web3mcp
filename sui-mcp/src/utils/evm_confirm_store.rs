@@ -320,6 +320,16 @@ pub fn mark_failed(conn: &rusqlite::Connection, id: &str, err: &str) -> Result<(
     Ok(())
 }
 
+pub fn delete_row(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorData> {
+    conn.execute("DELETE FROM evm_pending_confirmations WHERE id = ?1", [id])
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to delete row: {}", e)),
+            data: None,
+        })?;
+    Ok(())
+}
+
 pub fn tx_summary_hash(tx: &EvmTxRequest) -> String {
     let s = format!(
         "chain_id={}|from={}|to={}|value_wei={}|nonce={:?}|gas_limit={:?}|max_fee_per_gas_wei={:?}|max_priority_fee_per_gas_wei={:?}|data_hex={:?}",
