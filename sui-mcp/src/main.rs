@@ -1133,6 +1133,32 @@ struct WalletOverviewRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct TransactionTemplateRequest {
+    #[schemars(description = "Template name: transfer_sui|transfer_object|stake|unstake|pay_sui")]
+    template: String,
+    #[schemars(description = "Sender address (required for templates)")]
+    sender: String,
+    #[schemars(description = "Recipient address (transfer_sui, transfer_object, pay_sui)")]
+    recipient: Option<String>,
+    #[schemars(description = "Object ID to transfer (transfer_object)")]
+    object_id: Option<String>,
+    #[schemars(description = "Validator address (stake)")]
+    validator: Option<String>,
+    #[schemars(description = "Staked SUI object id (unstake)")]
+    staked_sui: Option<String>,
+    #[schemars(description = "Optional amount in raw SUI (transfer_sui/pay_sui/stake)")]
+    amount: Option<u64>,
+    #[schemars(description = "Recipients for pay_sui")]
+    recipients: Option<Vec<String>>,
+    #[schemars(description = "Amounts for pay_sui")]
+    amounts: Option<Vec<u64>>,
+    #[schemars(description = "Optional gas budget (default: 1_000_000)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Optional gas object id")]
+    gas_object_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ZkLoginExecuteTransactionRequest {
     #[schemars(description = "Base64-encoded transaction bytes (BCS TransactionData)")]
     tx_bytes: String,

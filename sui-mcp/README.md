@@ -111,6 +111,19 @@ Once configured with Claude Desktop, you can ask Claude to:
 }
 ```
 
+### Example: Transaction template
+
+```json
+{
+  "tool": "get_transaction_template",
+  "params": {
+    "template": "transfer_sui",
+    "sender": "0x...",
+    "recipient": "0x..."
+  }
+}
+```
+
 ## Local Keystore (no zkLogin)
 
 This server can sign and execute transactions using your local Sui keystore (e.g. `~/.sui/sui_config/sui.keystore`).

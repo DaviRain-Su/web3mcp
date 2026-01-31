@@ -10,6 +10,7 @@ fn main() {
         "src/tools/read/objects/read_objects.rs",
         "src/tools/read/transactions/read_transactions.rs",
         "src/tools/intent/nl_intent.rs",
+        "src/tools/intent/templates/transaction_templates.rs",
         "src/tools/auth/zklogin/zklogin.rs",
         "src/tools/auth/keystore/keystore.rs",
         "src/tools/tx/pay/tx_build.rs",

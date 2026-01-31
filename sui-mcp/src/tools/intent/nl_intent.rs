@@ -559,6 +559,19 @@
                     "gas_object_id": null
                 }
             }));
+        } else if lower.contains("pay sui") || lower.contains("批量转") || lower.contains("批量转账") {
+            intent = "pay_sui".to_string();
+            confidence = 0.45;
+            plan.push(json!({
+                "tool": "build_pay_sui",
+                "params": {
+                    "sender": sender,
+                    "recipients": ["<recipient>", "<recipient>"] ,
+                    "amounts": [10000000, 10000000],
+                    "input_coins": ["<coin_object_id>"],
+                    "gas_budget": 1000000
+                }
+            }));
         } else if lower.contains("mint") || lower.contains("铸造") {
             intent = "mint".to_string();
             confidence = 0.45;
