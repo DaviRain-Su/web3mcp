@@ -455,11 +455,12 @@
             if lower.contains("base") {
                 "base-sepolia".to_string()
             } else if lower.contains("arbitrum") || lower.contains("arb") {
-                "arbitrum".to_string()
+                "arbitrum-sepolia".to_string()
             } else if lower.contains("bsc") || lower.contains("bnb") {
-                "bsc".to_string()
+                "bsc-testnet".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
-                "ethereum".to_string()
+                // safer default: Sepolia
+                "sepolia".to_string()
             } else {
                 "sui".to_string()
             }
@@ -480,14 +481,42 @@
             let cid = if is_main { 8453 } else if is_test { 84532 } else { 84532 };
             ("evm", Some(cid), if cid == 8453 { "base" } else { "base-sepolia" })
         } else if inferred.contains("arbitrum") || inferred == "arb" {
-            // Default to Arbitrum One mainnet if unspecified.
-            ("evm", Some(42161), "arbitrum")
+            // Prefer Arbitrum Sepolia for safe defaults unless user explicitly asks mainnet.
+            let is_test = inferred.contains("sepolia")
+                || inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("one")
+                || inferred.contains("mainnet")
+                || inferred.contains("主网");
+            let cid = if is_main { 42161 } else if is_test { 421614 } else { 421614 };
+            (
+                "evm",
+                Some(cid),
+                if cid == 42161 { "arbitrum" } else { "arbitrum-sepolia" },
+            )
         } else if inferred.contains("bsc") || inferred.contains("bnb") {
-            ("evm", Some(56), "bsc")
+            let is_test = inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            let cid = if is_main { 56 } else if is_test { 97 } else { 97 };
+            ("evm", Some(cid), if cid == 56 { "bsc" } else { "bsc-testnet" })
         } else if inferred.contains("sepolia") {
+            // Ethereum Sepolia
             ("evm", Some(11155111), "sepolia")
         } else if inferred.contains("ethereum") || inferred.contains("eth") {
-            ("evm", Some(1), "ethereum")
+            let is_test = inferred.contains("sepolia")
+                || inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            let cid = if is_main { 1 } else if is_test { 11155111 } else { 1 };
+            (
+                "evm",
+                Some(cid),
+                if cid == 1 { "ethereum" } else { "sepolia" },
+            )
         } else {
             // Fallback to Sui
             ("sui", None, "sui")
