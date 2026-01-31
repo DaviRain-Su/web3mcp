@@ -128,6 +128,14 @@ pub struct EvmParseDeadlineRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmParsePathRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Path input: 'WETH->USDC', '0xA,0xB', or JSON array string")]
+    pub input: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,

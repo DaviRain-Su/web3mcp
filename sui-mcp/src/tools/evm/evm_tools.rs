@@ -814,6 +814,127 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn parse_path_input(
+        _chain_id: u64,
+        input: &str,
+    ) -> Result<Vec<String>, ErrorData> {
+        let s = input.trim();
+        if s.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("path input is required"),
+                data: None,
+            });
+        }
+
+        // Case 1: JSON array string
+        if s.starts_with('[') {
+            let v = serde_json::from_str::<Value>(s).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid JSON array: {}", e)),
+                data: None,
+            })?;
+            let arr = v.as_array().ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Path JSON must be an array"),
+                data: None,
+            })?;
+
+            let mut out = Vec::new();
+            for item in arr {
+                let token = item.as_str().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Path items must be strings"),
+                    data: None,
+                })?;
+                out.push(token.to_string());
+            }
+            return Ok(out);
+        }
+
+        // Case 2: Arrow syntax: A->B->C
+        if s.contains("->") {
+            return Ok(s
+                .split("->")
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect());
+        }
+
+        // Case 3: Comma separated: A,B,C
+        if s.contains(',') {
+            return Ok(s
+                .split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect());
+        }
+
+        // Single token
+        Ok(vec![s.to_string()])
+    }
+
+    fn resolve_path_token(chain_id: u64, token: &str) -> Result<String, ErrorData> {
+        let t = token.trim();
+        if t.starts_with("0x") {
+            let addr = Self::parse_evm_address(t)?;
+            return Ok(format!("0x{}", hex::encode(addr.as_bytes())));
+        }
+
+        let sym = t.to_lowercase();
+        if sym == "eth" {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Path token 'ETH' is ambiguous; use WETH address/symbol"),
+                data: None,
+            });
+        }
+
+        let addr = Self::resolve_evm_erc20_address(&sym, chain_id)
+            .or_else(|| Self::resolve_evm_token_address(&sym, chain_id))
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Unknown path token '{}'. Provide 0x address or set env EVM_{}_ADDRESS_{}",
+                    sym,
+                    sym.to_uppercase(),
+                    chain_id
+                )),
+                data: None,
+            })?;
+
+        let addr = Self::parse_evm_address(&addr)?;
+        Ok(format!("0x{}", hex::encode(addr.as_bytes())))
+    }
+
+    #[tool(description = "EVM: parse a swap path into normalized address array. Supports 'WETH->USDC', '0xA,0xB', or JSON array.")]
+    async fn evm_parse_path(
+        &self,
+        Parameters(request): Parameters<EvmParsePathRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let raw_items = Self::parse_path_input(request.chain_id, &request.input)?;
+        if raw_items.len() < 2 {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Path must include at least 2 tokens"),
+                data: None,
+            });
+        }
+
+        let mut out: Vec<String> = Vec::new();
+        for item in raw_items {
+            out.push(Self::resolve_path_token(request.chain_id, &item)?);
+        }
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id,
+            "input": request.input,
+            "path": out
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
     async fn evm_event_topic0(
         &self,
