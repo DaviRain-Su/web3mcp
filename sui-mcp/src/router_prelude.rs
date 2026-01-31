@@ -23,6 +23,8 @@ pub use sui_crypto::Verifier;
 
 pub use sui_graphql::Client as GraphqlClient;
 
+pub use sui_json::SuiJsonValue;
+
 pub use sui_json_rpc_types::{
     CheckpointId,
     DryRunTransactionBlockResponse,

@@ -155,38 +155,8 @@
         let sender = Self::parse_address(&request.sender)?;
         let package = Self::parse_object_id(&request.package)?;
 
-        let type_args_strings = payload
-            .get("type_args")
-            .and_then(|value| value.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let arguments = payload
-            .get("arguments")
-            .and_then(|value| value.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let gas_budget = payload
-            .get("gas_budget")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(request.gas_budget);
-        let gas_object_id = payload
-            .get("gas_object_id")
-            .and_then(|value| value.as_str())
-            .map(|s| s.to_string());
-        let gas_price = payload
-            .get("gas_price")
-            .and_then(|value| value.as_u64());
-
-        let type_args = Self::parse_type_args(type_args_strings)?;
-        let call_args = Self::parse_json_args(&arguments)?;
-        let gas = match gas_object_id {
-            Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
-            None => None,
-        };
+        let (type_args, call_args, gas_budget, gas, gas_price) =
+            Self::parse_execute_payload(&payload, request.gas_budget)?;
 
         let tx_data = self
             .client
@@ -274,6 +244,60 @@
                 Ok(tag)
             })
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    fn json_string_array(obj: &Value, key: &str) -> Vec<String> {
+        obj.get(key)
+            .and_then(|value| value.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    }
+
+    fn parse_execute_payload(
+        payload: &Value,
+        default_gas_budget: u64,
+    ) -> Result<
+        (
+            Vec<SuiTypeTag>,
+            Vec<SuiJsonValue>,
+            u64,
+            Option<ObjectID>,
+            Option<u64>,
+        ),
+        ErrorData,
+    > {
+        let type_args_strings = Self::json_string_array(payload, "type_args");
+        let arguments = payload
+            .get("arguments")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let gas_budget = payload
+            .get("gas_budget")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(default_gas_budget);
+
+        let gas_object_id = payload
+            .get("gas_object_id")
+            .and_then(|value| value.as_str())
+            .map(|s| s.to_string());
+
+        let gas = gas_object_id
+            .as_deref()
+            .map(Self::parse_object_id)
+            .transpose()?;
+
+        let gas_price = payload.get("gas_price").and_then(|value| value.as_u64());
+
+        let type_args = Self::parse_type_args(type_args_strings)?;
+        let call_args = Self::parse_json_args(&arguments)?;
+
+        Ok((type_args, call_args, gas_budget, gas, gas_price))
     }
 
     async fn execute_tx_with_zklogin(
