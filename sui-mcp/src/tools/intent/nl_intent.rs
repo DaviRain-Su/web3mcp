@@ -485,32 +485,36 @@
                         Some("usdc".to_string())
                     } else if lower.contains("usdt") {
                         Some("usdt".to_string())
+                    } else if lower.contains("weth") {
+                        Some("weth".to_string())
+                    } else if lower.contains("dai") {
+                        Some("dai".to_string())
+                    } else if lower.contains("cbeth") {
+                        Some("cbeth".to_string())
                     } else if lower.contains("eth") {
                         Some("eth".to_string())
                     } else {
                         None
                     };
 
-                    if let Some(sym) = sym {
-                        for v in arr.iter_mut() {
-                            if let Value::String(s) = v {
-                                let s_trim = s.trim();
-                                // only attempt if it looks like a number
-                                if s_trim.chars().any(|c| c.is_ascii_digit()) && !s_trim.starts_with("0x") {
-                                    if let Ok(result) = self
-                                        .evm_parse_amount(Parameters(EvmParseAmountRequest {
-                                            chain_id,
-                                            amount: s_trim.to_string(),
-                                            symbol: Some(sym.clone()),
-                                            token_address: None,
-                                            decimals: None,
-                                        }))
-                                        .await
-                                    {
-                                        if let Some(j) = Self::extract_first_json(&result) {
-                                            if let Some(w) = j.get("amount_wei").and_then(Value::as_str) {
-                                                *v = Value::String(w.to_string());
-                                            }
+                    for v in arr.iter_mut() {
+                        if let Value::String(s) = v {
+                            let s_trim = s.trim();
+                            // only attempt if it looks like a number or a "<num> <sym>" pair
+                            if s_trim.chars().any(|c| c.is_ascii_digit()) && !s_trim.starts_with("0x") {
+                                if let Ok(result) = self
+                                    .evm_parse_amount(Parameters(EvmParseAmountRequest {
+                                        chain_id,
+                                        amount: s_trim.to_string(),
+                                        symbol: sym.clone(),
+                                        token_address: None,
+                                        decimals: None,
+                                    }))
+                                    .await
+                                {
+                                    if let Some(j) = Self::extract_first_json(&result) {
+                                        if let Some(w) = j.get("amount_wei").and_then(Value::as_str) {
+                                            *v = Value::String(w.to_string());
                                         }
                                     }
                                 }

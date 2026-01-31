@@ -656,11 +656,29 @@
         Ok(raw.0[31])
     }
 
-    #[tool(description = "EVM: parse a human amount into wei (supports ETH via 18 decimals; ERC20 via decimals())")]
+    // NOTE: resolve_evm_token_address is provided by utils/token_registry.rs.
+
+    #[tool(description = "EVM: parse a human amount into wei (supports ETH via 18 decimals; ERC20 via decimals()). Accepts '1.5 usdc' style inputs.")]
     async fn evm_parse_amount(
         &self,
-        Parameters(request): Parameters<EvmParseAmountRequest>,
+        Parameters(mut request): Parameters<EvmParseAmountRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        // Allow shorthand in amount field: "1.5 usdc" / "0.1 eth"
+        let mut amount_str = request.amount.trim().to_string();
+        if request.symbol.is_none() {
+            let parts = amount_str
+                .split_whitespace()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>();
+            if parts.len() == 2 {
+                let num = parts[0];
+                let sym = parts[1];
+                request.symbol = Some(sym.to_string());
+                amount_str = num.to_string();
+            }
+        }
+
         let symbol = request.symbol.as_deref().map(|s| s.trim().to_lowercase());
 
         let token_address = if let Some(addr) = request.token_address.as_deref() {
@@ -669,13 +687,30 @@
             if sym == "eth" {
                 None
             } else {
-                // tolerant: only known symbols
-                Self::resolve_evm_erc20_address(sym, request.chain_id)
+                Self::resolve_evm_token_address(sym, request.chain_id)
                     .and_then(|a| Self::parse_evm_address(&a).ok())
             }
         } else {
             None
         };
+
+        // If this is not ETH and we couldn't resolve the token, fail with a helpful message.
+        if token_address.is_none() {
+            if let Some(sym) = symbol.as_deref() {
+                if sym != "eth" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!(
+                            "Unknown token symbol '{}'. Provide token_address or set env EVM_{}_ADDRESS_{}",
+                            sym,
+                            sym.to_uppercase(),
+                            request.chain_id
+                        )),
+                        data: None,
+                    });
+                }
+            }
+        }
 
         let decimals = if let Some(d) = request.decimals {
             d
@@ -686,11 +721,12 @@
                 .await?
         };
 
-        let wei = Self::parse_decimal_to_u256(&request.amount, decimals)?;
+        let wei = Self::parse_decimal_to_u256(&amount_str, decimals)?;
 
         let response = Self::pretty_json(&json!({
             "chain_id": request.chain_id,
             "amount": request.amount,
+            "parsed_amount": amount_str,
             "symbol": request.symbol,
             "token_address": token_address.map(|a| format!("0x{}", hex::encode(a.as_bytes()))),
             "decimals": decimals,
