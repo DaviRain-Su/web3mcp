@@ -62,4 +62,47 @@ impl SuiMcpServer {
         // Keep USDT env-only for now.
         None
     }
+
+    /// Resolve an EVM token contract address for a symbol on a given chain.
+    ///
+    /// Resolution order:
+    /// 1) Env var override: EVM_<SYMBOL>_ADDRESS_<chain_id> (e.g. EVM_USDC_ADDRESS_8453)
+    /// 2) Built-in defaults (Circle USDC contract addresses)
+    pub fn resolve_evm_token_address(symbol: &str, chain_id: u64) -> Option<String> {
+        let symbol_upper = symbol.trim().to_uppercase();
+        let key = format!("EVM_{}_ADDRESS_{}", symbol_upper, chain_id);
+        if let Ok(v) = std::env::var(&key) {
+            return Some(v);
+        }
+
+        let symbol = symbol.trim().to_lowercase();
+        match symbol.as_str() {
+            "usdc" => Self::builtin_evm_usdc_address(chain_id).map(|s| s.to_string()),
+            _ => None,
+        }
+    }
+
+    fn builtin_evm_usdc_address(chain_id: u64) -> Option<&'static str> {
+        // Source: Circle Docs “USDC Contract Addresses”
+        // https://developers.circle.com/stablecoins/usdc-contract-addresses
+        match chain_id {
+            // Ethereum
+            1 => Some("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+            11155111 => Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"),
+
+            // Base
+            8453 => Some("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+            84532 => Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+
+            // Arbitrum
+            42161 => Some("0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
+            421614 => Some("0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"),
+
+            // OP Mainnet / OP Sepolia
+            10 => Some("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
+            11155420 => Some("0x5fd84259d66Cd46123540766Be93DFE6D43130D7"),
+
+            _ => None,
+        }
+    }
 }

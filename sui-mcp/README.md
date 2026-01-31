@@ -56,8 +56,14 @@ Add this to your Claude Desktop configuration file:
 - `SUI_RPC_URL` - The Sui RPC endpoint to use (defaults to `https://fullnode.mainnet.sui.io:443`)
 
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
+
+Sui:
 - `SUI_USDC_COIN_TYPE` - Full Sui coin type string for USDC (overrides built-in defaults)
 - `SUI_USDT_COIN_TYPE` - Full Sui coin type string for USDT
+
+EVM:
+- `EVM_USDC_ADDRESS_<chain_id>` - Override USDC ERC20 contract address for a specific chain id (e.g. `EVM_USDC_ADDRESS_8453=0x...`).
+  (We ship built-in defaults for several Circle-supported chains; see source link below.)
 
 Built-in defaults (can be overridden):
 - USDC mainnet: `0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC`

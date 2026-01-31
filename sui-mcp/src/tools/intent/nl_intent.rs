@@ -90,6 +90,39 @@
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "get_coins" => {
+                if family == "evm" {
+                    let chain_id = chain_id.ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("chain_id is required for EVM get_coins"),
+                        data: None,
+                    })?;
+
+                    // For EVM, map common coin words to ERC20s.
+                    // Currently supports USDC (built-in Circle list) and env overrides.
+                    let token_address = if lower.contains("usdc") {
+                        Self::resolve_evm_token_address("usdc", chain_id)
+                    } else {
+                        None
+                    }
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Unsupported EVM coin query. Try: 'balance usdc on Base' or set EVM_USDC_ADDRESS_<chain_id>",
+                        ),
+                        data: None,
+                    })?;
+
+                    let result = self
+                        .evm_get_balance(Parameters(EvmGetBalanceRequest {
+                            address: sender,
+                            chain_id: Some(chain_id),
+                            token_address: Some(token_address),
+                        }))
+                        .await?;
+
+                    return Self::wrap_resolved_network_result(&resolved_network, &result);
+                }
+
                 Self::ensure_sui_intent_family(&resolved_network, "get_coins")?;
 
                 let coin_type = entities
@@ -699,12 +732,21 @@
                         .and_then(|v| v.get("chain_id"))
                         .and_then(|v| v.as_u64());
 
+                    let token_address = chain_id.and_then(|cid| {
+                        if lower.contains("usdc") {
+                            Self::resolve_evm_token_address("usdc", cid)
+                        } else {
+                            None
+                        }
+                    });
+                    entities["token_address"] = json!(token_address);
+
                     plan.push(json!({
                         "tool": "evm_get_balance",
                         "params": {
                             "address": sender,
                             "chain_id": chain_id,
-                            "token_address": null
+                            "token_address": token_address
                         }
                     }));
                 } else {
