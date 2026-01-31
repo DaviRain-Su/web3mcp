@@ -103,6 +103,9 @@ impl SuiMcpServer {
             10 => Some("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
             11155420 => Some("0x5fd84259d66Cd46123540766Be93DFE6D43130D7"),
 
+            // Celo Mainnet
+            42220 => Some("0xcebA9300f2b948710d2653dD7B07f33A8B32118C"),
+
             // Monad (Circle docs)
             143 => Some("0x754704bc059f8c67012fed69bc8a327a5aafb603"),
 
