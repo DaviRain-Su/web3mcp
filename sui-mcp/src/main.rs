@@ -24,28 +24,13 @@ use sui_crypto::simple::SimpleVerifier;
 use sui_crypto::Verifier;
 use sui_graphql::Client as GraphqlClient;
 // (moved) SuiJsonValue parsing in utils/sui_parse.rs
-use sui_json_rpc_types::{
-    CheckpointId, DryRunTransactionBlockResponse, EventFilter, RPCTransactionRequestParams,
-    SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
-    SuiTransactionBlockResponseQuery, SuiTypeTag, TransactionFilter, ZkLoginIntentScope,
-};
+// Many Sui/Sui-types imports are provided via router_prelude for generated router_impl.rs
 use sui_keys::keystore::AccountKeystore;
 use sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest as RpcGetServiceInfoRequest;
 use sui_rpc::Client as RpcClient;
 // SuiClient is part of SuiMcpServer in src/server.rs
-use sui_sdk_types::SimpleSignature;
-use sui_types::base_types::{SequenceNumber, SuiAddress};
-use sui_types::crypto::{Signature, ToFromBytes};
 // (moved) digests parsing in utils/sui_parse.rs
 // (moved) dynamic_field helpers in src/sui/dynamic_fields.rs
-// (moved) Owner imported via router_prelude
-use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
-use sui_types::signature::GenericSignature;
-use sui_types::sui_serde::BigInt;
-use sui_types::transaction::{
-    CallArg, ObjectArg, Transaction, TransactionData, TransactionDataAPI,
-};
-use sui_types::zk_login_authenticator::ZkLoginAuthenticator;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
