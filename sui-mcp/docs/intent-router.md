@@ -24,21 +24,51 @@ Provide a chain-agnostic intent layer that can parse user intent, generate execu
 
 ## Intent Schema (Draft)
 
+Key idea: **humans talk in chain names** ("Base testnet", "Ethereum", "Arbitrum"), but the execution layer must be stable.
+So we normalize user input into:
+
+- `family`: `sui | evm | solana`
+- `chain_id`: EVM chain id when `family=evm`
+- `network_name`: human-friendly normalized name
+
 ```json
 {
   "action": "transfer | swap | stake | unstake | pay | query",
-  "chain": "sui | evm | solana | auto",
-  "asset": "SUI | USDC | ...",
+  "network": {
+    "family": "sui | evm | solana | auto",
+    "network_name": "sui | base-sepolia | ethereum | arbitrum-sepolia | ...",
+    "chain_id": 84532
+  },
+  "asset": "SUI | USDC | ETH | ...",
   "amount": "1.5",
   "from": "0x...",
   "to": "0x...",
-  "network": "mainnet | testnet",
   "constraints": {
     "max_slippage": "0.5%",
     "gas_budget": 1000000
   }
 }
 ```
+
+### Human-friendly EVM mapping (testnet-first)
+
+Defaults prefer **testnets** to reduce the risk of accidental mainnet transfers.
+
+- Base
+  - `base-sepolia` / "Base testnet" → `chain_id=84532`
+  - `base` / "Base mainnet" → `chain_id=8453`
+- Ethereum
+  - `sepolia` / "Ethereum testnet" → `chain_id=11155111`
+  - `ethereum` / "Ethereum mainnet" → `chain_id=1`
+- Arbitrum
+  - `arbitrum-sepolia` / "Arbitrum testnet" → `chain_id=421614`
+  - `arbitrum` / "Arbitrum One mainnet" → `chain_id=42161`
+- BSC
+  - `bsc-testnet` / "BSC testnet" → `chain_id=97`
+  - `bsc` / "BSC mainnet" → `chain_id=56`
+
+RPC URLs are configured per chain id via `EVM_RPC_URL_<chainId>` (example: `EVM_RPC_URL_84532=https://sepolia.base.org`).
+
 
 ## Plan Schema (Draft)
 
