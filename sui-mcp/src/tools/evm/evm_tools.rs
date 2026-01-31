@@ -1333,6 +1333,23 @@ fn abi_entry_json(
         None
     }
 
+    fn token_to_json(token: &ethers::abi::Token) -> Value {
+        use ethers::abi::Token;
+        match token {
+            Token::Address(a) => json!(format!("0x{}", hex::encode(a.as_bytes()))),
+            Token::Uint(u) => json!(u.to_string()),
+            Token::Int(i) => json!(i.to_string()),
+            Token::Bool(b) => json!(*b),
+            Token::String(s) => json!(s),
+            Token::Bytes(b) => json!(format!("0x{}", hex::encode(b))),
+            Token::FixedBytes(b) => json!(format!("0x{}", hex::encode(b))),
+            Token::Array(items) | Token::FixedArray(items) => {
+                json!(items.iter().map(Self::token_to_json).collect::<Vec<_>>())
+            }
+            Token::Tuple(items) => json!(items.iter().map(Self::token_to_json).collect::<Vec<_>>()),
+        }
+    }
+
     fn json_to_token(
         kind: &ethers::abi::ParamType,
         v: &Value,
@@ -1701,13 +1718,19 @@ fn abi_entry_json(
         .await
         .map_err(|e| Self::sdk_error("evm_call_view:eth_call", e))?;
 
+        let decoded = func
+            .decode_output(raw.as_ref())
+            .ok()
+            .map(|tokens| tokens.iter().map(Self::token_to_json).collect::<Vec<_>>());
+
         let response = Self::pretty_json(&json!({
             "chain_id": request.chain_id,
             "address": address_norm,
             "function": request.function,
             "function_signature": request.function_signature.unwrap_or_else(|| Self::function_signature(func)),
             "args": args_arr,
-            "result_hex": format!("0x{}", hex::encode(raw.as_ref()))
+            "result_hex": format!("0x{}", hex::encode(raw.as_ref())),
+            "decoded": decoded
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
