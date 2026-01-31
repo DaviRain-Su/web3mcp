@@ -436,6 +436,7 @@
             .and_then(|value| value.parse::<f64>().ok())
             .map(|value| value as u64);
         let addresses = Self::extract_addresses(text);
+        let digests = Self::extract_digests(text);
         let resolved_network = Self::resolve_intent_network(network, lower);
 
         let token_list = ["sui", "usdc", "usdt", "eth", "btc"];
@@ -459,6 +460,7 @@
             "from_coin": from_token,
             "to_coin": to_token,
             "addresses": addresses,
+            "digests": digests,
             "network": resolved_network
         });
 
@@ -557,19 +559,35 @@
         } else if lower.contains("coins") || lower.contains("coin") || lower.contains("我的 coin") {
             intent = "get_coins".to_string();
             confidence = 0.6;
+
+            let coin_type = if lower.contains("usdc") {
+                Some("<usdc_coin_type>".to_string())
+            } else if lower.contains("usdt") {
+                Some("<usdt_coin_type>".to_string())
+            } else {
+                None
+            };
+            entities["coin_type"] = json!(coin_type);
+
             plan.push(json!({
                 "tool": "get_coins",
                 "params": {
                     "address": sender,
-                    "coin_type": null,
+                    "coin_type": coin_type,
                     "limit": 50
                 }
             }));
         } else if lower.contains("events") || lower.contains("事件") {
             intent = "query_transaction_events".to_string();
             confidence = 0.55;
-            let digest = addresses.get(0).cloned().unwrap_or_else(|| "<digest>".to_string());
+
+            // Sui tx digest is NOT a 0x address. Extract separately.
+            let digest = digests
+                .get(0)
+                .cloned()
+                .unwrap_or_else(|| "<digest>".to_string());
             entities["digest"] = json!(digest);
+
             plan.push(json!({
                 "tool": "query_transaction_events",
                 "params": {
@@ -874,6 +892,18 @@
         text.split_whitespace()
             .filter(|item| item.starts_with("0x"))
             .map(|item| item.trim_matches(|c: char| c == ',' || c == ';').to_string())
+            .collect()
+    }
+
+    fn extract_digests(text: &str) -> Vec<String> {
+        // Sui transaction digests are base58-encoded strings (not 0x...).
+        // We keep this simple: split on whitespace, trim common punctuation,
+        // and accept tokens that `parse_digest` validates.
+        text.split_whitespace()
+            .map(|item| item.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c)))
+            .filter(|item| !item.is_empty() && !item.starts_with("0x"))
+            .filter(|item| Self::parse_digest(item).is_ok())
+            .map(|item| item.to_string())
             .collect()
     }
 
