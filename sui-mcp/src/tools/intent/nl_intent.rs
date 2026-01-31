@@ -248,22 +248,33 @@
                             .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
                             .unwrap_or_else(|| ethers::types::U256::from(0));
 
-                        // Parse sell amount in base units (best effort) using evm_parse_amount + known token address.
-                        let sell_amount_res = self
-                            .evm_parse_amount(Parameters(EvmParseAmountRequest {
-                                chain_id,
-                                amount: amount.clone(),
-                                symbol: None,
-                                token_address: Some(token_addr.clone()),
-                                decimals: None,
-                            }))
-                            .await;
-                        let sell_amount_wei = sell_amount_res
-                            .ok()
-                            .and_then(|r| Self::extract_first_json(&r))
-                            .and_then(|j| j.get("amount_wei").and_then(Value::as_str).map(|s| s.to_string()))
-                            .and_then(|s| ethers::types::U256::from_dec_str(&s).ok())
-                            .unwrap_or_else(|| ethers::types::U256::from(0));
+                        // Prefer 0x quote's exact sellAmount if present, otherwise fall back to our parser.
+                        let sell_amount_wei = if let Some(s) = built_json
+                            .get("quote")
+                            .and_then(|q| q.get("sellAmount"))
+                            .and_then(Value::as_str)
+                        {
+                            ethers::types::U256::from_dec_str(s)
+                                .ok()
+                                .unwrap_or_else(|| ethers::types::U256::from(0))
+                        } else {
+                            let sell_amount_res = self
+                                .evm_parse_amount(Parameters(EvmParseAmountRequest {
+                                    chain_id,
+                                    amount: amount.clone(),
+                                    symbol: None,
+                                    token_address: Some(token_addr.clone()),
+                                    decimals: None,
+                                }))
+                                .await;
+
+                            sell_amount_res
+                                .ok()
+                                .and_then(|r| Self::extract_first_json(&r))
+                                .and_then(|j| j.get("amount_wei").and_then(Value::as_str).map(|s| s.to_string()))
+                                .and_then(|s| ethers::types::U256::from_dec_str(&s).ok())
+                                .unwrap_or_else(|| ethers::types::U256::from(0))
+                        };
 
                         let needs_approve = sell_amount_wei > ethers::types::U256::from(0)
                             && allowance_raw < sell_amount_wei;
