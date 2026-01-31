@@ -31,7 +31,31 @@
     ) -> Result<CallToolResult, ErrorData> {
         let sender = Self::parse_address(&request.sender)?;
         let recipient = Self::parse_address(&request.recipient)?;
-        let input_coins = Self::parse_object_ids(&request.input_coins)?;
+        let auto_select = request.auto_select_coins.unwrap_or(true);
+        let input_coin_ids = if request.input_coins.is_empty() && auto_select {
+            let coins = self
+                .client
+                .coin_read_api()
+                .get_coins(sender, None, None, None)
+                .await
+                .map_err(|e| Self::sdk_error("build_transfer_sui", e))?;
+            let coin_ids = coins
+                .data
+                .iter()
+                .map(|coin| coin.coin_object_id.to_string())
+                .collect::<Vec<_>>();
+            if coin_ids.is_empty() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("No SUI coins found for sender"),
+                    data: None,
+                });
+            }
+            coin_ids
+        } else {
+            request.input_coins.clone()
+        };
+        let input_coins = Self::parse_object_ids(&input_coin_ids)?;
 
         let tx_data = if let Some(amount) = request.amount {
             self.client
@@ -47,7 +71,10 @@
                 .map_err(|e| Self::sdk_error("build_transfer_sui", e))?
         };
 
-        let response = Self::tx_response(&tx_data)?;
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "input_coins": input_coin_ids
+        }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 

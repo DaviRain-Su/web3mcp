@@ -48,7 +48,7 @@
                 data: None,
             })?;
 
-        let signature_base64 = fastcrypto::traits::EncodeDecodeBase64::encode_base64(&signature);
+        let signature_base64 = Base64Engine.encode(signature.as_ref());
         let response = Self::pretty_json(&json!({
             "signer": signer.to_string(),
             "signature_base64": signature_base64

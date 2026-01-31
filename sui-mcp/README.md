@@ -82,6 +82,22 @@ Once configured with Claude Desktop, you can ask Claude to:
 - "What is the current gas price on Sui?"
 - "Show me all balances for address 0x..."
 
+### Example: Build transfer without coin selection
+
+```json
+{
+  "tool": "build_transfer_sui",
+  "params": {
+    "sender": "0x...",
+    "recipient": "0x...",
+    "amount": 10000000,
+    "input_coins": [],
+    "auto_select_coins": true,
+    "gas_budget": 10000000
+  }
+}
+```
+
 ## Local Keystore (no zkLogin)
 
 This server can sign and execute transactions using your local Sui keystore (e.g. `~/.sui/sui_config/sui.keystore`).

@@ -506,7 +506,8 @@
                 "params": {
                     "sender": sender,
                     "recipient": recipient,
-                    "input_coins": ["<coin_object_id>"],
+                    "input_coins": [],
+                    "auto_select_coins": true,
                     "amount": amount_u64,
                     "gas_budget": 1000000
                 }

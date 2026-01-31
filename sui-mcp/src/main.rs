@@ -1194,6 +1194,8 @@ struct BuildTransferSuiRequest {
     input_coins: Vec<String>,
     #[schemars(description = "Gas budget for the transaction")]
     gas_budget: u64,
+    #[schemars(description = "Automatically select input coins when empty (default: true)")]
+    auto_select_coins: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
