@@ -514,298 +514,347 @@
             "network": resolved_network
         });
 
-        if lower.contains("swap") || lower.contains("兑换") || lower.contains("换") {
-            intent = "swap".to_string();
-            confidence = 0.5;
-            if lower.contains("exact out") || lower.contains("精确输出") {
-                action = Some("swap_exact_out".to_string());
-            } else if lower.contains("exact in") || lower.contains("精确输入") {
-                action = Some("swap_exact_in".to_string());
-            }
-        } else if lower.contains("quote") || lower.contains("报价") {
-            intent = "quote".to_string();
-            confidence = 0.5;
-            action = Some("quote".to_string());
-        } else if lower.contains("balance") || lower.contains("余额") {
-            intent = "get_balance".to_string();
-            confidence = 0.8;
+        #[derive(Clone, Copy)]
+        struct IntentRule {
+            intent: &'static str,
+            action: Option<&'static str>,
+            confidence: f64,
+            keywords: &'static [&'static str],
+        }
 
-            let family = entities
-                .get("network")
-                .and_then(|v| v.get("family"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("sui");
+        // Ordered by priority: first match wins.
+        const RULES: &[IntentRule] = &[
+            IntentRule {
+                intent: "swap",
+                action: None,
+                confidence: 0.5,
+                keywords: &["swap", "兑换", "换"],
+            },
+            IntentRule {
+                intent: "quote",
+                action: Some("quote"),
+                confidence: 0.5,
+                keywords: &["quote", "报价"],
+            },
+            IntentRule {
+                intent: "get_balance",
+                action: None,
+                confidence: 0.8,
+                keywords: &["balance", "余额"],
+            },
+            IntentRule {
+                intent: "get_reference_gas_price",
+                action: None,
+                confidence: 0.7,
+                keywords: &["gas price", "reference gas", "手续费", "gas"],
+            },
+            IntentRule {
+                intent: "get_protocol_config",
+                action: None,
+                confidence: 0.65,
+                keywords: &["protocol config", "协议配置"],
+            },
+            IntentRule {
+                intent: "get_chain_identifier",
+                action: None,
+                confidence: 0.65,
+                keywords: &["chain id", "chain identifier", "链 id", "链标识"],
+            },
+            IntentRule {
+                intent: "get_latest_checkpoint_sequence",
+                action: None,
+                confidence: 0.6,
+                keywords: &["checkpoint", "检查点"],
+            },
+            IntentRule {
+                intent: "get_total_transactions",
+                action: None,
+                confidence: 0.6,
+                keywords: &["total tx", "total transactions", "交易总数", "总交易"],
+            },
+            IntentRule {
+                intent: "get_coins",
+                action: None,
+                confidence: 0.6,
+                keywords: &["coins", "coin", "我的 coin"],
+            },
+            IntentRule {
+                intent: "query_transaction_events",
+                action: None,
+                confidence: 0.55,
+                keywords: &["events", "事件"],
+            },
+            // More specific than transfer
+            IntentRule {
+                intent: "transfer_object",
+                action: None,
+                confidence: 0.55,
+                keywords: &["transfer object", "转对象", "转物"],
+            },
+            IntentRule {
+                intent: "transfer",
+                action: None,
+                confidence: 0.6,
+                keywords: &["transfer", "转账", "发送"],
+            },
+            IntentRule {
+                intent: "stake",
+                action: None,
+                confidence: 0.6,
+                keywords: &["stake", "质押"],
+            },
+            IntentRule {
+                intent: "unstake",
+                action: None,
+                confidence: 0.6,
+                keywords: &["unstake", "withdraw stake", "取回"],
+            },
+            IntentRule {
+                intent: "pay_sui",
+                action: None,
+                confidence: 0.45,
+                keywords: &["pay sui", "批量转", "批量转账"],
+            },
+            IntentRule {
+                intent: "mint",
+                action: None,
+                confidence: 0.45,
+                keywords: &["mint", "铸造"],
+            },
+            IntentRule {
+                intent: "borrow",
+                action: None,
+                confidence: 0.45,
+                keywords: &["borrow", "借"],
+            },
+            IntentRule {
+                intent: "lend",
+                action: None,
+                confidence: 0.45,
+                keywords: &["lend", "贷"],
+            },
+        ];
 
-            if family == "evm" {
-                let chain_id = entities
-                    .get("network")
-                    .and_then(|v| v.get("chain_id"))
-                    .and_then(|v| v.as_u64());
+        if let Some(rule) = RULES.iter().find(|rule| Self::match_any(lower, rule.keywords)) {
+            intent = rule.intent.to_string();
+            action = rule.action.map(|s| s.to_string());
+            confidence = rule.confidence;
+        }
 
-                plan.push(json!({
-                    "tool": "evm_get_balance",
-                    "params": {
-                        "address": sender,
-                        "chain_id": chain_id,
-                        "token_address": null
-                    }
-                }));
-            } else {
-                plan.push(json!({
-                    "tool": "get_balance",
-                    "params": {
-                        "address": sender,
-                        "coin_type": null
-                    }
-                }));
-            }
-        } else if Self::match_any(lower, &["gas price", "reference gas", "手续费", "gas"]) {
-            intent = "get_reference_gas_price".to_string();
-            confidence = 0.7;
-            plan.push(json!({
-                "tool": "get_reference_gas_price",
-                "params": {}
-            }));
-        } else if Self::match_any(lower, &["protocol config", "协议配置"]) {
-            intent = "get_protocol_config".to_string();
-            confidence = 0.65;
-            plan.push(json!({
-                "tool": "get_protocol_config",
-                "params": {}
-            }));
-        } else if Self::match_any(lower, &["chain id", "chain identifier", "链 id", "链标识"]) {
-            intent = "get_chain_identifier".to_string();
-            confidence = 0.65;
-            plan.push(json!({
-                "tool": "get_chain_identifier",
-                "params": {}
-            }));
-        } else if Self::match_any(lower, &["checkpoint", "检查点"]) {
-            intent = "get_latest_checkpoint_sequence".to_string();
-            confidence = 0.6;
-            plan.push(json!({
-                "tool": "get_latest_checkpoint_sequence",
-                "params": {}
-            }));
-        } else if Self::match_any(lower, &["total tx", "total transactions", "交易总数", "总交易"]) {
-            intent = "get_total_transactions".to_string();
-            confidence = 0.6;
-            plan.push(json!({
-                "tool": "get_total_transactions",
-                "params": {}
-            }));
-        } else if Self::match_any(lower, &["coins", "coin", "我的 coin"]) {
-            intent = "get_coins".to_string();
-            confidence = 0.6;
-
-            let coin_type = if lower.contains("usdc") {
-                Some(Self::resolve_sui_coin_type("usdc").unwrap_or_else(|| "<usdc_coin_type>".to_string()))
-            } else if lower.contains("usdt") {
-                Self::resolve_sui_coin_type("usdt").or_else(|| Some("<usdt_coin_type>".to_string()))
-            } else {
-                None
-            };
-            entities["coin_type"] = json!(coin_type);
-
-            plan.push(json!({
-                "tool": "get_coins",
-                "params": {
-                    "address": sender,
-                    "coin_type": coin_type,
-                    "limit": 50
+        match intent.as_str() {
+            "swap" => {
+                if lower.contains("exact out") || lower.contains("精确输出") {
+                    action = Some("swap_exact_out".to_string());
+                } else if lower.contains("exact in") || lower.contains("精确输入") {
+                    action = Some("swap_exact_in".to_string());
                 }
-            }));
-        } else if Self::match_any(lower, &["events", "事件"]) {
-            intent = "query_transaction_events".to_string();
-            confidence = 0.55;
-
-            // Sui tx digest is NOT a 0x address. Extract separately.
-            let digest = digests
-                .get(0)
-                .cloned()
-                .unwrap_or_else(|| "<digest>".to_string());
-            entities["digest"] = json!(digest);
-
-            plan.push(json!({
-                "tool": "query_transaction_events",
-                "params": {
-                    "digest": digest
-                }
-            }));
-        } else if lower.contains("transfer") || lower.contains("转账") || lower.contains("发送") {
-            intent = "transfer".to_string();
-            confidence = 0.6;
-            let recipient = addresses.get(0).cloned().unwrap_or_else(|| "<recipient>".to_string());
-            entities["recipient"] = json!(recipient);
-
-            let family = entities
-                .get("network")
-                .and_then(|v| v.get("family"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("sui");
-
-            if family == "evm" {
-                let chain_id = entities
+            }
+            "quote" => {}
+            "get_balance" => {
+                let family = entities
                     .get("network")
-                    .and_then(|v| v.get("chain_id"))
-                    .and_then(|v| v.as_u64());
-
-                // For EVM, prefer a one-step tool for machine-executable plans.
-                // Humans naturally specify ETH units (e.g. 0.001), not wei.
-                let amount = entities
-                    .get("amount")
+                    .and_then(|v| v.get("family"))
                     .and_then(|v| v.as_str())
-                    .unwrap_or("<amount_eth>");
+                    .unwrap_or("sui");
+
+                if family == "evm" {
+                    let chain_id = entities
+                        .get("network")
+                        .and_then(|v| v.get("chain_id"))
+                        .and_then(|v| v.as_u64());
+
+                    plan.push(json!({
+                        "tool": "evm_get_balance",
+                        "params": {
+                            "address": sender,
+                            "chain_id": chain_id,
+                            "token_address": null
+                        }
+                    }));
+                } else {
+                    plan.push(json!({
+                        "tool": "get_balance",
+                        "params": {
+                            "address": sender,
+                            "coin_type": null
+                        }
+                    }));
+                }
+            }
+            "get_reference_gas_price" => {
+                plan.push(json!({"tool":"get_reference_gas_price","params":{}}));
+            }
+            "get_protocol_config" => {
+                plan.push(json!({"tool":"get_protocol_config","params":{}}));
+            }
+            "get_chain_identifier" => {
+                plan.push(json!({"tool":"get_chain_identifier","params":{}}));
+            }
+            "get_latest_checkpoint_sequence" => {
+                plan.push(json!({"tool":"get_latest_checkpoint_sequence","params":{}}));
+            }
+            "get_total_transactions" => {
+                plan.push(json!({"tool":"get_total_transactions","params":{}}));
+            }
+            "get_coins" => {
+                let coin_type = if lower.contains("usdc") {
+                    Some(Self::resolve_sui_coin_type("usdc").unwrap_or_else(|| "<usdc_coin_type>".to_string()))
+                } else if lower.contains("usdt") {
+                    Self::resolve_sui_coin_type("usdt").or_else(|| Some("<usdt_coin_type>".to_string()))
+                } else {
+                    None
+                };
+                entities["coin_type"] = json!(coin_type);
 
                 plan.push(json!({
-                    "tool": "evm_execute_transfer_native",
+                    "tool": "get_coins",
                     "params": {
-                        "sender": sender,
-                        "recipient": recipient,
-                        "amount": amount,
-                        "chain_id": chain_id,
-                        "gas_limit": null,
-                        "confirm_large_transfer": false,
-                        "large_transfer_threshold_wei": null
+                        "address": sender,
+                        "coin_type": coin_type,
+                        "limit": 50
                     }
                 }));
-            } else {
+            }
+            "query_transaction_events" => {
+                let digest = digests
+                    .get(0)
+                    .cloned()
+                    .unwrap_or_else(|| "<digest>".to_string());
+                entities["digest"] = json!(digest);
+
                 plan.push(json!({
-                    "tool": "build_transfer_sui",
+                    "tool": "query_transaction_events",
+                    "params": {
+                        "digest": digest
+                    }
+                }));
+            }
+            "transfer" => {
+                let recipient = addresses.get(0).cloned().unwrap_or_else(|| "<recipient>".to_string());
+                entities["recipient"] = json!(recipient);
+
+                let family = entities
+                    .get("network")
+                    .and_then(|v| v.get("family"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("sui");
+
+                if family == "evm" {
+                    let chain_id = entities
+                        .get("network")
+                        .and_then(|v| v.get("chain_id"))
+                        .and_then(|v| v.as_u64());
+
+                    let amount = entities
+                        .get("amount")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("<amount_eth>");
+
+                    plan.push(json!({
+                        "tool": "evm_execute_transfer_native",
+                        "params": {
+                            "sender": sender,
+                            "recipient": recipient,
+                            "amount": amount,
+                            "chain_id": chain_id,
+                            "gas_limit": null,
+                            "confirm_large_transfer": false,
+                            "large_transfer_threshold_wei": null
+                        }
+                    }));
+                } else {
+                    plan.push(json!({
+                        "tool": "build_transfer_sui",
+                        "params": {
+                            "sender": sender,
+                            "recipient": recipient,
+                            "input_coins": [],
+                            "auto_select_coins": true,
+                            "amount": amount_u64,
+                            "gas_budget": 1000000
+                        }
+                    }));
+                }
+            }
+            "transfer_object" => {
+                let object_id = addresses.get(0).cloned().unwrap_or_else(|| "<object_id>".to_string());
+                let recipient = addresses.get(1).cloned().unwrap_or_else(|| "<recipient>".to_string());
+                entities["object_id"] = json!(object_id);
+                entities["recipient"] = json!(recipient);
+                plan.push(json!({
+                    "tool": "build_transfer_object",
                     "params": {
                         "sender": sender,
+                        "object_id": object_id,
                         "recipient": recipient,
-                        "input_coins": [],
-                        "auto_select_coins": true,
+                        "gas_budget": 1000000,
+                        "gas_object_id": null
+                    }
+                }));
+            }
+            "stake" => {
+                let validator = addresses.get(0).cloned().unwrap_or_else(|| "<validator>".to_string());
+                entities["validator"] = json!(validator);
+                plan.push(json!({
+                    "tool": "build_add_stake",
+                    "params": {
+                        "sender": sender,
+                        "validator": validator,
+                        "coins": ["<coin_object_id>"],
                         "amount": amount_u64,
+                        "gas_budget": 1000000,
+                        "gas_object_id": null
+                    }
+                }));
+            }
+            "unstake" => {
+                let staked_sui = addresses.get(0).cloned().unwrap_or_else(|| "<staked_sui>".to_string());
+                entities["staked_sui"] = json!(staked_sui);
+                plan.push(json!({
+                    "tool": "build_withdraw_stake",
+                    "params": {
+                        "sender": sender,
+                        "staked_sui": staked_sui,
+                        "gas_budget": 1000000,
+                        "gas_object_id": null
+                    }
+                }));
+            }
+            "pay_sui" => {
+                plan.push(json!({
+                    "tool": "build_pay_sui",
+                    "params": {
+                        "sender": sender,
+                        "recipients": ["<recipient>", "<recipient>"] ,
+                        "amounts": [10000000, 10000000],
+                        "input_coins": ["<coin_object_id>"],
                         "gas_budget": 1000000
                     }
                 }));
             }
-        } else if lower.contains("transfer object") || lower.contains("转对象") || lower.contains("转物") {
-            intent = "transfer_object".to_string();
-            confidence = 0.55;
-            let object_id = addresses.get(0).cloned().unwrap_or_else(|| "<object_id>".to_string());
-            let recipient = addresses.get(1).cloned().unwrap_or_else(|| "<recipient>".to_string());
-            entities["object_id"] = json!(object_id);
-            entities["recipient"] = json!(recipient);
-            plan.push(json!({
-                "tool": "build_transfer_object",
-                "params": {
-                    "sender": sender,
-                    "object_id": object_id,
-                    "recipient": recipient,
-                    "gas_budget": 1000000,
-                    "gas_object_id": null
-                }
-            }));
-        } else if lower.contains("stake") || lower.contains("质押") {
-            intent = "stake".to_string();
-            confidence = 0.6;
-            let validator = addresses.get(0).cloned().unwrap_or_else(|| "<validator>".to_string());
-            entities["validator"] = json!(validator);
-            plan.push(json!({
-                "tool": "build_add_stake",
-                "params": {
-                    "sender": sender,
-                    "validator": validator,
-                    "coins": ["<coin_object_id>"],
-                    "amount": amount_u64,
-                    "gas_budget": 1000000,
-                    "gas_object_id": null
-                }
-            }));
-        } else if lower.contains("unstake") || lower.contains("withdraw stake") || lower.contains("取回") {
-            intent = "unstake".to_string();
-            confidence = 0.6;
-            let staked_sui = addresses.get(0).cloned().unwrap_or_else(|| "<staked_sui>".to_string());
-            entities["staked_sui"] = json!(staked_sui);
-            plan.push(json!({
-                "tool": "build_withdraw_stake",
-                "params": {
-                    "sender": sender,
-                    "staked_sui": staked_sui,
-                    "gas_budget": 1000000,
-                    "gas_object_id": null
-                }
-            }));
-        } else if lower.contains("pay sui") || lower.contains("批量转") || lower.contains("批量转账") {
-            intent = "pay_sui".to_string();
-            confidence = 0.45;
-            plan.push(json!({
-                "tool": "build_pay_sui",
-                "params": {
-                    "sender": sender,
-                    "recipients": ["<recipient>", "<recipient>"] ,
-                    "amounts": [10000000, 10000000],
-                    "input_coins": ["<coin_object_id>"],
-                    "gas_budget": 1000000
-                }
-            }));
-        } else if lower.contains("mint") || lower.contains("铸造") {
-            intent = "mint".to_string();
-            confidence = 0.45;
-            plan.push(json!({
-                "tool": "auto_execute_move_call_filled",
-                "params": {
-                    "sender": sender,
-                    "package": "<package>",
-                    "module": "<module>",
-                    "function": "<function>",
-                    "type_args": [],
-                    "arguments": [],
-                    "gas_budget": 1000000,
-                    "gas_object_id": null,
-                    "gas_price": null,
-                    "zk_login_inputs_json": "<zk_login_inputs_json>",
-                    "address_seed": "<address_seed>",
-                    "max_epoch": "<max_epoch>",
-                    "user_signature": "<user_signature>"
-                }
-            }));
-        } else if lower.contains("borrow") || lower.contains("借") {
-            intent = "borrow".to_string();
-            confidence = 0.45;
-            plan.push(json!({
-                "tool": "auto_execute_move_call_filled",
-                "params": {
-                    "sender": sender,
-                    "package": "<package>",
-                    "module": "<module>",
-                    "function": "<function>",
-                    "type_args": [],
-                    "arguments": [],
-                    "gas_budget": 1000000,
-                    "gas_object_id": null,
-                    "gas_price": null,
-                    "zk_login_inputs_json": "<zk_login_inputs_json>",
-                    "address_seed": "<address_seed>",
-                    "max_epoch": "<max_epoch>",
-                    "user_signature": "<user_signature>"
-                }
-            }));
-        } else if lower.contains("lend") || lower.contains("贷") {
-            intent = "lend".to_string();
-            confidence = 0.45;
-            plan.push(json!({
-                "tool": "auto_execute_move_call_filled",
-                "params": {
-                    "sender": sender,
-                    "package": "<package>",
-                    "module": "<module>",
-                    "function": "<function>",
-                    "type_args": [],
-                    "arguments": [],
-                    "gas_budget": 1000000,
-                    "gas_object_id": null,
-                    "gas_price": null,
-                    "zk_login_inputs_json": "<zk_login_inputs_json>",
-                    "address_seed": "<address_seed>",
-                    "max_epoch": "<max_epoch>",
-                    "user_signature": "<user_signature>"
-                }
-            }));
+            "mint" | "borrow" | "lend" => {
+                plan.push(json!({
+                    "tool": "auto_execute_move_call_filled",
+                    "params": {
+                        "sender": sender,
+                        "package": "<package>",
+                        "module": "<module>",
+                        "function": "<function>",
+                        "type_args": [],
+                        "arguments": [],
+                        "gas_budget": 1000000,
+                        "gas_object_id": null,
+                        "gas_price": null,
+                        "zk_login_inputs_json": "<zk_login_inputs_json>",
+                        "address_seed": "<address_seed>",
+                        "max_epoch": "<max_epoch>",
+                        "user_signature": "<user_signature>"
+                    }
+                }));
+            }
+            _ => {}
         }
+
 
         (intent, action, entities, confidence, plan)
     }
