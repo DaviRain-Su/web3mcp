@@ -18,6 +18,23 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn ensure_sui_intent_family(resolved_network: &Value, intent: &str) -> Result<(), ErrorData> {
+        let family = resolved_network
+            .get("family")
+            .and_then(Value::as_str)
+            .unwrap_or("sui");
+
+        if family == "evm" {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("{} is only supported for Sui", intent)),
+                data: None,
+            });
+        }
+
+        Ok(())
+    }
+
     async fn execute_zklogin_intent_tx(
         &self,
         tx_bytes: String,

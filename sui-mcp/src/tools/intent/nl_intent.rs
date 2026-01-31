@@ -65,75 +65,32 @@
 
         match intent.as_str() {
             "get_reference_gas_price" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from("get_reference_gas_price is only supported for Sui"),
-                        data: None,
-                    });
-                }
-
+                Self::ensure_sui_intent_family(&resolved_network, "get_reference_gas_price")?;
                 let result = self.get_reference_gas_price().await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "get_chain_identifier" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from("get_chain_identifier is only supported for Sui"),
-                        data: None,
-                    });
-                }
-
+                Self::ensure_sui_intent_family(&resolved_network, "get_chain_identifier")?;
                 let result = self.get_chain_identifier().await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "get_protocol_config" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from("get_protocol_config is only supported for Sui"),
-                        data: None,
-                    });
-                }
-
+                Self::ensure_sui_intent_family(&resolved_network, "get_protocol_config")?;
                 let result = self.get_protocol_config().await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "get_latest_checkpoint_sequence" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(
-                            "get_latest_checkpoint_sequence is only supported for Sui",
-                        ),
-                        data: None,
-                    });
-                }
-
+                Self::ensure_sui_intent_family(&resolved_network, "get_latest_checkpoint_sequence")?;
                 let result = self.get_latest_checkpoint_sequence().await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "get_total_transactions" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from("get_total_transactions is only supported for Sui"),
-                        data: None,
-                    });
-                }
-
+                Self::ensure_sui_intent_family(&resolved_network, "get_total_transactions")?;
                 let result = self.get_total_transactions().await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "get_coins" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from("get_coins is only supported for Sui"),
-                        data: None,
-                    });
-                }
+                Self::ensure_sui_intent_family(&resolved_network, "get_coins")?;
 
                 let coin_type = entities
                     .get("coin_type")
@@ -151,13 +108,7 @@
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "query_transaction_events" => {
-                if family == "evm" {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from("query_transaction_events is only supported for Sui"),
-                        data: None,
-                    });
-                }
+                Self::ensure_sui_intent_family(&resolved_network, "query_transaction_events")?;
 
                 let digest = entities
                     .get("digest")
