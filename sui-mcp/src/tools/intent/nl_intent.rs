@@ -465,6 +465,8 @@
                 "kava".to_string()
             } else if lower.contains("celo") {
                 "celo".to_string()
+            } else if lower.contains("monad") {
+                "monad".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
                 // safer default: Sepolia
                 "sepolia".to_string()
@@ -536,6 +538,34 @@
                 "evm",
                 Some(cid),
                 if cid == 42220 { "celo" } else { "celo-alfajores" },
+            )
+        } else if inferred.contains("monad") {
+            let is_test = inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_dev = inferred.contains("dev") || inferred.contains("devnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+
+            let cid = if is_main {
+                143
+            } else if is_test {
+                10143
+            } else if is_dev {
+                20143
+            } else {
+                143
+            };
+
+            (
+                "evm",
+                Some(cid),
+                if cid == 143 {
+                    "monad"
+                } else if cid == 10143 {
+                    "monad-testnet"
+                } else {
+                    "monad-devnet"
+                },
             )
         } else if inferred.contains("sepolia") {
             // Ethereum Sepolia
