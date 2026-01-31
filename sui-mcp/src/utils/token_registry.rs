@@ -115,6 +115,9 @@ impl SuiMcpServer {
             // Avalanche C-Chain Mainnet
             43114 => Some("0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"),
 
+            // World Chain Mainnet
+            480 => Some("0x79A02482A880bCe3F13E09da970dC34dB4cD24D1"),
+
             _ => None,
         }
     }

@@ -469,6 +469,8 @@
                 "monad".to_string()
             } else if lower.contains("hyperevm") || lower.contains("hyper evm") || lower.contains("hyperliquid") {
                 "hyperevm".to_string()
+            } else if lower.contains("world chain") || lower.contains("worldchain") {
+                "worldchain".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
                 // safer default: Sepolia
                 "sepolia".to_string()
@@ -580,6 +582,18 @@
                 || inferred.contains("testnet");
             let cid = if is_test { 998 } else { 998 };
             ("evm", Some(cid), "hyperevm")
+        } else if inferred.contains("world chain") || inferred.contains("worldchain") {
+            let is_test = inferred.contains("sepolia")
+                || inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            let cid = if is_main { 480 } else if is_test { 4801 } else { 480 };
+            (
+                "evm",
+                Some(cid),
+                if cid == 480 { "worldchain" } else { "worldchain-sepolia" },
+            )
         } else if inferred.contains("sepolia") {
             // Ethereum Sepolia
             ("evm", Some(11155111), "sepolia")
