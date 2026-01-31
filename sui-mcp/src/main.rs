@@ -2,12 +2,11 @@ use anyhow::Result;
 
 #[path = "intent/adapters.rs"]
 mod intent_adapters;
-use base64::engine::general_purpose::STANDARD as Base64Engine;
-use base64::Engine;
+// (moved) Base64Engine/Engine imported via router_prelude
 use fastcrypto_zkp::bn254::zk_login::ZkLoginInputs;
 use move_core_types::identifier::Identifier;
 // NOTE: these imports are required by generated router_impl.rs (even if impls live in modules)
-use move_core_types::language_storage::{StructTag, TypeTag};
+// (moved) StructTag/TypeTag imported via router_prelude
 use rmcp::{
     handler::server::wrapper::Parameters, model::*, tool, tool_handler, tool_router, ServerHandler,
     ServiceExt,
@@ -27,8 +26,7 @@ use sui_graphql::Client as GraphqlClient;
 // (moved) SuiJsonValue parsing in utils/sui_parse.rs
 use sui_json_rpc_types::{
     CheckpointId, DryRunTransactionBlockResponse, EventFilter, RPCTransactionRequestParams,
-    SuiObjectDataOptions, SuiObjectResponseQuery, SuiTransactionBlockEffectsAPI,
-    SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
+    SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
     SuiTransactionBlockResponseQuery, SuiTypeTag, TransactionFilter, ZkLoginIntentScope,
 };
 use sui_keys::keystore::AccountKeystore;
@@ -36,11 +34,11 @@ use sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest as RpcGetServiceInfoRequ
 use sui_rpc::Client as RpcClient;
 // SuiClient is part of SuiMcpServer in src/server.rs
 use sui_sdk_types::SimpleSignature;
-use sui_types::base_types::{ObjectID, SequenceNumber, SuiAddress};
+use sui_types::base_types::{SequenceNumber, SuiAddress};
 use sui_types::crypto::{Signature, ToFromBytes};
 // (moved) digests parsing in utils/sui_parse.rs
 // (moved) dynamic_field helpers in src/sui/dynamic_fields.rs
-use sui_types::object::Owner;
+// (moved) Owner imported via router_prelude
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_types::signature::GenericSignature;
 use sui_types::sui_serde::BigInt;
@@ -101,10 +99,14 @@ impl SuiMcpServer {
 mod move_auto_fill;
 mod move_schema;
 mod move_type_args;
+mod router_prelude;
 mod server;
 mod sui;
 mod types;
 mod utils;
+
+// Bring required identifiers for generated router into scope.
+use router_prelude::*;
 
 // AutoFilledMoveCall type lives in move_auto_fill.rs (router_impl can still see it via crate path)
 
