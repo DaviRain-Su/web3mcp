@@ -88,6 +88,11 @@ pub struct EvmGetTransactionReceiptRequest {
         description = "Only decode logs emitted by these contract addresses (0x...). If omitted, decode all."
     )]
     pub only_addresses: Option<Vec<String>>,
+
+    #[schemars(
+        description = "Only decode logs whose topic0 matches one of these values (0x...). If omitted, decode all."
+    )]
+    pub only_topics0: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -106,6 +111,11 @@ pub struct EvmDecodeTransactionReceiptRequest {
         description = "Only decode logs emitted by these contract addresses (0x...). If omitted, decode all."
     )]
     pub only_addresses: Option<Vec<String>>,
+
+    #[schemars(
+        description = "Only decode logs whose topic0 matches one of these values (0x...). If omitted, decode all."
+    )]
+    pub only_topics0: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

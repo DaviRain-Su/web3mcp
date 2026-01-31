@@ -195,6 +195,7 @@
                         include_receipt: Some(false),
                         decoded_logs_limit: None,
                         only_addresses: None,
+                        only_topics0: None,
                     }))
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);

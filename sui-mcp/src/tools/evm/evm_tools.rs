@@ -298,6 +298,7 @@
                 receipt.logs.iter().collect::<Vec<_>>(),
                 limit,
                 request.only_addresses.clone(),
+                request.only_topics0.clone(),
             )?
         } else {
             (Vec::new(), false, 0)
@@ -342,6 +343,7 @@
             receipt.logs.iter().collect::<Vec<_>>(),
             limit,
             request.only_addresses.clone(),
+            request.only_topics0.clone(),
         )?;
 
         let response = Self::pretty_json(&json!({
@@ -617,6 +619,7 @@
         logs: Vec<&ethers::types::Log>,
         limit: usize,
         only_addresses: Option<Vec<String>>,
+        only_topics0: Option<Vec<String>>,
     ) -> Result<(Vec<Value>, bool, usize), ErrorData> {
         let normalized_allowlist = only_addresses.map(|addrs| {
             addrs
@@ -625,12 +628,39 @@
                 .collect::<std::collections::BTreeSet<_>>()
         });
 
+        let normalized_topics0 = only_topics0.map(|topics| {
+            topics
+                .into_iter()
+                .filter_map(|t| {
+                    let t = t.trim();
+                    let t = t.strip_prefix("0x").unwrap_or(t);
+                    if t.len() != 64 {
+                        return None;
+                    }
+                    Some(format!("0x{}", t.to_lowercase()))
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+        });
+
         let filtered = logs
             .into_iter()
             .filter(|log| {
                 if let Some(allow) = &normalized_allowlist {
                     let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
-                    allow.contains(&addr)
+                    if !allow.contains(&addr) {
+                        return false;
+                    }
+                }
+
+                if let Some(allow) = &normalized_topics0 {
+                    let topic0 = log
+                        .topics
+                        .get(0)
+                        .map(|t| format!("0x{}", hex::encode(t.as_bytes())));
+                    match topic0 {
+                        Some(t0) => allow.contains(&t0.to_lowercase()),
+                        None => false,
+                    }
                 } else {
                     true
                 }
