@@ -95,6 +95,41 @@ See `docs/claude-prompts.md` for ready-to-use prompts.
 
 Stub adapters live at `src/intent/adapters.rs` for future EVM/Solana integration.
 
+## Human-friendly EVM network mapping (testnet-first)
+
+This server is evolving into a multi-chain MCP server. For EVM execution, we keep the user experience human-friendly:
+users can say “Base testnet”, “Ethereum Sepolia”, “Arbitrum testnet”, etc., and the intent router maps that to an EVM `chain_id`.
+
+### Built-in mapping
+
+Defaults prefer **testnets** to reduce the risk of accidental mainnet transfers.
+
+- Base
+  - Base Sepolia / Base testnet → `chain_id=84532`
+  - Base mainnet → `chain_id=8453`
+- Ethereum
+  - Sepolia / Ethereum testnet → `chain_id=11155111`
+  - Ethereum mainnet → `chain_id=1`
+- Arbitrum
+  - Arbitrum Sepolia / Arbitrum testnet → `chain_id=421614`
+  - Arbitrum One mainnet → `chain_id=42161`
+- BSC
+  - BSC testnet / BNB testnet → `chain_id=97`
+  - BSC mainnet → `chain_id=56`
+
+### EVM RPC configuration
+
+Configure RPC URLs per chain id:
+
+- `EVM_RPC_URL_<chainId>` (e.g. `EVM_RPC_URL_84532=https://sepolia.base.org`)
+- `EVM_DEFAULT_CHAIN_ID` (recommended: `84532`)
+
+### EVM signing
+
+EVM execution currently supports local signing via:
+
+- `EVM_PRIVATE_KEY=0x...` (use a testnet key)
+
 ## Dapp Manifest
 
 You can dynamically load Sui dapps via a manifest file (`dapps.json` by default). Use `list_dapps` and `dapp_move_call_payload` to generate call payloads.
