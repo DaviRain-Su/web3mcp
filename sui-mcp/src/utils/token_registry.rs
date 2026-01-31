@@ -123,6 +123,9 @@ impl SuiMcpServer {
             // Kava EVM Mainnet
             2222 => Some("0x919c1c267bc06a7039e03fcc2ef738525769109c"),
 
+            // Celo Mainnet
+            42220 => Some("0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e"),
+
             _ => None,
         }
     }

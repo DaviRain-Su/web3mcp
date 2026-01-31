@@ -463,6 +463,8 @@
                 "bsc-testnet".to_string()
             } else if lower.contains("kava") {
                 "kava".to_string()
+            } else if lower.contains("celo") {
+                "celo".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
                 // safer default: Sepolia
                 "sepolia".to_string()
@@ -514,6 +516,27 @@
             let is_main = inferred.contains("mainnet") || inferred.contains("主网");
             let cid = if is_main { 2222 } else if is_test { 2221 } else { 2222 };
             ("evm", Some(cid), if cid == 2222 { "kava" } else { "kava-testnet" })
+        } else if inferred.contains("celo") {
+            let is_test = inferred.contains("alfajores")
+                || inferred.contains("sepolia")
+                || inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            // Default to mainnet.
+            let cid = if is_main {
+                42220
+            } else if is_test {
+                // Prefer Alfajores for now.
+                44787
+            } else {
+                42220
+            };
+            (
+                "evm",
+                Some(cid),
+                if cid == 42220 { "celo" } else { "celo-alfajores" },
+            )
         } else if inferred.contains("sepolia") {
             // Ethereum Sepolia
             ("evm", Some(11155111), "sepolia")
