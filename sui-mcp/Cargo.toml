@@ -32,3 +32,4 @@ sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk", 
 # EVM support (Base / EVM-compatible chains)
 ethers = { version = "2", default-features = false, features = ["abigen", "rustls"] }
 hex = "0.4"
+rusqlite = { version = "0.31", features = ["bundled"] }

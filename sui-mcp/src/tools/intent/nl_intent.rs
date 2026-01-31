@@ -215,22 +215,13 @@
                     data: None,
                 })?;
 
-                let pending = {
-                    let mut guard = Self::evm_pending_store()
-                        .lock()
-                        .map_err(|_| ErrorData {
-                            code: ErrorCode(-32603),
-                            message: Cow::from("Pending store lock poisoned"),
-                            data: None,
-                        })?;
-                    guard.remove(&id).ok_or_else(|| ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(
-                            "Unknown/expired confirmation id (not found). Run the dry-run again to regenerate.",
-                        ),
-                        data: None,
-                    })?
-                };
+                let pending = Self::evm_pending_db_get(&id)?.ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "Unknown/expired confirmation id (not found). Run the dry-run again to regenerate.",
+                    ),
+                    data: None,
+                })?;
 
                 let (tx, _created_at_ms, expires_at_ms, expected_hash) = pending;
 
@@ -296,15 +287,22 @@
                 // If confirm-time preflight changes the tx summary hash, force re-confirm.
                 let new_hash = Self::evm_tx_summary_hash(&tx);
                 if new_hash != provided_hash {
+                    // Update stored tx+hash and extend expiry, so user can re-confirm with same confirmation_id.
+                    let new_expires = Self::now_ms() + Self::evm_confirmation_ttl_ms();
+                    Self::evm_pending_db_update(&id, &tx, new_expires, &new_hash)?;
+
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(format!(
-                            "Tx changed during confirm-time preflight (likely nonce/fees). Please confirm again with new hash: {}",
+                            "Tx changed during confirm-time preflight (likely nonce/fees). Re-confirm with same id using new hash: {}",
                             new_hash
                         )),
                         data: None,
                     });
                 }
+
+                // Consume the confirmation id before signing/broadcasting (prevents replay).
+                Self::evm_pending_db_delete(&id)?;
 
                 let signed = self
                     .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
@@ -504,20 +502,14 @@
                 let ttl_ms = Self::evm_confirmation_ttl_ms();
                 let expires_at_ms = now_ms + ttl_ms;
 
-                {
-                    let mut guard = Self::evm_pending_store()
-                        .lock()
-                        .map_err(|_| ErrorData {
-                            code: ErrorCode(-32603),
-                            message: Cow::from("Pending store lock poisoned"),
-                            data: None,
-                        })?;
-                    let tx_summary_hash = Self::evm_tx_summary_hash(&tx);
-                    guard.insert(
-                        confirmation_id.clone(),
-                        (tx.clone(), now_ms, expires_at_ms, tx_summary_hash),
-                    );
-                }
+                let tx_summary_hash = Self::evm_tx_summary_hash(&tx);
+                Self::evm_pending_db_insert(
+                    &confirmation_id,
+                    &tx,
+                    now_ms,
+                    expires_at_ms,
+                    &tx_summary_hash,
+                )?;
 
                 // Human-friendly summary for quick review.
                 let tx_summary = json!({
@@ -1739,13 +1731,199 @@
         serde_json::from_str::<Value>(&text).ok()
     }
 
-    fn evm_pending_store(
-    ) -> &'static std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128, String)>> {
-        // value tuple: (tx, created_at_ms, expires_at_ms, tx_summary_hash)
-        static STORE: std::sync::OnceLock<
-            std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128, String)>>,
-        > = std::sync::OnceLock::new();
-        STORE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+    fn evm_pending_db_path() -> Result<std::path::PathBuf, ErrorData> {
+        // Default to project-local .data directory (user requested option A)
+        let cwd = std::env::current_dir().map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to get current_dir: {}", e)),
+            data: None,
+        })?;
+        Ok(cwd.join(".data").join("pending.sqlite"))
+    }
+
+    fn evm_pending_db_connect() -> Result<rusqlite::Connection, ErrorData> {
+        let path = Self::evm_pending_db_path()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to create data dir: {}", e)),
+                data: None,
+            })?;
+        }
+
+        let conn = rusqlite::Connection::open(path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to open sqlite db: {}", e)),
+            data: None,
+        })?;
+
+        conn.execute_batch(
+            "BEGIN;
+             CREATE TABLE IF NOT EXISTS evm_pending_confirmations (
+               id TEXT PRIMARY KEY,
+               chain_id INTEGER NOT NULL,
+               tx_json TEXT NOT NULL,
+               created_at_ms INTEGER NOT NULL,
+               expires_at_ms INTEGER NOT NULL,
+               tx_summary_hash TEXT NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_evm_pending_expires ON evm_pending_confirmations(expires_at_ms);
+             COMMIT;",
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to init sqlite schema: {}", e)),
+            data: None,
+        })?;
+
+        Ok(conn)
+    }
+
+    fn evm_pending_db_cleanup(conn: &rusqlite::Connection, now_ms: u128) -> Result<(), ErrorData> {
+        let now_i64 = now_ms as i64;
+        conn.execute(
+            "DELETE FROM evm_pending_confirmations WHERE expires_at_ms < ?1",
+            [now_i64],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to cleanup expired confirmations: {}", e)),
+            data: None,
+        })?;
+        Ok(())
+    }
+
+    fn evm_pending_db_insert(
+        id: &str,
+        tx: &EvmTxRequest,
+        created_at_ms: u128,
+        expires_at_ms: u128,
+        tx_summary_hash: &str,
+    ) -> Result<(), ErrorData> {
+        let conn = Self::evm_pending_db_connect()?;
+        Self::evm_pending_db_cleanup(&conn, Self::now_ms())?;
+
+        let tx_json = serde_json::to_string(tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize tx: {}", e)),
+            data: None,
+        })?;
+
+        conn.execute(
+            "INSERT OR REPLACE INTO evm_pending_confirmations
+             (id, chain_id, tx_json, created_at_ms, expires_at_ms, tx_summary_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                id,
+                tx.chain_id as i64,
+                tx_json,
+                created_at_ms as i64,
+                expires_at_ms as i64,
+                tx_summary_hash
+            ],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to insert pending confirmation: {}", e)),
+            data: None,
+        })?;
+
+        Ok(())
+    }
+
+    fn evm_pending_db_get(id: &str) -> Result<Option<(EvmTxRequest, u128, u128, String)>, ErrorData> {
+        let conn = Self::evm_pending_db_connect()?;
+        Self::evm_pending_db_cleanup(&conn, Self::now_ms())?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT tx_json, created_at_ms, expires_at_ms, tx_summary_hash
+                 FROM evm_pending_confirmations
+                 WHERE id = ?1",
+            )
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to prepare select: {}", e)),
+                data: None,
+            })?;
+
+        let row = match stmt.query_row([id], |row| {
+            let tx_json: String = row.get(0)?;
+            let created_at_ms: i64 = row.get(1)?;
+            let expires_at_ms: i64 = row.get(2)?;
+            let tx_summary_hash: String = row.get(3)?;
+            Ok((tx_json, created_at_ms, expires_at_ms, tx_summary_hash))
+        }) {
+            Ok(v) => Some(v),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to query row: {}", e)),
+                    data: None,
+                })
+            }
+        };
+
+        let Some((tx_json, created_at_ms, expires_at_ms, tx_summary_hash)) = row else {
+            return Ok(None);
+        };
+
+        let tx: EvmTxRequest = serde_json::from_str(&tx_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to parse tx_json: {}", e)),
+            data: None,
+        })?;
+
+        Ok(Some((
+            tx,
+            created_at_ms as u128,
+            expires_at_ms as u128,
+            tx_summary_hash,
+        )))
+    }
+
+    fn evm_pending_db_update(
+        id: &str,
+        tx: &EvmTxRequest,
+        expires_at_ms: u128,
+        tx_summary_hash: &str,
+    ) -> Result<(), ErrorData> {
+        let conn = Self::evm_pending_db_connect()?;
+        Self::evm_pending_db_cleanup(&conn, Self::now_ms())?;
+
+        let tx_json = serde_json::to_string(tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize tx: {}", e)),
+            data: None,
+        })?;
+
+        conn.execute(
+            "UPDATE evm_pending_confirmations
+             SET tx_json = ?2, expires_at_ms = ?3, tx_summary_hash = ?4
+             WHERE id = ?1",
+            rusqlite::params![id, tx_json, expires_at_ms as i64, tx_summary_hash],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to update pending confirmation: {}", e)),
+            data: None,
+        })?;
+        Ok(())
+    }
+
+    fn evm_pending_db_delete(id: &str) -> Result<(), ErrorData> {
+        let conn = Self::evm_pending_db_connect()?;
+        conn.execute(
+            "DELETE FROM evm_pending_confirmations WHERE id = ?1",
+            [id],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to delete pending confirmation: {}", e)),
+            data: None,
+        })?;
+        Ok(())
     }
 
     fn now_ms() -> u128 {
