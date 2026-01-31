@@ -467,6 +467,8 @@
                 "celo".to_string()
             } else if lower.contains("monad") {
                 "monad".to_string()
+            } else if lower.contains("hyperevm") || lower.contains("hyper evm") || lower.contains("hyperliquid") {
+                "hyperevm".to_string()
             } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
                 // safer default: Sepolia
                 "sepolia".to_string()
@@ -567,6 +569,17 @@
                     "monad-devnet"
                 },
             )
+        } else if inferred.contains("hyperevm")
+            || inferred.contains("hyper evm")
+            || inferred.contains("hyperliquid")
+        {
+            // chainid.network currently lists Hyperliquid EVM Testnet as chain_id=998
+            // NOTE: mainnet chain_id is not in our local mapping yet.
+            let is_test = inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let cid = if is_test { 998 } else { 998 };
+            ("evm", Some(cid), "hyperevm")
         } else if inferred.contains("sepolia") {
             // Ethereum Sepolia
             ("evm", Some(11155111), "sepolia")

@@ -106,6 +106,9 @@ impl SuiMcpServer {
             // Monad (Circle docs)
             143 => Some("0x754704bc059f8c67012fed69bc8a327a5aafb603"),
 
+            // HyperEVM (Circle docs)
+            998 => Some("0xb88339CB7199b77E23DB6E890353E22632Ba630f"),
+
             _ => None,
         }
     }
