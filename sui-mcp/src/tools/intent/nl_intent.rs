@@ -215,7 +215,7 @@
                     data: None,
                 })?;
 
-                let tx = {
+                let pending = {
                     let mut guard = Self::evm_pending_store()
                         .lock()
                         .map_err(|_| ErrorData {
@@ -231,6 +231,19 @@
                         data: None,
                     })?
                 };
+
+                let (tx, _created_at_ms, expires_at_ms) = pending;
+
+                // Expiry guard (safe by default)
+                if Self::now_ms() > expires_at_ms {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Confirmation id has expired. Run the dry-run again to regenerate.",
+                        ),
+                        data: None,
+                    });
+                }
 
                 if tx.chain_id != chain_id {
                     return Err(ErrorData {
@@ -437,6 +450,10 @@
                 })?;
 
                 let confirmation_id = Self::evm_next_confirmation_id();
+                let now_ms = Self::now_ms();
+                let ttl_ms = Self::evm_confirmation_ttl_ms();
+                let expires_at_ms = now_ms + ttl_ms;
+
                 {
                     let mut guard = Self::evm_pending_store()
                         .lock()
@@ -445,19 +462,35 @@
                             message: Cow::from("Pending store lock poisoned"),
                             data: None,
                         })?;
-                    guard.insert(confirmation_id.clone(), tx);
+                    guard.insert(confirmation_id.clone(), (tx.clone(), now_ms, expires_at_ms));
                 }
+
+                // Human-friendly summary for quick review.
+                let tx_summary = json!({
+                    "chain_id": tx.chain_id,
+                    "from": tx.from,
+                    "to": tx.to,
+                    "value_wei": tx.value_wei,
+                    "nonce": tx.nonce,
+                    "gas_limit": tx.gas_limit,
+                    "max_fee_per_gas_wei": tx.max_fee_per_gas_wei,
+                    "max_priority_fee_per_gas_wei": tx.max_priority_fee_per_gas_wei,
+                    "data_prefix": tx.data_hex.as_ref().map(|d| d.chars().take(18).collect::<String>()),
+                });
 
                 let response = Self::pretty_json(&json!({
                     "resolved_network": resolved_network,
                     "mode": "dry_run_only",
                     "confirmation_id": confirmation_id,
+                    "expires_in_ms": ttl_ms,
+                    "tx_summary": tx_summary,
                     "plan": planned_json,
                     "build": built_json,
                     "preflight": preflight_json,
                     "next": {
                         "how_to_confirm": "Send: confirm <confirmation_id> (and include the same network like 'on Base')",
-                        "warning": "Confirm step will SIGN+BROADCASТ using EVM_PRIVATE_KEY"
+                        "warning": "Confirm step will SIGN+BROADCAST using EVM_PRIVATE_KEY",
+                        "expires_in_ms": ttl_ms
                     },
                     "note": "Safe default: not signed or broadcast. Confirmation is required to execute." 
                 }))?;
@@ -1649,20 +1682,31 @@
         serde_json::from_str::<Value>(&text).ok()
     }
 
-    fn evm_pending_store() -> &'static std::sync::Mutex<std::collections::HashMap<String, EvmTxRequest>> {
+    fn evm_pending_store(
+    ) -> &'static std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128)>> {
+        // value tuple: (tx, created_at_ms, expires_at_ms)
         static STORE: std::sync::OnceLock<
-            std::sync::Mutex<std::collections::HashMap<String, EvmTxRequest>>,
+            std::sync::Mutex<std::collections::HashMap<String, (EvmTxRequest, u128, u128)>>,
         > = std::sync::OnceLock::new();
         STORE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+    }
+
+    fn now_ms() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_millis(0))
+            .as_millis()
+    }
+
+    fn evm_confirmation_ttl_ms() -> u128 {
+        // 10 minutes
+        10 * 60 * 1000
     }
 
     fn evm_next_confirmation_id() -> String {
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_else(|_| std::time::Duration::from_millis(0))
-            .as_millis();
+        let now_ms = Self::now_ms();
         format!("evm_dryrun_{}_{}", now_ms, n)
     }
 
