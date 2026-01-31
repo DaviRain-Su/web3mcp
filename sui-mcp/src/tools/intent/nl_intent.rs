@@ -89,6 +89,147 @@
                 let result = self.get_total_transactions().await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
+            "swap" => {
+                // EVM swap uses 0x Swap API (safe: dry-run only). Sui swap not implemented.
+                if family != "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("swap intent is currently only supported on EVM via 0x"),
+                        data: None,
+                    });
+                }
+
+                let chain_id = chain_id.ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("chain_id is required for EVM swap"),
+                    data: None,
+                })?;
+
+                let sender = sender;
+                if sender.starts_with('<') {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("sender is required for EVM swap"),
+                        data: None,
+                    });
+                }
+
+                let sell = entities
+                    .get("from_coin")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<sell_token>")
+                    .to_lowercase();
+                let buy = entities
+                    .get("to_coin")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<buy_token>")
+                    .to_lowercase();
+
+                if sell.starts_with('<') || buy.starts_with('<') {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "swap requires two tokens in the prompt, e.g. 'swap 0.1 eth to usdc on base'",
+                        ),
+                        data: None,
+                    });
+                }
+
+                let amount = entities
+                    .get("amount")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<amount>")
+                    .to_string();
+
+                if amount.starts_with('<') {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("swap requires an amount, e.g. 'swap 0.1 eth to usdc on base'"),
+                        data: None,
+                    });
+                }
+
+                // Slippage (tolerant default): 1%
+                let slippage = Self::extract_slippage_percent(&lower).or_else(|| Some("1%".to_string()));
+
+                // 1) Build swap tx via 0x.
+                let built = self
+                    .evm_0x_build_swap_tx(Parameters(Evm0xBuildSwapTxRequest {
+                        chain_id,
+                        sender: sender.clone(),
+                        sell_token: sell,
+                        buy_token: buy,
+                        sell_amount: amount,
+                        sell_amount_is_wei: Some(false),
+                        slippage,
+                    }))
+                    .await?;
+
+                let built_json = Self::extract_first_json(&built).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse 0x build response"),
+                    data: None,
+                })?;
+                let tx: EvmTxRequest = serde_json::from_value(
+                    built_json.get("tx").cloned().unwrap_or(Value::Null),
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to decode built tx: {}", e)),
+                    data: None,
+                })?;
+
+                // 2) Preflight.
+                let preflight = self
+                    .evm_preflight(Parameters(EvmPreflightRequest { tx }))
+                    .await?;
+                let preflight_json = Self::extract_first_json(&preflight).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse evm_preflight response"),
+                    data: None,
+                })?;
+                let tx: EvmTxRequest = serde_json::from_value(
+                    preflight_json.get("tx").cloned().unwrap_or(Value::Null),
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+                    data: None,
+                })?;
+
+                // 3) Store pending confirmation.
+                let confirmation_id = Self::evm_next_confirmation_id();
+                let now_ms = crate::utils::evm_confirm_store::now_ms();
+                let ttl_ms = crate::utils::evm_confirm_store::default_ttl_ms();
+                let expires_at_ms = now_ms + ttl_ms;
+                let tx_summary_hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
+
+                crate::utils::evm_confirm_store::insert_pending(
+                    &confirmation_id,
+                    &tx,
+                    now_ms,
+                    expires_at_ms,
+                    &tx_summary_hash,
+                )?;
+
+                let response = Self::pretty_json(&json!({
+                    "resolved_network": resolved_network,
+                    "mode": "dry_run_only",
+                    "provider": "0x",
+                    "confirmation_id": confirmation_id,
+                    "expires_in_ms": ttl_ms,
+                    "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                    "tx_summary_hash": tx_summary_hash,
+                    "build": built_json,
+                    "preflight": preflight_json,
+                    "next": {
+                        "how_to_confirm": format!("confirm {} hash:{} (and include same network like 'on Base')", confirmation_id, tx_summary_hash)
+                    },
+                    "note": "Safe default: not signed/broadcast. Confirm to execute." 
+                }))?;
+
+                return Ok(CallToolResult::success(vec![Content::text(response)]));
+            }
             "get_coins" => {
                 if family == "evm" {
                     let chain_id = chain_id.ok_or_else(|| ErrorData {
@@ -1141,7 +1282,7 @@
         let digests = Self::extract_digests(text);
         let resolved_network = Self::resolve_intent_network(network, lower);
 
-        let token_list = ["sui", "usdc", "usdt", "eth", "btc"];
+        let token_list = ["sui", "usdc", "usdt", "weth", "dai", "cbeth", "eth", "btc"];
         let mut tokens = Vec::new();
         for token in token_list.iter() {
             if let Some(pos) = lower.find(token) {
@@ -1672,6 +1813,19 @@
             return Some(value);
         }
         Self::extract_chinese_number(lower).map(|value| value.to_string())
+    }
+
+    fn extract_slippage_percent(lower: &str) -> Option<String> {
+        // Very simple heuristic: pick the first token containing '%' like '1%' or '0.5%'
+        for raw in lower.split_whitespace() {
+            let t = raw.trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c));
+            if let Some(pct) = t.strip_suffix('%') {
+                if pct.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                    return Some(format!("{}%", pct));
+                }
+            }
+        }
+        None
     }
 
     fn match_any(lower: &str, needles: &[&str]) -> bool {
