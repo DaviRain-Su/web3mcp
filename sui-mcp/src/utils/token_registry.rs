@@ -65,22 +65,9 @@ impl SuiMcpServer {
 
     /// Resolve an EVM token contract address for a symbol on a given chain.
     ///
-    /// Resolution order:
-    /// 1) Env var override: EVM_<SYMBOL>_ADDRESS_<chain_id> (e.g. EVM_USDC_ADDRESS_8453)
-    /// 2) Built-in defaults (Circle USDC contract addresses)
+    /// Deprecated: use `resolve_evm_erc20_address`.
     pub fn resolve_evm_token_address(symbol: &str, chain_id: u64) -> Option<String> {
-        let symbol_upper = symbol.trim().to_uppercase();
-        let key = format!("EVM_{}_ADDRESS_{}", symbol_upper, chain_id);
-        if let Ok(v) = std::env::var(&key) {
-            return Some(v);
-        }
-
-        let symbol = symbol.trim().to_lowercase();
-        match symbol.as_str() {
-            "usdc" => Self::builtin_evm_usdc_address(chain_id).map(|s| s.to_string()),
-            "usdt" => Self::builtin_evm_usdt_address(chain_id).map(|s| s.to_string()),
-            _ => None,
-        }
+        Self::resolve_evm_erc20_address(symbol, chain_id)
     }
 
     fn builtin_evm_usdc_address(chain_id: u64) -> Option<&'static str> {
@@ -123,6 +110,42 @@ impl SuiMcpServer {
 
             _ => None,
         }
+    }
+
+    /// Resolve an ERC20 token address by symbol for a given EVM chain.
+    ///
+    /// Env override: EVM_<SYMBOL>_ADDRESS_<chain_id>
+    pub fn resolve_evm_erc20_address(symbol: &str, chain_id: u64) -> Option<String> {
+        let symbol_upper = symbol.trim().to_uppercase();
+        let key = format!("EVM_{}_ADDRESS_{}", symbol_upper, chain_id);
+        if let Ok(v) = std::env::var(&key) {
+            return Some(v);
+        }
+
+        let symbol = symbol.trim().to_lowercase();
+        match symbol.as_str() {
+            "usdc" => Self::builtin_evm_usdc_address(chain_id).map(|s| s.to_string()),
+            "usdt" => Self::builtin_evm_usdt_address(chain_id).map(|s| s.to_string()),
+            // WETH: no built-in mapping (varies by chain/project); allow env-only.
+            "weth" => None,
+            _ => None,
+        }
+    }
+
+    /// Best-effort ERC20 contract address extraction from a natural language prompt.
+    ///
+    /// This reuses the existing `0x...` token capture but tries to avoid misclassifying
+    /// the sender/recipient address as a token.
+    pub fn infer_evm_token_address_from_text(lower: &str, addresses: &[String]) -> Option<String> {
+        // Common pattern: "balance 0xTOKEN on ..." / "token 0xTOKEN" / "contract 0xTOKEN"
+        if lower.contains("token") || lower.contains("contract") {
+            return addresses.get(0).cloned();
+        }
+        // If they explicitly ask for erc20/usdc/usdt, the address is likely the token.
+        if lower.contains("erc20") || lower.contains("usdc") || lower.contains("usdt") {
+            return addresses.get(0).cloned();
+        }
+        None
     }
 
     fn builtin_evm_usdt_address(chain_id: u64) -> Option<&'static str> {

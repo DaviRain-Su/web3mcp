@@ -100,16 +100,16 @@
                     // For EVM, map common coin words to ERC20s.
                     // Supports USDC (Circle defaults) and USDT (partial defaults + env overrides).
                     let token_address = if lower.contains("usdc") {
-                        Self::resolve_evm_token_address("usdc", chain_id)
+                        Self::resolve_evm_erc20_address("usdc", chain_id)
                     } else if lower.contains("usdt") {
-                        Self::resolve_evm_token_address("usdt", chain_id)
+                        Self::resolve_evm_erc20_address("usdt", chain_id)
                     } else {
                         None
                     }
                     .ok_or_else(|| ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(
-                            "Unsupported EVM coin query. Try: 'balance usdc on Base' or set EVM_USDC_ADDRESS_<chain_id> / EVM_USDT_ADDRESS_<chain_id>",
+                            "Unsupported EVM coin query. Try: 'balance usdc on Base' or 'balance token 0xYourToken on Base' or set EVM_USDC_ADDRESS_<chain_id> / EVM_USDT_ADDRESS_<chain_id>",
                         ),
                         data: None,
                     })?;
@@ -864,13 +864,17 @@
                         .and_then(|v| v.as_u64());
 
                     let token_address = chain_id.and_then(|cid| {
-                        if lower.contains("usdc") {
-                            Self::resolve_evm_token_address("usdc", cid)
-                        } else if lower.contains("usdt") {
-                            Self::resolve_evm_token_address("usdt", cid)
-                        } else {
-                            None
-                        }
+                        // 1) If user provided a contract address in the text, prefer it.
+                        Self::infer_evm_token_address_from_text(lower, &addresses).or_else(|| {
+                            // 2) Otherwise, resolve common symbols.
+                            if lower.contains("usdc") {
+                                Self::resolve_evm_erc20_address("usdc", cid)
+                            } else if lower.contains("usdt") {
+                                Self::resolve_evm_erc20_address("usdt", cid)
+                            } else {
+                                None
+                            }
+                        })
                     });
                     entities["token_address"] = json!(token_address);
 
