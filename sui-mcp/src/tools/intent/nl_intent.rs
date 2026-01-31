@@ -223,24 +223,72 @@
                     .map(|s| s.to_string());
                 let suggested_approve_tx = built_json.get("suggested_approve_tx").cloned();
 
+                // If we have a suggested approve tx, preflight it and create its own confirmation.
+                let mut approve_flow: Option<Value> = None;
+                if let Some(stx) = suggested_approve_tx.clone() {
+                    if let Ok(approve_tx) = serde_json::from_value::<EvmTxRequest>(stx.clone()) {
+                        let approve_preflight = self
+                            .evm_preflight(Parameters(EvmPreflightRequest { tx: approve_tx }))
+                            .await?;
+                        let approve_preflight_json =
+                            Self::extract_first_json(&approve_preflight).ok_or_else(|| ErrorData {
+                                code: ErrorCode(-32603),
+                                message: Cow::from("Failed to parse approve preflight"),
+                                data: None,
+                            })?;
+                        let approve_tx: EvmTxRequest = serde_json::from_value(
+                            approve_preflight_json.get("tx").cloned().unwrap_or(Value::Null),
+                        )
+                        .map_err(|e| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from(format!("Failed to decode approve tx: {}", e)),
+                            data: None,
+                        })?;
+
+                        let approve_confirmation_id = Self::evm_next_confirmation_id();
+                        let approve_hash = crate::utils::evm_confirm_store::tx_summary_hash(&approve_tx);
+                        crate::utils::evm_confirm_store::insert_pending(
+                            &approve_confirmation_id,
+                            &approve_tx,
+                            now_ms,
+                            expires_at_ms,
+                            &approve_hash,
+                        )?;
+
+                        approve_flow = Some(json!({
+                            "confirmation_id": approve_confirmation_id,
+                            "expires_in_ms": ttl_ms,
+                            "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&approve_tx),
+                            "tx_summary_hash": approve_hash,
+                            "preflight": approve_preflight_json,
+                            "next": {
+                                "how_to_confirm": format!("confirm {} hash:{} (approve) (and include same network)", approve_confirmation_id, approve_hash)
+                            }
+                        }));
+                    }
+                }
+
                 let response = Self::pretty_json(&json!({
                     "resolved_network": resolved_network,
                     "mode": "dry_run_only",
                     "provider": "0x",
-                    "confirmation_id": confirmation_id,
-                    "expires_in_ms": ttl_ms,
-                    "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
-                    "tx_summary_hash": tx_summary_hash,
+                    "swap": {
+                        "confirmation_id": confirmation_id,
+                        "expires_in_ms": ttl_ms,
+                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                        "tx_summary_hash": tx_summary_hash,
+                        "preflight": preflight_json,
+                        "next": {
+                            "how_to_confirm": format!("confirm {} hash:{} (swap) (and include same network)", confirmation_id, tx_summary_hash)
+                        }
+                    },
+                    "approve": approve_flow,
                     "build": built_json,
-                    "preflight": preflight_json,
                     "allowance": {
                         "sell_token_address": sell_token_address,
                         "allowance_target": allowance_target,
                         "suggested_approve_tx": suggested_approve_tx,
-                        "note": "If allowance_target is present and sell_token_address is ERC20, approve first. This is a suggested infinite approval tx; review before confirming."
-                    },
-                    "next": {
-                        "how_to_confirm": format!("confirm {} hash:{} (and include same network like 'on Base')", confirmation_id, tx_summary_hash)
+                        "note": "If allowance_target is present and sell_token_address is ERC20, confirm approve first, then confirm swap."
                     },
                     "note": "Safe default: not signed/broadcast. Confirm to execute." 
                 }))?;
