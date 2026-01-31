@@ -381,6 +381,356 @@
         .await
     }
 
+    fn evm_abi_registry_dir() -> std::path::PathBuf {
+        if let Ok(dir) = std::env::var("EVM_ABI_REGISTRY_DIR") {
+            return std::path::PathBuf::from(dir);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            return std::path::PathBuf::from(home)
+                .join(".web3mcp")
+                .join("abi_registry")
+                .join("evm");
+        }
+        std::path::PathBuf::from("./abi_registry/evm")
+    }
+
+    fn normalize_evm_address(address: &str) -> Result<String, ErrorData> {
+        let a = Self::parse_evm_address(address)?;
+        Ok(format!("0x{}", hex::encode(a.as_bytes())))
+    }
+
+    fn evm_abi_path(chain_id: u64, address: &str) -> Result<std::path::PathBuf, ErrorData> {
+        let addr = Self::normalize_evm_address(address)?;
+        Ok(Self::evm_abi_registry_dir()
+            .join(chain_id.to_string())
+            .join(format!("{}.json", addr)))
+    }
+
+    fn abi_entry_json(
+        chain_id: u64,
+        address: &str,
+        name: Option<String>,
+        abi_json: String,
+    ) -> Result<Value, ErrorData> {
+        // Validate ABI is valid JSON.
+        let abi_val: Value = serde_json::from_str(&abi_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid abi_json: {}", e)),
+            data: None,
+        })?;
+
+        Ok(json!({
+            "chain_id": chain_id,
+            "address": Self::normalize_evm_address(address)?,
+            "name": name,
+            "abi": abi_val
+        }))
+    }
+
+    #[tool(description = "EVM ABI Registry: register a contract ABI under abi_registry/evm/<chain_id>/<address>.json")]
+    async fn evm_register_contract(
+        &self,
+        Parameters(request): Parameters<EvmRegisterContractRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let path = Self::evm_abi_path(request.chain_id, &request.address)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to create registry dir: {}", e)),
+                data: None,
+            })?;
+        }
+
+        let entry = Self::abi_entry_json(
+            request.chain_id,
+            &request.address,
+            request.name,
+            request.abi_json,
+        )?;
+
+        let bytes = serde_json::to_vec_pretty(&entry).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize entry: {}", e)),
+            data: None,
+        })?;
+
+        std::fs::write(&path, bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to write ABI entry: {}", e)),
+            data: None,
+        })?;
+
+        let response = Self::pretty_json(&json!({
+            "ok": true,
+            "path": path.to_string_lossy(),
+            "chain_id": request.chain_id,
+            "address": Self::normalize_evm_address(&request.address)?
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ABI Registry: list registered contracts (optionally filter by chain_id)")]
+    async fn evm_list_contracts(
+        &self,
+        Parameters(request): Parameters<EvmListContractsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let root = Self::evm_abi_registry_dir();
+        let mut out: Vec<Value> = Vec::new();
+
+        let chain_dirs: Vec<std::path::PathBuf> = if let Some(chain_id) = request.chain_id {
+            vec![root.join(chain_id.to_string())]
+        } else {
+            match std::fs::read_dir(&root) {
+                Ok(rd) => rd.filter_map(|e| e.ok()).map(|e| e.path()).collect(),
+                Err(_) => vec![],
+            }
+        };
+
+        for dir in chain_dirs {
+            let chain_id = dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<u64>().ok());
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(bytes) = std::fs::read(&p) else { continue };
+                let Ok(v) = serde_json::from_slice::<Value>(&bytes) else { continue };
+                out.push(json!({
+                    "chain_id": chain_id.or_else(|| v.get("chain_id").and_then(Value::as_u64)),
+                    "address": v.get("address"),
+                    "name": v.get("name"),
+                    "path": p.to_string_lossy()
+                }));
+            }
+        }
+
+        let response = Self::pretty_json(&json!({
+            "root": root.to_string_lossy(),
+            "items": out
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ABI Registry: get a registered contract entry")]
+    async fn evm_get_contract(
+        &self,
+        Parameters(request): Parameters<EvmGetContractRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let path = Self::evm_abi_path(request.chain_id, &request.address)?;
+        let bytes = std::fs::read(&path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read contract entry: {}", e)),
+            data: None,
+        })?;
+        let v: Value = serde_json::from_slice(&bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Invalid registry JSON: {}", e)),
+            data: None,
+        })?;
+        let response = Self::pretty_json(&v)?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    fn abi_find_function<'a>(
+        abi: &'a ethers::abi::Abi,
+        name: &str,
+        arg_len: usize,
+    ) -> Option<&'a ethers::abi::Function> {
+        let funcs = abi.functions().filter(|f| f.name == name);
+        for f in funcs {
+            if f.inputs.len() == arg_len {
+                return Some(f);
+            }
+        }
+        None
+    }
+
+    fn json_to_token(
+        kind: &ethers::abi::ParamType,
+        v: &Value,
+    ) -> Result<ethers::abi::Token, ErrorData> {
+        use ethers::abi::{ParamType, Token};
+
+        let err = |msg: &str| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(msg.to_string()),
+            data: None,
+        };
+
+        match kind {
+            ParamType::Address => {
+                let s = v.as_str().ok_or_else(|| err("Expected address string"))?;
+                Ok(Token::Address(Self::parse_evm_address(s)?))
+            }
+            ParamType::Uint(_) => {
+                let s = v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string());
+                Ok(Token::Uint(Self::parse_evm_u256("uint", &s)?))
+            }
+            ParamType::Int(_) => {
+                let s = v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string());
+                // MVP: use U256-backed int. (Good enough for common positive ints.)
+                Ok(Token::Int(Self::parse_evm_u256("int", &s)?))
+            }
+            ParamType::Bool => Ok(Token::Bool(v.as_bool().ok_or_else(|| err("Expected bool"))?)),
+            ParamType::String => Ok(Token::String(
+                v.as_str().ok_or_else(|| err("Expected string"))?.to_string(),
+            )),
+            ParamType::Bytes => {
+                let s = v.as_str().ok_or_else(|| err("Expected 0x hex bytes string"))?;
+                let hexs = s.strip_prefix("0x").unwrap_or(s);
+                let b = hex::decode(hexs).map_err(|e| err(&format!("Invalid hex bytes: {}", e)))?;
+                Ok(Token::Bytes(b))
+            }
+            ParamType::FixedBytes(n) => {
+                let s = v.as_str().ok_or_else(|| err("Expected 0x hex bytes string"))?;
+                let hexs = s.strip_prefix("0x").unwrap_or(s);
+                let b = hex::decode(hexs).map_err(|e| err(&format!("Invalid hex bytes: {}", e)))?;
+                if b.len() != *n {
+                    return Err(err(&format!("Expected {} bytes, got {}", n, b.len())));
+                }
+                Ok(Token::FixedBytes(b))
+            }
+            other => Err(err(&format!(
+                "Unsupported param type (MVP): {:?}",
+                other
+            ))),
+        }
+    }
+
+    fn load_registered_abi(chain_id: u64, address: &str) -> Result<(Value, ethers::abi::Abi), ErrorData> {
+        let path = Self::evm_abi_path(chain_id, address)?;
+        let bytes = std::fs::read(&path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read ABI entry: {}", e)),
+            data: None,
+        })?;
+        let entry: Value = serde_json::from_slice(&bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Invalid ABI entry JSON: {}", e)),
+            data: None,
+        })?;
+        let abi_val = entry.get("abi").cloned().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("ABI entry missing 'abi'"),
+            data: None,
+        })?;
+        let abi: ethers::abi::Abi = serde_json::from_value(abi_val).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Invalid ABI JSON: {}", e)),
+            data: None,
+        })?;
+        Ok((entry, abi))
+    }
+
+    #[tool(description = "EVM ABI Registry: call a view/pure function using registered ABI")]
+    async fn evm_call_view(
+        &self,
+        Parameters(request): Parameters<EvmCallViewRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let provider = self.evm_provider(request.chain_id).await?;
+        let contract = Self::parse_evm_address(&request.address)?;
+        let (_entry, abi) = Self::load_registered_abi(request.chain_id, &request.address)?;
+
+        let args = request.args.unwrap_or(Value::Array(vec![]));
+        let args_arr = args.as_array().cloned().ok_or_else(|| ErrorData{code:ErrorCode(-32602),message:Cow::from("args must be a JSON array"),data:None})?;
+
+        let func = Self::abi_find_function(&abi, &request.function, args_arr.len()).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Function not found in ABI (by name + arg count)"),
+            data: None,
+        })?;
+
+        let mut tokens: Vec<ethers::abi::Token> = Vec::new();
+        for (i, param) in func.inputs.iter().enumerate() {
+            tokens.push(Self::json_to_token(&param.kind, &args_arr[i])?);
+        }
+
+        let data = func.encode_input(&tokens).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to encode call data: {}", e)),
+            data: None,
+        })?;
+
+        let call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            data: Some(ethers::types::Bytes::from(data)),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call.clone().into();
+
+        let raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_call_view:eth_call", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id,
+            "address": Self::normalize_evm_address(&request.address)?,
+            "function": request.function,
+            "args": args_arr,
+            "result_hex": format!("0x{}", hex::encode(raw.as_ref()))
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ABI Registry: execute a contract call (nonpayable/payable) using registered ABI")]
+    async fn evm_execute_contract_call(
+        &self,
+        Parameters(request): Parameters<EvmExecuteContractCallRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let contract = Self::parse_evm_address(&request.address)?;
+        let (_entry, abi) = Self::load_registered_abi(request.chain_id, &request.address)?;
+
+        let args = request.args.unwrap_or(Value::Array(vec![]));
+        let args_arr = args.as_array().cloned().ok_or_else(|| ErrorData{code:ErrorCode(-32602),message:Cow::from("args must be a JSON array"),data:None})?;
+
+        let func = Self::abi_find_function(&abi, &request.function, args_arr.len()).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Function not found in ABI (by name + arg count)"),
+            data: None,
+        })?;
+
+        let mut tokens: Vec<ethers::abi::Token> = Vec::new();
+        for (i, param) in func.inputs.iter().enumerate() {
+            tokens.push(Self::json_to_token(&param.kind, &args_arr[i])?);
+        }
+
+        let data = func.encode_input(&tokens).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to encode call data: {}", e)),
+            data: None,
+        })?;
+
+        let value = if let Some(v) = request.value_wei.as_deref() {
+            Self::parse_evm_u256("value_wei", v)?
+        } else {
+            ethers::types::U256::from(0)
+        };
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(Self::parse_evm_address(&request.sender)?),
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            value: Some(value),
+            data: Some(ethers::types::Bytes::from(data)),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        self.evm_execute_tx_request(
+            request.chain_id,
+            tx_request,
+            request.allow_sender_mismatch.unwrap_or(false),
+        )
+        .await
+    }
+
     #[tool(description = "EVM: get transaction by hash")]
     async fn evm_get_transaction(
         &self,

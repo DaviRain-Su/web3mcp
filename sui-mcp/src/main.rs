@@ -1299,6 +1299,68 @@ struct EvmExecuteErc20ApproveRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmRegisterContractRequest {
+    #[schemars(description = "EVM chain id")]
+    chain_id: u64,
+    #[schemars(description = "Contract address")]
+    address: String,
+    #[schemars(description = "Optional human-friendly name")]
+    name: Option<String>,
+    #[schemars(description = "Contract ABI JSON (string)")]
+    abi_json: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmListContractsRequest {
+    #[schemars(description = "Optional chain id filter")]
+    chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmGetContractRequest {
+    #[schemars(description = "EVM chain id")]
+    chain_id: u64,
+    #[schemars(description = "Contract address")]
+    address: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmCallViewRequest {
+    #[schemars(description = "EVM chain id")]
+    chain_id: u64,
+    #[schemars(description = "Contract address")]
+    address: String,
+    #[schemars(description = "Function name (e.g. 'balanceOf')")]
+    function: String,
+    #[schemars(
+        description = "Arguments as JSON array (supports basic types: address, uint/int, bool, string, bytes)"
+    )]
+    args: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmExecuteContractCallRequest {
+    #[schemars(description = "EVM chain id")]
+    chain_id: u64,
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Contract address")]
+    address: String,
+    #[schemars(description = "Function name")]
+    function: String,
+    #[schemars(
+        description = "Arguments as JSON array (supports basic types: address, uint/int, bool, string, bytes)"
+    )]
+    args: Option<Value>,
+    #[schemars(description = "Optional value in wei (decimal string or 0x hex)")]
+    value_wei: Option<String>,
+    #[schemars(description = "Optional gas limit override")]
+    gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct GetObjectRequest {
     #[schemars(description = "The object ID to query (hex format starting with 0x)")]
     object_id: String,
