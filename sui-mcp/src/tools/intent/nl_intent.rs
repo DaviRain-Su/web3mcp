@@ -219,19 +219,14 @@
                         large_transfer_threshold: None,
                     }))
                     .await?;
-                let tx_bytes = Self::extract_tx_bytes(&tx).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from("Failed to parse tx_bytes from transfer"),
-                    data: None,
-                })?;
-
                 let exec = self
-                    .execute_zklogin_intent_tx(
-                        tx_bytes,
+                    .execute_zklogin_from_builder_result(
+                        tx,
                         request.zk_login_inputs_json.clone(),
                         request.address_seed.clone(),
                         request.max_epoch,
                         request.user_signature.clone(),
+                        "transfer",
                     )
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &exec);
@@ -257,19 +252,14 @@
                         gas_object_id: request.gas_object_id.clone(),
                     }))
                     .await?;
-                let tx_bytes = Self::extract_tx_bytes(&tx).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from("Failed to parse tx_bytes from transfer object"),
-                    data: None,
-                })?;
-
                 let exec = self
-                    .execute_zklogin_intent_tx(
-                        tx_bytes,
+                    .execute_zklogin_from_builder_result(
+                        tx,
                         request.zk_login_inputs_json.clone(),
                         request.address_seed.clone(),
                         request.max_epoch,
                         request.user_signature.clone(),
+                        "transfer object",
                     )
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &exec);
@@ -296,19 +286,14 @@
                         gas_object_id: request.gas_object_id.clone(),
                     }))
                     .await?;
-                let tx_bytes = Self::extract_tx_bytes(&tx).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from("Failed to parse tx_bytes from stake"),
-                    data: None,
-                })?;
-
                 let exec = self
-                    .execute_zklogin_intent_tx(
-                        tx_bytes,
+                    .execute_zklogin_from_builder_result(
+                        tx,
                         request.zk_login_inputs_json.clone(),
                         request.address_seed.clone(),
                         request.max_epoch,
                         request.user_signature.clone(),
+                        "stake",
                     )
                     .await?;
 
@@ -329,19 +314,14 @@
                         gas_object_id: request.gas_object_id.clone(),
                     }))
                     .await?;
-                let tx_bytes = Self::extract_tx_bytes(&tx).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from("Failed to parse tx_bytes from withdraw"),
-                    data: None,
-                })?;
-
                 let exec = self
-                    .execute_zklogin_intent_tx(
-                        tx_bytes,
+                    .execute_zklogin_from_builder_result(
+                        tx,
                         request.zk_login_inputs_json.clone(),
                         request.address_seed.clone(),
                         request.max_epoch,
                         request.user_signature.clone(),
+                        "withdraw",
                     )
                     .await?;
 

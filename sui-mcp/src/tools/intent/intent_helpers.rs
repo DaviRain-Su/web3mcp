@@ -68,3 +68,28 @@
         }))
         .await
     }
+
+    async fn execute_zklogin_from_builder_result(
+        &self,
+        builder_result: CallToolResult,
+        zk_login_inputs_json: Option<String>,
+        address_seed: Option<String>,
+        max_epoch: Option<u64>,
+        user_signature: Option<String>,
+        context: &str,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tx_bytes = Self::extract_tx_bytes(&builder_result).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to parse tx_bytes from {}", context)),
+            data: None,
+        })?;
+
+        self.execute_zklogin_intent_tx(
+            tx_bytes,
+            zk_login_inputs_json,
+            address_seed,
+            max_epoch,
+            user_signature,
+        )
+        .await
+    }
