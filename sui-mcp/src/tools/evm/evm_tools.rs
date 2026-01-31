@@ -281,6 +281,168 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM: retry executing a pending/failed intent confirmation (sqlite-backed). Safe: requires matching tx_summary_hash; may request re-confirm if preflight changes tx.")]
+    async fn evm_retry_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<EvmRetryPendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let id = request.id.trim();
+        let provided_hash = request.tx_summary_hash.trim().to_lowercase();
+
+        if !provided_hash.starts_with("0x") || provided_hash.len() != 66 {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("tx_summary_hash must be 0x + 64 hex chars"),
+                data: None,
+            });
+        }
+
+        let conn = crate::utils::evm_confirm_store::connect()?;
+        crate::utils::evm_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
+
+        let row = crate::utils::evm_confirm_store::get_row(&conn, id)?.ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Pending confirmation not found (may have expired)."),
+            data: None,
+        })?;
+
+        if let Some(cid) = request.chain_id {
+            if cid != row.chain_id {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "chain_id mismatch: request={} stored={}",
+                        cid, row.chain_id
+                    )),
+                    data: None,
+                });
+            }
+        }
+
+        if row.status == "sent" {
+            let response = Self::pretty_json(&json!({
+                "status": "sent",
+                "confirmation_id": row.id,
+                "tx_hash": row.tx_hash,
+                "note": "Already broadcast"
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        if crate::utils::evm_confirm_store::now_ms() > row.expires_at_ms {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Pending confirmation expired; re-run dry-run."),
+                data: None,
+            });
+        }
+
+        if row.tx_summary_hash.to_lowercase() != provided_hash {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "tx_summary_hash mismatch: expected={} got={}",
+                    row.tx_summary_hash, provided_hash
+                )),
+                data: None,
+            });
+        }
+
+        // Only allow retry when status is pending/failed/consumed.
+        if !matches!(row.status.as_str(), "pending" | "failed" | "consumed") {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Unsupported status for retry: {}", row.status)),
+                data: None,
+            });
+        }
+
+        let mut tx = row.tx;
+
+        // Confirm-time preflight.
+        let preflight = self
+            .evm_preflight(Parameters(EvmPreflightRequest { tx }))
+            .await?;
+        let preflight_json = Self::evm_extract_first_json(&preflight).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_preflight response during retry"),
+            data: None,
+        })?;
+        tx = serde_json::from_value(preflight_json.get("tx").cloned().unwrap_or(Value::Null))
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode preflight tx during retry: {}", e)),
+                data: None,
+            })?;
+
+        let new_hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
+        if new_hash != provided_hash {
+            let new_expires = crate::utils::evm_confirm_store::now_ms()
+                + crate::utils::evm_confirm_store::default_ttl_ms();
+            crate::utils::evm_confirm_store::update_pending(&conn, id, &tx, new_expires, &new_hash)?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": id,
+                "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                "tx_summary_hash": new_hash,
+                "note": "Tx changed during preflight (nonce/fees). Re-confirm/retry with new tx_summary_hash."
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        // Consume.
+        crate::utils::evm_confirm_store::mark_consumed(&conn, id)?;
+
+        // Sign.
+        let signed = self
+            .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
+                tx,
+                allow_sender_mismatch: Some(false),
+            }))
+            .await?;
+        let signed_json = Self::evm_extract_first_json(&signed).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse signed result"),
+            data: None,
+        })?;
+        let raw_tx = signed_json
+            .get("raw_tx")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Missing raw_tx"),
+                data: None,
+            })?
+            .to_string();
+
+        // Broadcast.
+        let sent = self
+            .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
+                chain_id: Some(row.chain_id),
+                raw_tx,
+            }))
+            .await;
+
+        match sent {
+            Ok(ok) => {
+                if let Some(v) = Self::evm_extract_first_json(&ok) {
+                    if let Some(tx_hash) = v.get("tx_hash").and_then(Value::as_str) {
+                        let _ = crate::utils::evm_confirm_store::mark_sent(&conn, id, tx_hash);
+                    }
+                }
+                Ok(ok)
+            }
+            Err(e) => {
+                let _ = crate::utils::evm_confirm_store::mark_failed(&conn, id, &e.message);
+                Err(e)
+            }
+        }
+    }
+
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
     async fn evm_event_topic0(
         &self,

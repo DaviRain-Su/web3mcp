@@ -80,6 +80,16 @@ pub struct EvmGetPendingConfirmationRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmRetryPendingConfirmationRequest {
+    #[schemars(description = "Confirmation id (e.g. evm_dryrun_...)")]
+    pub id: String,
+    #[schemars(description = "tx_summary_hash from the pending record (0x...)")]
+    pub tx_summary_hash: String,
+    #[schemars(description = "Optional chain id sanity check")]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,
