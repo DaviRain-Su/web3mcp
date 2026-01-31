@@ -33,6 +33,7 @@ Copy `.env.example` to `.env` and fill in your Google client ID.
 VITE_GOOGLE_CLIENT_ID=
 VITE_PROVER_URL=http://localhost:8080/v1
 VITE_MAX_EPOCH=
+VITE_NETWORK=mainnet
 VITE_RPC_URL=https://fullnode.mainnet.sui.io:443
 VITE_BRIDGE_URL=/mcp
 VITE_SALT_URL=https://salt.api.mystenlabs.com/get_salt
@@ -49,6 +50,21 @@ VITE_SALT_URL=https://salt.api.mystenlabs.com/get_salt
 - For mainnet, you need access to a zkLogin prover (Enoki) or run a local prover.
 
 For a local prover, see `examples/zklogin-prover-local`.
+
+### Testnet
+
+You can switch the app to testnet by setting:
+
+```
+VITE_NETWORK=testnet
+VITE_RPC_URL=https://fullnode.testnet.sui.io:443
+```
+
+Use the testnet zkey when running the local prover:
+
+```bash
+wget -O - https://raw.githubusercontent.com/sui-foundation/zklogin-ceremony-contributions/main/download-test-zkey.sh | bash
+```
 
 ## HTTP Bridge
 

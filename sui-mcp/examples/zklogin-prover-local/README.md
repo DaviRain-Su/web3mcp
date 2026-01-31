@@ -15,6 +15,12 @@ Mainnet/Testnet zkey:
 wget -O - https://raw.githubusercontent.com/sui-foundation/zklogin-ceremony-contributions/main/download-main-zkey.sh | bash
 ```
 
+Testnet zkey:
+
+```bash
+wget -O - https://raw.githubusercontent.com/sui-foundation/zklogin-ceremony-contributions/main/download-test-zkey.sh | bash
+```
+
 This will download `zkLogin-main.zkey`.
 
 ## Run the prover

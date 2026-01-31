@@ -11,6 +11,7 @@ fn main() {
         "src/tools/read/transactions/read_transactions.rs",
         "src/tools/intent/nl_intent.rs",
         "src/tools/auth/zklogin/zklogin.rs",
+        "src/tools/auth/keystore/keystore.rs",
         "src/tools/tx/pay/tx_build.rs",
         "src/tools/tx/inspections/tx_sim.rs",
         "src/tools/tx/staking/tx_stakes.rs",

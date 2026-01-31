@@ -21,6 +21,7 @@ use sui_crypto::simple::SimpleVerifier;
 use sui_crypto::Verifier;
 use sui_graphql::Client as GraphqlClient;
 use sui_json::SuiJsonValue;
+use sui_keys::keystore::AccountKeystore;
 use sui_json_rpc_types::{
     CheckpointId, EventFilter, RPCTransactionRequestParams, SuiMoveNormalizedFunction,
     SuiMoveNormalizedModule, SuiMoveNormalizedType, SuiObjectDataOptions,
@@ -1139,6 +1140,32 @@ struct VerifyZkLoginSignatureRequest {
     address: String,
     #[schemars(description = "Intent scope: transaction or personal_message (default: transaction)")]
     intent_scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct KeystoreAccountsRequest {
+    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    keystore_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct KeystoreSignTransactionRequest {
+    #[schemars(description = "Base64-encoded transaction bytes (BCS TransactionData)")]
+    tx_bytes: String,
+    #[schemars(description = "Signer address or alias (required if multiple accounts in keystore)")]
+    signer: Option<String>,
+    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    keystore_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct KeystoreExecuteTransactionRequest {
+    #[schemars(description = "Base64-encoded transaction bytes (BCS TransactionData)")]
+    tx_bytes: String,
+    #[schemars(description = "Signer address or alias (required if multiple accounts in keystore)")]
+    signer: Option<String>,
+    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    keystore_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

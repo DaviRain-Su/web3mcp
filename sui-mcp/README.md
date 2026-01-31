@@ -82,6 +82,32 @@ Once configured with Claude Desktop, you can ask Claude to:
 - "What is the current gas price on Sui?"
 - "Show me all balances for address 0x..."
 
+## Local Keystore (no zkLogin)
+
+This server can sign and execute transactions using your local Sui keystore (e.g. `~/.sui/sui_config/sui.keystore`).
+
+### Environment Variables
+
+- `SUI_KEYSTORE_PATH` - Optional keystore path override
+
+### Tools
+
+- `get_keystore_accounts` - List keystore addresses and aliases
+- `sign_transaction_with_keystore` - Sign transaction bytes using the local keystore
+- `execute_transaction_with_keystore` - Sign and execute a transaction using the local keystore
+
+### Example: Execute tx_bytes via keystore
+
+```json
+{
+  "tool": "execute_transaction_with_keystore",
+  "params": {
+    "tx_bytes": "<base64 tx_bytes>",
+    "signer": "0x..."
+  }
+}
+```
+
 ## zkLogin (Google) Flow
 
 This MCP server supports zkLogin execution without storing any local private key. The Google login and prover steps should happen in your frontend or wallet, then pass the four fields to MCP.
