@@ -664,6 +664,16 @@
                     "event": event.name,
                     "signature": sig,
                     "address": format!("0x{}", hex::encode(address.as_bytes())),
+                    "log_index": log.log_index.map(|v| v.as_u64()),
+                    "transaction_hash": log
+                        .transaction_hash
+                        .map(|h| format!("0x{}", hex::encode(h.as_bytes()))),
+                    "block_number": log.block_number.map(|v| v.as_u64()),
+                    "topic0": log
+                        .topics
+                        .get(0)
+                        .map(|t| format!("0x{}", hex::encode(t.as_bytes()))),
+                    "data_hex": format!("0x{}", hex::encode(log.data.to_vec())),
                     "params": params
                 }));
             }
