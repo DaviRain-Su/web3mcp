@@ -125,6 +125,41 @@
         }
     }
 
+    #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]
+    async fn evm_get_gas_price(
+        &self,
+        Parameters(request): Parameters<EvmGetGasPriceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+
+        let gas_price = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_gas_price(&provider)
+            .await
+            .map_err(|e| Self::sdk_error("evm_get_gas_price:get_gas_price", e))?;
+
+        let (max_fee_per_gas, max_priority_fee_per_gas, eip1559_ok) =
+            match <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::estimate_eip1559_fees(&provider, None)
+                .await
+            {
+                Ok((max_fee, max_prio)) => (Some(max_fee), Some(max_prio), true),
+                Err(_) => (None, None, false),
+            };
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "gas_price_wei": gas_price.to_string(),
+            "eip1559": {
+                "supported": eip1559_ok,
+                "max_fee_per_gas_wei": max_fee_per_gas.map(|v| v.to_string()),
+                "max_priority_fee_per_gas_wei": max_priority_fee_per_gas.map(|v| v.to_string())
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: get balance (native ETH by default; ERC20 if token_address is provided)")]
     async fn evm_get_balance(
         &self,
@@ -187,6 +222,31 @@
             "address": request.address,
             "token_address": request.token_address,
             "balance_wei": balance.to_string()
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: get transaction receipt (includes logs)")]
+    async fn evm_get_transaction_receipt(
+        &self,
+        Parameters(request): Parameters<EvmGetTransactionReceiptRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+        let tx_hash = Self::parse_evm_h256(&request.tx_hash)?;
+
+        let receipt = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction_receipt(&provider, tx_hash)
+            .await
+            .map_err(|e| Self::sdk_error("evm_get_transaction_receipt:get_transaction_receipt", e))?;
+
+        // ethers::types::TransactionReceipt serializes via serde.
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "tx_hash": request.tx_hash,
+            "receipt": receipt
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))

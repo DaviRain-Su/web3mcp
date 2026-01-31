@@ -137,6 +137,30 @@
 
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
+            "evm_get_gas_price" => {
+                let result = self
+                    .evm_get_gas_price(Parameters(EvmGetGasPriceRequest { chain_id }))
+                    .await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "evm_get_transaction_receipt" => {
+                let tx_hash = entities
+                    .get("tx_hash")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("tx_hash is required for evm_get_transaction_receipt"),
+                        data: None,
+                    })?;
+
+                let result = self
+                    .evm_get_transaction_receipt(Parameters(EvmGetTransactionReceiptRequest {
+                        tx_hash: tx_hash.to_string(),
+                        chain_id,
+                    }))
+                    .await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
             "get_balance" => {
                 if family == "evm" {
                     let result = self
@@ -549,6 +573,12 @@
                 keywords: &["gas price", "reference gas", "手续费", "gas"],
             },
             IntentRule {
+                intent: "evm_get_gas_price",
+                action: None,
+                confidence: 0.6,
+                keywords: &["evm gas", "eth gas", "gas price on", "gas price (evm)"],
+            },
+            IntentRule {
                 intent: "get_protocol_config",
                 action: None,
                 confidence: 0.65,
@@ -583,6 +613,12 @@
                 action: None,
                 confidence: 0.55,
                 keywords: &["events", "事件"],
+            },
+            IntentRule {
+                intent: "evm_get_transaction_receipt",
+                action: None,
+                confidence: 0.55,
+                keywords: &["receipt", "tx receipt", "transaction receipt", "logs"],
             },
             // More specific than transfer
             IntentRule {
@@ -684,6 +720,19 @@
             "get_reference_gas_price" => {
                 plan.push(json!({"tool":"get_reference_gas_price","params":{}}));
             }
+            "evm_get_gas_price" => {
+                let chain_id = entities
+                    .get("network")
+                    .and_then(|v| v.get("chain_id"))
+                    .and_then(|v| v.as_u64());
+
+                plan.push(json!({
+                    "tool": "evm_get_gas_price",
+                    "params": {
+                        "chain_id": chain_id
+                    }
+                }));
+            }
             "get_protocol_config" => {
                 plan.push(json!({"tool":"get_protocol_config","params":{}}));
             }
@@ -726,6 +775,24 @@
                     "tool": "query_transaction_events",
                     "params": {
                         "digest": digest
+                    }
+                }));
+            }
+            "evm_get_transaction_receipt" => {
+                // EVM tx hashes are 0x... (already captured by extract_addresses)
+                let tx_hash = addresses.get(0).cloned().unwrap_or_else(|| "<tx_hash>".to_string());
+                entities["tx_hash"] = json!(tx_hash);
+
+                let chain_id = entities
+                    .get("network")
+                    .and_then(|v| v.get("chain_id"))
+                    .and_then(|v| v.as_u64());
+
+                plan.push(json!({
+                    "tool": "evm_get_transaction_receipt",
+                    "params": {
+                        "tx_hash": tx_hash,
+                        "chain_id": chain_id
                     }
                 }));
             }

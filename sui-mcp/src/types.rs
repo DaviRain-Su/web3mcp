@@ -52,7 +52,25 @@ pub struct EvmGetBalanceRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetGasPriceRequest {
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
+    #[schemars(description = "Transaction hash (0x...)")]
+    pub tx_hash: String,
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetTransactionReceiptRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,
     #[schemars(
