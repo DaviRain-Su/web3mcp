@@ -31,6 +31,20 @@
     ) -> Result<CallToolResult, ErrorData> {
         let sender = Self::parse_address(&request.sender)?;
         let recipient = Self::parse_address(&request.recipient)?;
+        if let Some(amount) = request.amount {
+            let threshold = request.large_transfer_threshold.unwrap_or(1_000_000_000);
+            let confirmed = request.confirm_large_transfer.unwrap_or(false);
+            if amount >= threshold && !confirmed {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "Transfer amount {} exceeds threshold {}. Set confirm_large_transfer=true to proceed",
+                        amount, threshold
+                    )),
+                    data: None,
+                });
+            }
+        }
         let auto_select = request.auto_select_coins.unwrap_or(true);
         let input_coin_ids = if request.input_coins.is_empty() && auto_select {
             let coins = self

@@ -41,7 +41,7 @@ use sui_types::object::Owner;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_types::signature::GenericSignature;
 use sui_types::sui_serde::BigInt;
-use sui_types::transaction::{CallArg, ObjectArg, Transaction, TransactionData};
+use sui_types::transaction::{CallArg, ObjectArg, Transaction, TransactionData, TransactionDataAPI};
 use sui_types::zk_login_authenticator::ZkLoginAuthenticator;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -1198,6 +1198,8 @@ struct KeystoreSignTransactionRequest {
     signer: Option<String>,
     #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
     keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1208,6 +1210,8 @@ struct KeystoreExecuteTransactionRequest {
     signer: Option<String>,
     #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
     keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1238,6 +1242,10 @@ struct BuildTransferSuiRequest {
     gas_budget: u64,
     #[schemars(description = "Automatically select input coins when empty (default: true)")]
     auto_select_coins: Option<bool>,
+    #[schemars(description = "Confirm large transfer when amount exceeds threshold (default: false)")]
+    confirm_large_transfer: Option<bool>,
+    #[schemars(description = "Large transfer threshold in raw SUI (default: 1_000_000_000 = 1 SUI)")]
+    large_transfer_threshold: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

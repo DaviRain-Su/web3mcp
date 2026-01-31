@@ -39,6 +39,18 @@
             data: None,
         })?;
 
+        let tx_sender = tx_data.sender();
+        if tx_sender != signer && !request.allow_sender_mismatch.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Signer {} does not match transaction sender {}. Set allow_sender_mismatch=true to proceed",
+                    signer, tx_sender
+                )),
+                data: None,
+            });
+        }
+
         let signature = keystore
             .sign_secure(&signer, &tx_data, shared_crypto::intent::Intent::sui_transaction())
             .await
@@ -71,6 +83,18 @@
             message: Cow::from(format!("Invalid transaction bytes: {}", e)),
             data: None,
         })?;
+
+        let tx_sender = tx_data.sender();
+        if tx_sender != signer && !request.allow_sender_mismatch.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Signer {} does not match transaction sender {}. Set allow_sender_mismatch=true to proceed",
+                    signer, tx_sender
+                )),
+                data: None,
+            });
+        }
 
         let signature = keystore
             .sign_secure(&signer, &tx_data, shared_crypto::intent::Intent::sui_transaction())

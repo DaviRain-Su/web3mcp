@@ -93,10 +93,16 @@ Once configured with Claude Desktop, you can ask Claude to:
     "amount": 10000000,
     "input_coins": [],
     "auto_select_coins": true,
+    "confirm_large_transfer": true,
     "gas_budget": 10000000
   }
 }
 ```
+
+### Safety checks
+
+- `build_transfer_sui` will require `confirm_large_transfer=true` when the amount exceeds the threshold (default: 1 SUI).
+- `sign_transaction_with_keystore` and `execute_transaction_with_keystore` require `allow_sender_mismatch=true` if the signer differs from the transaction sender.
 
 ### Example: Wallet overview
 
