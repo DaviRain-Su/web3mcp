@@ -144,6 +144,44 @@ pub struct EvmApplySlippageRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct Evm0xQuoteRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Taker address (defaults to sender in higher-level flows)")]
+    pub taker_address: Option<String>,
+    #[schemars(description = "Sell token symbol (e.g. 'eth','usdc','weth') or 0x address")]
+    pub sell_token: String,
+    #[schemars(description = "Buy token symbol or 0x address")]
+    pub buy_token: String,
+    #[schemars(
+        description = "Sell amount (e.g. '0.1', '1.5 usdc', or wei decimal string if sell_amount_is_wei=true)"
+    )]
+    pub sell_amount: String,
+    #[schemars(description = "If true, sell_amount is already in wei/base units (decimal string)")]
+    pub sell_amount_is_wei: Option<bool>,
+    #[schemars(description = "Slippage (e.g. '1%'). Default 1%")]
+    pub slippage: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct Evm0xBuildSwapTxRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Sender/taker address")]
+    pub sender: String,
+    #[schemars(description = "Sell token symbol or 0x address")]
+    pub sell_token: String,
+    #[schemars(description = "Buy token symbol or 0x address")]
+    pub buy_token: String,
+    #[schemars(description = "Sell amount (human string or wei if sell_amount_is_wei=true)")]
+    pub sell_amount: String,
+    #[schemars(description = "If true, sell_amount is already in wei/base units")]
+    pub sell_amount_is_wei: Option<bool>,
+    #[schemars(description = "Slippage (e.g. '1%'). Default 1%")]
+    pub slippage: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     pub tx_hash: String,

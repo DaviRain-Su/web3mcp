@@ -1031,6 +1031,289 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn evm_0x_base_url(chain_id: u64) -> Result<&'static str, ErrorData> {
+        // 0x Swap API v1 endpoints (subdomain-per-chain).
+        // If a chain is unsupported here, caller can still use EVM tools directly.
+        let url = match chain_id {
+            1 => "https://api.0x.org",
+            8453 => "https://base.api.0x.org",
+            10 => "https://optimism.api.0x.org",
+            42161 => "https://arbitrum.api.0x.org",
+            // testnets (best effort)
+            11155111 => "https://api.0x.org",
+            84532 => "https://base.api.0x.org",
+            11155420 => "https://optimism.api.0x.org",
+            421614 => "https://arbitrum.api.0x.org",
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "0x Swap API base url not configured for chain_id={}. Add mapping in evm_0x_base_url().",
+                        chain_id
+                    )),
+                    data: None,
+                })
+            }
+        };
+        Ok(url)
+    }
+
+    fn normalize_token_for_0x(chain_id: u64, token: &str) -> Result<String, ErrorData> {
+        let t = token.trim();
+        if t.starts_with("0x") {
+            let addr = Self::parse_evm_address(t)?;
+            return Ok(format!("0x{}", hex::encode(addr.as_bytes())));
+        }
+        let sym = t.to_lowercase();
+        if sym == "eth" {
+            // 0x API accepts ETH as native
+            return Ok("ETH".to_string());
+        }
+        let addr = Self::resolve_evm_token_address(&sym, chain_id)
+            .or_else(|| Self::resolve_evm_erc20_address(&sym, chain_id))
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Unknown token '{}'. Provide 0x address or set env EVM_{}_ADDRESS_{}",
+                    sym,
+                    sym.to_uppercase(),
+                    chain_id
+                )),
+                data: None,
+            })?;
+        let addr = Self::parse_evm_address(&addr)?;
+        Ok(format!("0x{}", hex::encode(addr.as_bytes())))
+    }
+
+    async fn evm_0x_quote_internal(
+        &self,
+        chain_id: u64,
+        taker: Option<String>,
+        sell_token: String,
+        buy_token: String,
+        sell_amount: String,
+        sell_amount_is_wei: bool,
+        slippage: Option<String>,
+    ) -> Result<Value, ErrorData> {
+        let base = Self::evm_0x_base_url(chain_id)?;
+
+        let sell_token = Self::normalize_token_for_0x(chain_id, &sell_token)?;
+        let buy_token = Self::normalize_token_for_0x(chain_id, &buy_token)?;
+
+        let sell_amount_wei = if sell_amount_is_wei {
+            ethers::types::U256::from_dec_str(sell_amount.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid sell_amount wei: {}", e)),
+                data: None,
+            })?
+        } else {
+            // Use our own parser (handles decimals for ERC20).
+            let parsed = self
+                .evm_parse_amount(Parameters(EvmParseAmountRequest {
+                    chain_id,
+                    amount: sell_amount,
+                    symbol: if sell_token == "ETH" {
+                        Some("eth".to_string())
+                    } else {
+                        None
+                    },
+                    token_address: if sell_token == "ETH" {
+                        None
+                    } else {
+                        Some(sell_token.clone())
+                    },
+                    decimals: None,
+                }))
+                .await?;
+            let j = Self::evm_extract_first_json(&parsed).ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Failed to parse evm_parse_amount response"),
+                data: None,
+            })?;
+            let w = j
+                .get("amount_wei")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Missing amount_wei"),
+                    data: None,
+                })?;
+            ethers::types::U256::from_dec_str(w).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Invalid amount_wei from parser: {}", e)),
+                data: None,
+            })?
+        };
+
+        let slippage = slippage.unwrap_or_else(|| "1%".to_string());
+        let slippage_fraction: f64 = if let Some(p) = slippage.trim().strip_suffix('%') {
+            let v: f64 = p.trim().parse().map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Invalid slippage percent"),
+                data: None,
+            })?;
+            (v / 100.0).max(0.0)
+        } else {
+            // treat as percent number
+            let v: f64 = slippage.trim().parse().map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Invalid slippage"),
+                data: None,
+            })?;
+            (v / 100.0).max(0.0)
+        };
+
+        let mut url = format!("{}/swap/v1/quote", base);
+
+        // Build query
+        let mut query: Vec<(String, String)> = vec![
+            ("sellToken".to_string(), sell_token.clone()),
+            ("buyToken".to_string(), buy_token.clone()),
+            ("sellAmount".to_string(), sell_amount_wei.to_string()),
+            (
+                "slippagePercentage".to_string(),
+                format!("{}", slippage_fraction),
+            ),
+        ];
+        if let Some(t) = taker.as_deref() {
+            let taker_addr = Self::parse_evm_address(t)?;
+            query.push((
+                "takerAddress".to_string(),
+                format!("0x{}", hex::encode(taker_addr.as_bytes())),
+            ));
+        }
+
+        let qs = query
+            .into_iter()
+            .map(|(k, v)| {
+                format!(
+                    "{}={}",
+                    urlencoding::encode(&k),
+                    urlencoding::encode(&v)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("&");
+        url.push('?');
+        url.push_str(&qs);
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("0x quote request failed: {}", e)),
+                data: None,
+            })?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("0x quote http {}: {}", status, text)),
+                data: None,
+            });
+        }
+
+        let v = serde_json::from_str::<Value>(&text).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Invalid 0x quote JSON: {}", e)),
+            data: None,
+        })?;
+
+        Ok(v)
+    }
+
+    #[tool(description = "EVM: 0x Swap API quote (returns to/data/value + amounts + allowanceTarget)")]
+    async fn evm_0x_quote(
+        &self,
+        Parameters(request): Parameters<Evm0xQuoteRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let v = self
+            .evm_0x_quote_internal(
+                request.chain_id,
+                request.taker_address.clone(),
+                request.sell_token.clone(),
+                request.buy_token.clone(),
+                request.sell_amount.clone(),
+                request.sell_amount_is_wei.unwrap_or(false),
+                request.slippage.clone(),
+            )
+            .await?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id,
+            "quote": v
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: build a swap tx using 0x Swap API (returns EvmTxRequest; safe to preflight/sign/broadcast)")]
+    async fn evm_0x_build_swap_tx(
+        &self,
+        Parameters(request): Parameters<Evm0xBuildSwapTxRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let sender = Self::parse_evm_address(&request.sender)?;
+
+        let quote = self
+            .evm_0x_quote_internal(
+                request.chain_id,
+                Some(request.sender.clone()),
+                request.sell_token.clone(),
+                request.buy_token.clone(),
+                request.sell_amount.clone(),
+                request.sell_amount_is_wei.unwrap_or(false),
+                request.slippage.clone(),
+            )
+            .await?;
+
+        let to = quote
+            .get("to")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("0x quote missing 'to'"),
+                data: None,
+            })?;
+        let data = quote
+            .get("data")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("0x quote missing 'data'"),
+                data: None,
+            })?;
+        let value = quote
+            .get("value")
+            .and_then(Value::as_str)
+            .unwrap_or("0");
+
+        let tx = EvmTxRequest {
+            chain_id: request.chain_id,
+            from: format!("0x{}", hex::encode(sender.as_bytes())),
+            to: to.to_string(),
+            value_wei: value.to_string(),
+            data_hex: Some(data.to_string()),
+            nonce: None,
+            gas_limit: None,
+            max_fee_per_gas_wei: None,
+            max_priority_fee_per_gas_wei: None,
+        };
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id,
+            "sender": request.sender,
+            "tx": tx,
+            "quote": quote,
+            "note": "Run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction (or use intent confirm flow)"
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: compute event topic0 (keccak256(signature))")]
     async fn evm_event_topic0(
         &self,

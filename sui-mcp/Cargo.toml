@@ -33,3 +33,5 @@ sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk", 
 ethers = { version = "2", default-features = false, features = ["abigen", "rustls"] }
 hex = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+urlencoding = "2.1"
