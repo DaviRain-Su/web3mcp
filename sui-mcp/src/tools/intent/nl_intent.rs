@@ -200,6 +200,169 @@
                     .await?;
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
+            "evm_contract_dry_run" => {
+                let chain_id = chain_id.ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("chain_id is required for EVM contract calls"),
+                    data: None,
+                })?;
+
+                let sender = sender;
+                if sender.starts_with('<') {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("sender is required for EVM contract calls"),
+                        data: None,
+                    });
+                }
+
+                let contract_query = entities
+                    .get("contract_query")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Missing contract identifier. Say e.g. 'call balanceOf on usdc on Base' or provide a contract 0x... address.",
+                        ),
+                        data: None,
+                    })?;
+
+                let function_hint = entities
+                    .get("function_hint")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
+
+                // 1) Plan.
+                let planned = self
+                    .evm_plan_contract_call(Parameters(EvmPlanContractCallRequest {
+                        chain_id,
+                        address: None,
+                        contract_name: None,
+                        contract_query: Some(contract_query.clone()),
+                        accept_best_match: Some(true),
+                        text: text.clone(),
+                        function_hint,
+                        limit: Some(5),
+                    }))
+                    .await?;
+
+                let planned_json = Self::extract_first_json(&planned).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse evm_plan_contract_call response"),
+                    data: None,
+                })?;
+
+                let top = planned_json
+                    .get("candidates")
+                    .and_then(Value::as_array)
+                    .and_then(|arr| arr.first())
+                    .cloned()
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("No candidates returned by evm_plan_contract_call"),
+                        data: None,
+                    })?;
+
+                let signature = top
+                    .get("signature")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Missing signature in plan candidate"),
+                        data: None,
+                    })?
+                    .to_string();
+
+                let filled_args = top.get("filled_args").cloned().unwrap_or(json!([]));
+                let missing = top
+                    .get("missing")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+
+                // If there are missing args, stop here (safe by default).
+                if !missing.is_empty() {
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "mode": "dry_run_only",
+                        "plan": planned_json,
+                        "selected": {
+                            "function_signature": signature,
+                            "filled_args": filled_args,
+                            "missing": missing
+                        },
+                        "next": {
+                            "how": "Provide the missing args, then call evm_build_contract_tx (or evm_execute_contract_call with dry_run_only=true)",
+                            "suggested_build": {
+                                "chain_id": chain_id,
+                                "sender": sender,
+                                "contract_query": contract_query,
+                                "accept_best_match": true,
+                                "function": top.get("function"),
+                                "function_signature": signature,
+                                "args": filled_args
+                            }
+                        }
+                    }))?;
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+
+                // 2) Build.
+                let built = self
+                    .evm_build_contract_tx(Parameters(EvmBuildContractTxRequest {
+                        chain_id,
+                        sender: sender.clone(),
+                        address: None,
+                        contract_name: None,
+                        contract_query: Some(contract_query),
+                        accept_best_match: Some(true),
+                        function: top
+                            .get("function")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                        function_signature: Some(signature),
+                        args: Some(filled_args),
+                        value_wei: None,
+                        gas_limit: None,
+                    }))
+                    .await?;
+
+                let built_json = Self::extract_first_json(&built).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse evm_build_contract_tx response"),
+                    data: None,
+                })?;
+                let tx: EvmTxRequest = serde_json::from_value(
+                    built_json.get("tx").cloned().unwrap_or(Value::Null),
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to decode built tx: {}", e)),
+                    data: None,
+                })?;
+
+                // 3) Preflight.
+                let preflight = self
+                    .evm_preflight(Parameters(EvmPreflightRequest { tx }))
+                    .await?;
+                let preflight_json = Self::extract_first_json(&preflight).ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Failed to parse evm_preflight response"),
+                    data: None,
+                })?;
+
+                let response = Self::pretty_json(&json!({
+                    "resolved_network": resolved_network,
+                    "mode": "dry_run_only",
+                    "plan": planned_json,
+                    "build": built_json,
+                    "preflight": preflight_json,
+                    "note": "Safe default: not signed or broadcast. If this looks correct, explicitly confirm before executing." 
+                }))?;
+                return Ok(CallToolResult::success(vec![Content::text(response)]));
+            }
             "get_balance" => {
                 if family == "evm" {
                     let result = self
@@ -788,6 +951,23 @@
                 confidence: 0.55,
                 keywords: &["receipt", "tx receipt", "transaction receipt", "logs"],
             },
+            // Generic EVM contract interaction (safe by default: dry-run only).
+            IntentRule {
+                intent: "evm_contract_dry_run",
+                action: None,
+                confidence: 0.55,
+                keywords: &[
+                    "contract call",
+                    "call",
+                    "execute",
+                    "approve",
+                    "allowance",
+                    "balanceof",
+                    "deposit",
+                    "withdraw",
+                    "swap",
+                ],
+            },
             // More specific than transfer
             IntentRule {
                 intent: "transfer_object",
@@ -979,6 +1159,44 @@
                     }
                 }));
             }
+            "evm_contract_dry_run" => {
+                let family = entities
+                    .get("network")
+                    .and_then(|v| v.get("family"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("sui");
+
+                if family != "evm" {
+                    // If user asked for contract call but we're not on EVM, leave plan empty (unknown).
+                    intent = "unknown".to_string();
+                } else {
+                    let chain_id = entities
+                        .get("network")
+                        .and_then(|v| v.get("chain_id"))
+                        .and_then(|v| v.as_u64());
+
+                    let contract_query = Self::extract_contract_query(lower)
+                        .or_else(|| addresses.last().cloned());
+                    entities["contract_query"] = json!(contract_query);
+
+                    let function_hint = Self::extract_function_hint(lower);
+                    entities["function_hint"] = json!(function_hint);
+
+                    plan.push(json!({
+                        "tool": "evm_plan_contract_call",
+                        "params": {
+                            "chain_id": chain_id,
+                            "contract_query": contract_query,
+                            "accept_best_match": true,
+                            "text": text,
+                            "function_hint": function_hint,
+                            "limit": 5
+                        }
+                    }));
+
+                    // NOTE: safe by default; do not sign/broadcast unless explicitly confirmed.
+                }
+            }
             "transfer" => {
                 let recipient = addresses.get(0).cloned().unwrap_or_else(|| "<recipient>".to_string());
                 entities["recipient"] = json!(recipient);
@@ -1155,6 +1373,59 @@
 
     fn match_any(lower: &str, needles: &[&str]) -> bool {
         needles.iter().any(|needle| lower.contains(needle))
+    }
+
+    fn extract_contract_query(lower: &str) -> Option<String> {
+        let l = lower.trim();
+
+        // Try: "... on <contract>" (take the last ' on ' to avoid network 'on base').
+        if let Some(idx) = l.rfind(" on ") {
+            let mut tail = l[(idx + 4)..].trim().to_string();
+            for stop in [" on ", " with ", " for ", " to ", " using "] {
+                if let Some(j) = tail.find(stop) {
+                    tail = tail[..j].trim().to_string();
+                }
+            }
+            tail = tail
+                .trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c))
+                .to_string();
+            if !tail.is_empty() {
+                return Some(tail);
+            }
+        }
+
+        // Try: "contract <...>"
+        if let Some(idx) = l.find("contract ") {
+            let tail = l[(idx + "contract ".len())..]
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches(|c: char| ",.;:()[]{}<>\"'".contains(c))
+                .to_string();
+            if !tail.is_empty() {
+                return Some(tail);
+            }
+        }
+
+        None
+    }
+
+    fn extract_function_hint(lower: &str) -> Option<String> {
+        const HINTS: &[(&str, &[&str])] = &[
+            ("approve", &["approve", "授权"]),
+            ("transfer", &["transfer", "转账", "发送"]),
+            ("swap", &["swap", "兑换", "换"]),
+            ("deposit", &["deposit", "存入"]),
+            ("withdraw", &["withdraw", "提取", "取出"]),
+            ("mint", &["mint", "铸造"]),
+        ];
+
+        for (hint, words) in HINTS.iter() {
+            if words.iter().any(|w| lower.contains(w)) {
+                return Some((*hint).to_string());
+            }
+        }
+        None
     }
 
     fn extract_arabic_number(text: &str) -> Option<String> {
