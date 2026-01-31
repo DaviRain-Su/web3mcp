@@ -33,6 +33,7 @@ fn main() {
         "src/tools/system/stats/system_stats.rs",
         "src/tools/system/coins/coin_read.rs",
         "src/tools/system/chain/chain_info.rs",
+        "src/tools/evm/evm_tools.rs",
     ];
 
     let mut content = String::from("#[tool_router]\nimpl SuiMcpServer {\n");

@@ -1126,6 +1126,90 @@ struct GetAllBalancesRequest {
     address: String,
 }
 
+// ---- EVM / Base (experimental multi-chain) ----
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmGetBalanceRequest {
+    #[schemars(description = "EVM address (0x...) to query")]
+    address: String,
+    #[schemars(description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)")]
+    chain_id: Option<u64>,
+    #[schemars(description = "Optional ERC20 token contract address. If omitted, returns native ETH balance.")]
+    token_address: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmGetTransactionRequest {
+    #[schemars(description = "Transaction hash (0x...)")]
+    tx_hash: String,
+    #[schemars(description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)")]
+    chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmBuildTransferNativeRequest {
+    #[schemars(description = "Sender address (0x...)")]
+    sender: String,
+    #[schemars(description = "Recipient address (0x...)")]
+    recipient: String,
+    #[schemars(description = "Amount in wei (decimal string or 0x hex)")]
+    amount_wei: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+    #[schemars(description = "Optional hex calldata (0x...) for advanced use")]
+    data_hex: Option<String>,
+    #[schemars(description = "Optional gas limit override")]
+    gas_limit: Option<u64>,
+    #[schemars(description = "Require explicit confirmation for large transfers")]
+    confirm_large_transfer: Option<bool>,
+    #[schemars(description = "Large transfer threshold in wei (default 0.1 ETH)")]
+    large_transfer_threshold_wei: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+struct EvmTxRequest {
+    #[schemars(description = "Chain id")]
+    chain_id: u64,
+    #[schemars(description = "Sender address")]
+    from: String,
+    #[schemars(description = "Recipient address")]
+    to: String,
+    #[schemars(description = "Value in wei (decimal string)")]
+    value_wei: String,
+    #[schemars(description = "Optional calldata (0x...) ")]
+    data_hex: Option<String>,
+    #[schemars(description = "Transaction nonce")]
+    nonce: Option<u64>,
+    #[schemars(description = "Gas limit")]
+    gas_limit: Option<u64>,
+    #[schemars(description = "EIP-1559 maxFeePerGas in wei (decimal string)")]
+    max_fee_per_gas_wei: Option<String>,
+    #[schemars(description = "EIP-1559 maxPriorityFeePerGas in wei (decimal string)")]
+    max_priority_fee_per_gas_wei: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmPreflightRequest {
+    #[schemars(description = "Transaction request to preflight (fills missing nonce/gas/fees)")]
+    tx: EvmTxRequest,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmSignLocalRequest {
+    #[schemars(description = "Transaction request (must include nonce, gas_limit, and fees)")]
+    tx: EvmTxRequest,
+    #[schemars(description = "Allow signer address to differ from tx.from")]
+    allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmSendRawTransactionRequest {
+    #[schemars(description = "Raw signed tx hex (0x...)")]
+    raw_tx: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct GetObjectRequest {
     #[schemars(description = "The object ID to query (hex format starting with 0x)")]
