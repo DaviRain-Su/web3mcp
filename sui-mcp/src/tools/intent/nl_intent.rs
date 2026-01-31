@@ -239,41 +239,16 @@
                 })?;
 
                 let exec = self
-                    .execute_zklogin_transaction(Parameters(ZkLoginExecuteTransactionRequest {
+                    .execute_zklogin_intent_tx(
                         tx_bytes,
-                        zk_login_inputs_json: request.zk_login_inputs_json.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("zk_login_inputs_json required"),
-                            data: None,
-                        })?,
-                        address_seed: request.address_seed.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("address_seed required"),
-                            data: None,
-                        })?,
-                        max_epoch: request.max_epoch.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("max_epoch required"),
-                            data: None,
-                        })?,
-                        user_signature: request.user_signature.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("user_signature required"),
-                            data: None,
-                        })?,
-                    }))
+                        request.zk_login_inputs_json.clone(),
+                        request.address_seed.clone(),
+                        request.max_epoch,
+                        request.user_signature.clone(),
+                    )
                     .await?;
 
-                let payload = Self::extract_first_json(&exec).unwrap_or(json!({
-                    "raw": Self::extract_text(&exec)
-                }));
-
-                let response = Self::pretty_json(&json!({
-                    "resolved_network": resolved_network,
-                    "result": payload
-                }))?;
-
-                return Ok(CallToolResult::success(vec![Content::text(response)]));
+                return Self::wrap_resolved_network_result(&resolved_network, &exec);
             }
             "unstake" => {
                 let staked_sui = staked_sui.ok_or_else(|| ErrorData {
@@ -297,41 +272,16 @@
                 })?;
 
                 let exec = self
-                    .execute_zklogin_transaction(Parameters(ZkLoginExecuteTransactionRequest {
+                    .execute_zklogin_intent_tx(
                         tx_bytes,
-                        zk_login_inputs_json: request.zk_login_inputs_json.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("zk_login_inputs_json required"),
-                            data: None,
-                        })?,
-                        address_seed: request.address_seed.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("address_seed required"),
-                            data: None,
-                        })?,
-                        max_epoch: request.max_epoch.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("max_epoch required"),
-                            data: None,
-                        })?,
-                        user_signature: request.user_signature.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("user_signature required"),
-                            data: None,
-                        })?,
-                    }))
+                        request.zk_login_inputs_json.clone(),
+                        request.address_seed.clone(),
+                        request.max_epoch,
+                        request.user_signature.clone(),
+                    )
                     .await?;
 
-                let payload = Self::extract_first_json(&exec).unwrap_or(json!({
-                    "raw": Self::extract_text(&exec)
-                }));
-
-                let response = Self::pretty_json(&json!({
-                    "resolved_network": resolved_network,
-                    "result": payload
-                }))?;
-
-                return Ok(CallToolResult::success(vec![Content::text(response)]));
+                return Self::wrap_resolved_network_result(&resolved_network, &exec);
             }
             "mint" | "borrow" | "lend" => {
                 let package = request.package.ok_or_else(|| ErrorData {
