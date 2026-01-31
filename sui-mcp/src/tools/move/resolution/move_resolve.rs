@@ -161,21 +161,7 @@
         let (_module_def, function_def) =
             Self::get_normalized_move_function_def(&modules, &request.module, &request.function)?;
 
-        let type_args = (0..function_def.type_parameters.len())
-            .map(|index| format!("<T{}>", index))
-            .collect::<Vec<_>>();
-        let arguments = function_def
-            .parameters
-            .iter()
-            .map(|param| {
-                let (_kind, placeholder, is_object) = Self::move_param_hint(param);
-                if is_object {
-                    json!("<auto>")
-                } else {
-                    placeholder
-                }
-            })
-            .collect::<Vec<_>>();
+        let (type_args, arguments) = Self::build_move_call_payload_template(function_def);
 
         let form_schema = self
             .build_move_call_form_schema(

@@ -51,3 +51,22 @@
             })
             .collect::<Result<Vec<TypeTag>, _>>()
     }
+
+    fn build_move_call_payload_template(
+        function_def: &SuiMoveNormalizedFunction,
+    ) -> (Vec<String>, Vec<Value>) {
+        let type_args = (0..function_def.type_parameters.len())
+            .map(|index| format!("<T{}>", index))
+            .collect::<Vec<_>>();
+
+        let arguments = function_def
+            .parameters
+            .iter()
+            .map(|param| {
+                let (_kind, placeholder, is_object) = Self::move_param_hint(param);
+                if is_object { json!("<auto>") } else { placeholder }
+            })
+            .collect::<Vec<_>>();
+
+        (type_args, arguments)
+    }
