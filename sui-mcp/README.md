@@ -55,6 +55,14 @@ Add this to your Claude Desktop configuration file:
 
 - `SUI_RPC_URL` - The Sui RPC endpoint to use (defaults to `https://fullnode.mainnet.sui.io:443`)
 
+Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
+- `SUI_USDC_COIN_TYPE` - Full Sui coin type string for USDC (e.g. `0x...::usdc::USDC`)
+- `SUI_USDT_COIN_TYPE` - Full Sui coin type string for USDT (e.g. `0x...::usdt::USDT`)
+
+How to find these values:
+- Use a Sui token list / explorer for your target network (mainnet/testnet) and copy the **coin type** string.
+- Keep them as env vars so you can change networks without rebuilding.
+
 Available networks:
 - **Mainnet**: `https://fullnode.mainnet.sui.io:443`
 - **Testnet**: `https://fullnode.testnet.sui.io:443`
