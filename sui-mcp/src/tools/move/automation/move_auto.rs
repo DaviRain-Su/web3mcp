@@ -75,30 +75,13 @@
     ) -> Result<CallToolResult, ErrorData> {
         let sender = Self::parse_address(&request.sender)?;
         let package = Self::parse_object_id(&request.package)?;
-        let gas = match request.gas_object_id {
-            Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
-            None => None,
-        };
+        let gas = request
+            .gas_object_id
+            .as_deref()
+            .map(Self::parse_object_id)
+            .transpose()?;
 
-        let type_args = request
-            .type_args
-            .into_iter()
-            .enumerate()
-            .map(|(index, arg)| {
-                let tag = SuiTypeTag::new(arg);
-                if let Err(error) = tag.clone().try_into() as Result<TypeTag, _> {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(format!(
-                            "Invalid type arg at index {}: {}",
-                            index, error
-                        )),
-                        data: None,
-                    });
-                }
-                Ok(tag)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let type_args = Self::parse_type_args(request.type_args)?;
         let call_args = Self::parse_json_args(&request.arguments)?;
 
         let tx_data = self
@@ -118,42 +101,16 @@
             .await
             .map_err(|e| Self::sdk_error("auto_execute_move_call", e))?;
 
-        let tx_bytes = Self::encode_tx_bytes(&tx_data)?;
-        let signature_bytes = Self::decode_base64("user_signature", &request.user_signature)?;
-        let user_signature = Signature::from_bytes(&signature_bytes).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid user signature: {}", e)),
-            data: None,
-        })?;
-
-        let zk_login_inputs =
-            ZkLoginInputs::from_json(&request.zk_login_inputs_json, &request.address_seed)
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(format!("Invalid zkLogin inputs: {}", e)),
-                    data: None,
-                })?;
-
-        let zklogin_authenticator =
-            ZkLoginAuthenticator::new(zk_login_inputs, request.max_epoch, user_signature);
-        let tx = Transaction::from_generic_sig_data(
-            tx_data,
-            vec![GenericSignature::ZkLoginAuthenticator(zklogin_authenticator)],
-        );
-
-        let options = SuiTransactionBlockResponseOptions::new()
-            .with_input()
-            .with_effects()
-            .with_events()
-            .with_object_changes()
-            .with_balance_changes();
-
-        let result = self
-            .client
-            .quorum_driver_api()
-            .execute_transaction_block(tx, options, None)
-            .await
-            .map_err(|e| Self::sdk_error("auto_execute_move_call", e))?;
+        let (tx_bytes, result) = self
+            .execute_tx_with_zklogin(
+                tx_data,
+                &request.user_signature,
+                &request.zk_login_inputs_json,
+                &request.address_seed,
+                request.max_epoch,
+                "auto_execute_move_call",
+            )
+            .await?;
 
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
@@ -224,24 +181,7 @@
             .get("gas_price")
             .and_then(|value| value.as_u64());
 
-        let type_args = type_args_strings
-            .into_iter()
-            .enumerate()
-            .map(|(index, arg)| {
-                let tag = SuiTypeTag::new(arg);
-                if let Err(error) = tag.clone().try_into() as Result<TypeTag, _> {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(format!(
-                            "Invalid type arg at index {}: {}",
-                            index, error
-                        )),
-                        data: None,
-                    });
-                }
-                Ok(tag)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let type_args = Self::parse_type_args(type_args_strings)?;
         let call_args = Self::parse_json_args(&arguments)?;
         let gas = match gas_object_id {
             Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
@@ -265,40 +205,16 @@
             .await
             .map_err(|e| Self::sdk_error("auto_execute_move_call_filled", e))?;
 
-        let tx_bytes = Self::encode_tx_bytes(&tx_data)?;
-        let signature_bytes = Self::decode_base64("user_signature", &request.user_signature)?;
-        let user_signature = Signature::from_bytes(&signature_bytes).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid user signature: {}", e)),
-            data: None,
-        })?;
-        let zk_login_inputs =
-            ZkLoginInputs::from_json(&request.zk_login_inputs_json, &request.address_seed)
-                .map_err(|e| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(format!("Invalid zkLogin inputs: {}", e)),
-                    data: None,
-                })?;
-
-        let zklogin_authenticator =
-            ZkLoginAuthenticator::new(zk_login_inputs, request.max_epoch, user_signature);
-        let tx = Transaction::from_generic_sig_data(
-            tx_data,
-            vec![GenericSignature::ZkLoginAuthenticator(zklogin_authenticator)],
-        );
-
-        let options = SuiTransactionBlockResponseOptions::new()
-            .with_input()
-            .with_effects()
-            .with_events()
-            .with_object_changes()
-            .with_balance_changes();
-        let result = self
-            .client
-            .quorum_driver_api()
-            .execute_transaction_block(tx, options, None)
-            .await
-            .map_err(|e| Self::sdk_error("auto_execute_move_call_filled", e))?;
+        let (tx_bytes, result) = self
+            .execute_tx_with_zklogin(
+                tx_data,
+                &request.user_signature,
+                &request.zk_login_inputs_json,
+                &request.address_seed,
+                request.max_epoch,
+                "auto_execute_move_call_filled",
+            )
+            .await?;
 
         let summary = Self::summarize_transaction(&result);
         let modules = self
@@ -337,4 +253,73 @@
             "tx_bytes": tx_bytes
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    fn parse_type_args(type_args: Vec<String>) -> Result<Vec<SuiTypeTag>, ErrorData> {
+        type_args
+            .into_iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                let tag = SuiTypeTag::new(arg);
+                if let Err(error) = tag.clone().try_into() as Result<TypeTag, _> {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!(
+                            "Invalid type arg at index {}: {}",
+                            index, error
+                        )),
+                        data: None,
+                    });
+                }
+                Ok(tag)
+            })
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    async fn execute_tx_with_zklogin(
+        &self,
+        tx_data: TransactionData,
+        user_signature_base64: &str,
+        zk_login_inputs_json: &str,
+        address_seed: &str,
+        max_epoch: u64,
+        context: &str,
+    ) -> Result<(String, SuiTransactionBlockResponse), ErrorData> {
+        let tx_bytes = Self::encode_tx_bytes(&tx_data)?;
+
+        let signature_bytes = Self::decode_base64("user_signature", user_signature_base64)?;
+        let user_signature = Signature::from_bytes(&signature_bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid user signature: {}", e)),
+            data: None,
+        })?;
+
+        let zk_login_inputs = ZkLoginInputs::from_json(zk_login_inputs_json, address_seed)
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid zkLogin inputs: {}", e)),
+                data: None,
+            })?;
+
+        let zklogin_authenticator = ZkLoginAuthenticator::new(zk_login_inputs, max_epoch, user_signature);
+        let tx = Transaction::from_generic_sig_data(
+            tx_data,
+            vec![GenericSignature::ZkLoginAuthenticator(zklogin_authenticator)],
+        );
+
+        let options = SuiTransactionBlockResponseOptions::new()
+            .with_input()
+            .with_effects()
+            .with_events()
+            .with_object_changes()
+            .with_balance_changes();
+
+        let result = self
+            .client
+            .quorum_driver_api()
+            .execute_transaction_block(tx, options, None)
+            .await
+            .map_err(|e| Self::sdk_error(context, e))?;
+
+        Ok((tx_bytes, result))
     }
