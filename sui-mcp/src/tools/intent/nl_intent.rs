@@ -650,46 +650,23 @@
                     .and_then(|v| v.get("chain_id"))
                     .and_then(|v| v.as_u64());
 
-                // For EVM we keep the plan explicit: build -> preflight -> sign -> send.
-                // amount_wei is left as a placeholder because humans usually speak in ETH.
-                let amount_wei = entities
+                // For EVM, prefer a one-step tool for machine-executable plans.
+                // Humans naturally specify ETH units (e.g. 0.001), not wei.
+                let amount = entities
                     .get("amount")
                     .and_then(|v| v.as_str())
-                    .and_then(|v| ethers::utils::parse_units(v, 18).ok())
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "<amount_wei>".to_string());
+                    .unwrap_or("<amount_eth>");
 
                 plan.push(json!({
-                    "tool": "evm_build_transfer_native",
+                    "tool": "evm_execute_transfer_native",
                     "params": {
                         "sender": sender,
                         "recipient": recipient,
-                        "amount_wei": amount_wei,
+                        "amount": amount,
                         "chain_id": chain_id,
-                        "data_hex": null,
                         "gas_limit": null,
                         "confirm_large_transfer": false,
                         "large_transfer_threshold_wei": null
-                    }
-                }));
-                plan.push(json!({
-                    "tool": "evm_preflight",
-                    "params": {
-                        "tx": "<evm_tx_from_previous_step>"
-                    }
-                }));
-                plan.push(json!({
-                    "tool": "evm_sign_transaction_local",
-                    "params": {
-                        "tx": "<evm_tx_from_previous_step>",
-                        "allow_sender_mismatch": false
-                    }
-                }));
-                plan.push(json!({
-                    "tool": "evm_send_raw_transaction",
-                    "params": {
-                        "raw_tx": "<raw_tx_from_previous_step>",
-                        "chain_id": chain_id
                     }
                 }));
             } else {

@@ -461,6 +461,19 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn evm_extract_first_json(result: &CallToolResult) -> Option<Value> {
+        let content = result.content.first()?;
+        let text = match &content.raw {
+            RawContent::Text(text) => Some(text.text.clone()),
+            RawContent::Resource(resource) => match &resource.resource {
+                ResourceContents::TextResourceContents { text, .. } => Some(text.clone()),
+                _ => None,
+            },
+            _ => None,
+        }?;
+        serde_json::from_str::<Value>(&text).ok()
+    }
+
     fn evm_explorer_tx_url(chain_id: u64, tx_hash: &str) -> Option<String> {
         let base = match chain_id {
             8453 => "https://basescan.org/tx/",
@@ -507,6 +520,113 @@
             "chain_id": chain_id,
             "tx_hash": tx_hash,
             "explorer_url": explorer_url
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: one-step native transfer (build -> preflight -> sign -> send). Amount is in ETH (18 decimals).")]
+    async fn evm_execute_transfer_native(
+        &self,
+        Parameters(request): Parameters<EvmExecuteTransferNativeRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request
+            .chain_id
+            .unwrap_or(Self::evm_default_chain_id()?);
+
+        let amount_wei = ethers::utils::parse_units(&request.amount, 18).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid amount (expected ETH units): {}", e)),
+            data: None,
+        })?;
+
+        let built = self
+            .evm_build_transfer_native(Parameters(EvmBuildTransferNativeRequest {
+                sender: request.sender.clone(),
+                recipient: request.recipient.clone(),
+                amount_wei: amount_wei.to_string(),
+                chain_id: Some(chain_id),
+                data_hex: None,
+                gas_limit: request.gas_limit,
+                confirm_large_transfer: request.confirm_large_transfer,
+                large_transfer_threshold_wei: request.large_transfer_threshold_wei.clone(),
+            }))
+            .await?;
+
+        let built_json = Self::evm_extract_first_json(&built).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_build_transfer_native result"),
+            data: None,
+        })?;
+        let built_json_for_return = built_json.clone();
+
+        let tx: EvmTxRequest = serde_json::from_value(built_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode EVM tx: {}", e)),
+            data: None,
+        })?;
+
+        let preflight = self
+            .evm_preflight(Parameters(EvmPreflightRequest { tx: tx.clone() }))
+            .await?;
+
+        let pre_json = Self::evm_extract_first_json(&preflight).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_preflight result"),
+            data: None,
+        })?;
+        let pre_json_for_return = pre_json.clone();
+
+        let tx_val = pre_json.get("tx").cloned().unwrap_or_else(|| pre_json.clone());
+        let tx: EvmTxRequest = serde_json::from_value(tx_val).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+            data: None,
+        })?;
+
+        let signed = self
+            .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
+                tx: tx.clone(),
+                allow_sender_mismatch: Some(false),
+            }))
+            .await?;
+
+        let signed_json = Self::evm_extract_first_json(&signed).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_sign_transaction_local result"),
+            data: None,
+        })?;
+
+        let raw_tx = signed_json
+            .get("raw_tx")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Missing raw_tx from signer"),
+                data: None,
+            })?
+            .to_string();
+        let raw_tx_prefix = raw_tx.chars().take(18).collect::<String>();
+
+        let sent = self
+            .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
+                raw_tx,
+                chain_id: Some(chain_id),
+            }))
+            .await?;
+
+        let sent_json = Self::evm_extract_first_json(&sent).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_send_raw_transaction result"),
+            data: None,
+        })?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "tx_built": built_json_for_return,
+            "tx_preflight": pre_json_for_return,
+            "raw_tx_prefix": raw_tx_prefix,
+            "send": sent_json
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))

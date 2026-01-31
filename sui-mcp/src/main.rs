@@ -1219,6 +1219,24 @@ struct EvmSendRawTransactionRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmExecuteTransferNativeRequest {
+    #[schemars(description = "Sender address (0x...)")]
+    sender: String,
+    #[schemars(description = "Recipient address (0x...)")]
+    recipient: String,
+    #[schemars(description = "Amount in ETH units (18 decimals), e.g. '0.001'")]
+    amount: String,
+    #[schemars(description = "Optional chain id")]
+    chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    gas_limit: Option<u64>,
+    #[schemars(description = "Require explicit confirmation for large transfers")]
+    confirm_large_transfer: Option<bool>,
+    #[schemars(description = "Large transfer threshold in wei (default 0.1 ETH)")]
+    large_transfer_threshold_wei: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct GetObjectRequest {
     #[schemars(description = "The object ID to query (hex format starting with 0x)")]
     object_id: String,
