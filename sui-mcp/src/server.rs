@@ -1,6 +1,14 @@
-use crate::SuiMcpServer;
 use anyhow::{bail, Result};
-use sui_sdk::SuiClientBuilder;
+use rmcp::handler::server::router::tool::ToolRouter;
+use sui_sdk::{SuiClient, SuiClientBuilder};
+
+/// Sui MCP Server - provides tools for interacting with the Sui blockchain via RPC
+#[derive(Clone)]
+pub struct SuiMcpServer {
+    pub rpc_url: String,
+    pub client: SuiClient,
+    pub tool_router: ToolRouter<Self>,
+}
 
 impl SuiMcpServer {
     pub async fn new(rpc_url: Option<String>, network: Option<String>) -> Result<Self> {
