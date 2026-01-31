@@ -458,6 +458,7 @@ pub fn mark_failed(conn: &rusqlite::Connection, id: &str, err: &str) -> Result<(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_row(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorData> {
     conn.execute("DELETE FROM evm_pending_confirmations WHERE id = ?1", [id])
         .map_err(|e| ErrorData {
