@@ -633,12 +633,19 @@
 
                 // For EVM we keep the plan explicit: build -> preflight -> sign -> send.
                 // amount_wei is left as a placeholder because humans usually speak in ETH.
+                let amount_wei = entities
+                    .get("amount")
+                    .and_then(|v| v.as_str())
+                    .and_then(|v| ethers::utils::parse_units(v, 18).ok())
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "<amount_wei>".to_string());
+
                 plan.push(json!({
                     "tool": "evm_build_transfer_native",
                     "params": {
                         "sender": sender,
                         "recipient": recipient,
-                        "amount_wei": "<amount_wei>",
+                        "amount_wei": amount_wei,
                         "chain_id": chain_id,
                         "data_hex": null,
                         "gas_limit": null,

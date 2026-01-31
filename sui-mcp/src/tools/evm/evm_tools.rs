@@ -461,6 +461,21 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn evm_explorer_tx_url(chain_id: u64, tx_hash: &str) -> Option<String> {
+        let base = match chain_id {
+            8453 => "https://basescan.org/tx/",
+            84532 => "https://sepolia.basescan.org/tx/",
+            1 => "https://etherscan.io/tx/",
+            11155111 => "https://sepolia.etherscan.io/tx/",
+            42161 => "https://arbiscan.io/tx/",
+            421614 => "https://sepolia.arbiscan.io/tx/",
+            56 => "https://bscscan.com/tx/",
+            97 => "https://testnet.bscscan.com/tx/",
+            _ => return None,
+        };
+        Some(format!("{}{}", base, tx_hash))
+    }
+
     #[tool(description = "EVM: broadcast a raw signed transaction")]
     async fn evm_send_raw_transaction(
         &self,
@@ -485,10 +500,13 @@
         .await
         .map_err(|e| Self::sdk_error("evm_send_raw_transaction", e))?;
 
-        let tx_hash = pending.tx_hash();
+        let tx_hash = format!("0x{}", hex::encode(pending.tx_hash().as_bytes()));
+        let explorer_url = Self::evm_explorer_tx_url(chain_id, &tx_hash);
+
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
-            "tx_hash": format!("0x{}", hex::encode(tx_hash.as_bytes()))
+            "tx_hash": tx_hash,
+            "explorer_url": explorer_url
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
