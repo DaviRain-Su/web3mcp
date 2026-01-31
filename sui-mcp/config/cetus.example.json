@@ -1,0 +1,52 @@
+{
+  "networks": {
+    "mainnet": {
+      "package_id": "0xYOUR_MAINNET_PACKAGE_ID",
+      "actions": {
+        "swap": { "module": "pool", "function": "swap" },
+        "swap_exact_in": { "module": "pool", "function": "swap_exact_in" },
+        "swap_exact_out": { "module": "pool", "function": "swap_exact_out" },
+        "add_liquidity": { "module": "pool", "function": "add_liquidity" },
+        "remove_liquidity": { "module": "pool", "function": "remove_liquidity" },
+        "open_position": { "module": "position", "function": "open_position" },
+        "close_position": { "module": "position", "function": "close_position" },
+        "increase_liquidity": { "module": "position", "function": "increase_liquidity" },
+        "decrease_liquidity": { "module": "position", "function": "decrease_liquidity" },
+        "collect_fees": { "module": "position", "function": "collect_fees" },
+        "quote": { "module": "pool", "function": "quote" }
+      }
+    },
+    "testnet": {
+      "package_id": "0xYOUR_TESTNET_PACKAGE_ID",
+      "actions": {
+        "swap": { "module": "pool", "function": "swap" },
+        "swap_exact_in": { "module": "pool", "function": "swap_exact_in" },
+        "swap_exact_out": { "module": "pool", "function": "swap_exact_out" },
+        "add_liquidity": { "module": "pool", "function": "add_liquidity" },
+        "remove_liquidity": { "module": "pool", "function": "remove_liquidity" },
+        "open_position": { "module": "position", "function": "open_position" },
+        "close_position": { "module": "position", "function": "close_position" },
+        "increase_liquidity": { "module": "position", "function": "increase_liquidity" },
+        "decrease_liquidity": { "module": "position", "function": "decrease_liquidity" },
+        "collect_fees": { "module": "position", "function": "collect_fees" },
+        "quote": { "module": "pool", "function": "quote" }
+      }
+    },
+    "devnet": {
+      "package_id": "0xYOUR_DEVNET_PACKAGE_ID",
+      "actions": {
+        "swap": { "module": "pool", "function": "swap" },
+        "swap_exact_in": { "module": "pool", "function": "swap_exact_in" },
+        "swap_exact_out": { "module": "pool", "function": "swap_exact_out" },
+        "add_liquidity": { "module": "pool", "function": "add_liquidity" },
+        "remove_liquidity": { "module": "pool", "function": "remove_liquidity" },
+        "open_position": { "module": "position", "function": "open_position" },
+        "close_position": { "module": "position", "function": "close_position" },
+        "increase_liquidity": { "module": "position", "function": "increase_liquidity" },
+        "decrease_liquidity": { "module": "position", "function": "decrease_liquidity" },
+        "collect_fees": { "module": "position", "function": "collect_fees" },
+        "quote": { "module": "pool", "function": "quote" }
+      }
+    }
+  }
+}

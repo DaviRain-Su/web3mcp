@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sui": {
+      "command": "/absolute/path/to/sui-mcp/target/release/sui-mcp",
+      "env": {
+        "SUI_RPC_URL": "https://fullnode.mainnet.sui.io:443"
+      }
+    }
+  }
+}

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>zkLogin Google Connection</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="hero">
+        <div class="badge">zkLogin Connection</div>
+        <h1>Google Sign-In → zkLogin → MCP</h1>
+        <p>
+          This sample app mirrors a “connection” flow: connect a Google account,
+          fetch zkLogin inputs, and prepare MCP calls without storing a local private key.
+        </p>
+        <div class="row hero-actions">
+          <button id="toggle-advanced" class="ghost">Show Advanced</button>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h2>Quick Connect</h2>
+        <div class="row">
+          <div>
+            <label>Google Client ID</label>
+            <input id="client-id" placeholder="VITE_GOOGLE_CLIENT_ID" />
+          </div>
+          <div>
+            <label>RPC URL</label>
+            <input id="rpc-url" placeholder="https://fullnode.mainnet.sui.io:443" />
+          </div>
+          <div>
+            <label>User Salt</label>
+            <input id="user-salt" placeholder="decimal string" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="connect-google" class="primary">Connect Google</button>
+          <div id="google-button"></div>
+          <button id="gen-salt" class="ghost">Generate Demo Salt</button>
+        </div>
+        <div class="status-grid">
+          <div class="status-card">
+            <span class="status-label">Google</span>
+            <span id="status-google" class="status-value">not connected</span>
+          </div>
+          <div class="status-card">
+            <span class="status-label">zkLogin</span>
+            <span id="status-zk" class="status-value">not prepared</span>
+          </div>
+          <div class="status-card">
+            <span class="status-label">Address</span>
+            <span id="status-address" class="status-value">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Send SUI</h2>
+        <div class="row">
+          <div>
+            <label>Sender (zkLogin address)</label>
+            <input id="sender" placeholder="0x..." />
+          </div>
+          <div>
+            <label>Recipient</label>
+            <input id="recipient" placeholder="0x..." />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Amount (SUI)</label>
+            <input id="amount" placeholder="0.1" />
+          </div>
+          <div>
+            <label>Bridge URL</label>
+            <input id="bridge-url" placeholder="/mcp" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="send-sui" class="primary">Send</button>
+          <button id="prepare-zklogin" class="ghost">Prepare zkLogin</button>
+        </div>
+        <p class="hint">Prepare zkLogin runs prover and fills sender automatically.</p>
+      </section>
+
+      <section class="panel" data-advanced>
+        <h2>1) Google Sign-In</h2>
+        <div class="row">
+          <div>
+            <label>Nonce (zkLogin)</label>
+            <input id="nonce" placeholder="nonce from ephemeral key + maxEpoch" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="init-google" class="primary">Initialize Google</button>
+          <button id="gen-ephemeral" class="ghost">Generate Ephemeral + Nonce</button>
+        </div>
+        <label>ID Token (JWT)</label>
+        <textarea id="id-token" rows="4" placeholder="Google id_token will appear here"></textarea>
+      </section>
+
+      <section class="panel" data-advanced>
+        <h2>2) Prover Request</h2>
+        <div class="row">
+          <div>
+            <label>Prover URL</label>
+            <input id="prover-url" placeholder="http://localhost:8080/v1" />
+          </div>
+          <div>
+            <label>Max Epoch</label>
+            <input id="max-epoch" placeholder="12345" />
+          </div>
+          <div>
+            <label>Salt Service URL</label>
+            <input id="salt-url" placeholder="https://salt.api.mystenlabs.com/get_salt" />
+          </div>
+        </div>
+        <label>Prover Payload (edit to match your SDK)</label>
+        <textarea id="prover-payload" rows="6"></textarea>
+        <div class="row">
+          <button id="call-prover" class="primary">Call Prover</button>
+          <button id="fill-prover" class="ghost">Fill Payload</button>
+          <button id="fetch-salt" class="ghost">Fetch Salt</button>
+        </div>
+        <label>Prover Response</label>
+        <textarea id="prover-response" rows="6" placeholder="Prover response JSON"></textarea>
+      </section>
+
+      <section class="panel" data-advanced>
+        <h2>3) Ephemeral Signature</h2>
+        <p class="hint">
+          Generate the ephemeral keypair and signature using your wallet or SDK. Paste the
+          base64 user signature here.
+        </p>
+        <label>User Signature (base64 flag||sig||pubkey)</label>
+        <input id="user-signature" placeholder="base64 flag||sig||pubkey" />
+        <div class="row">
+          <button id="sign-tx" class="primary">Sign tx_bytes</button>
+        </div>
+      </section>
+
+      <section class="panel" data-advanced>
+        <h2>4) MCP Payload</h2>
+        <div class="row">
+          <div>
+            <label>tx_bytes (base64)</label>
+            <input id="tx-bytes" placeholder="TransactionData bytes (base64)" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="build-tx" class="primary">Build tx_bytes (transfer SUI)</button>
+        </div>
+        <label>MCP Tool Payload</label>
+        <textarea id="mcp-payload" rows="8"></textarea>
+        <div class="row">
+          <button id="build-mcp" class="primary">Build MCP Payload</button>
+          <button id="copy-mcp" class="ghost">Copy JSON</button>
+          <button id="call-mcp" class="ghost">Call MCP (HTTP bridge)</button>
+        </div>
+      </section>
+
+      <section class="panel" data-advanced>
+        <h2>5) Templates (Stake / Swap / Move Call)</h2>
+        <div class="row">
+          <div>
+            <label>Template</label>
+            <select id="template">
+              <option value="stake">Stake (build_add_stake)</option>
+              <option value="unstake">Unstake (build_withdraw_stake)</option>
+              <option value="swap">Swap (cetus_execute)</option>
+              <option value="move_call">Move Call (auto_execute_move_call_filled)</option>
+            </select>
+          </div>
+          <div>
+            <label>Gas Budget</label>
+            <input id="template-gas" placeholder="1000000" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="load-template" class="primary">Load Template</button>
+          <button id="apply-template" class="ghost">Write to MCP Payload</button>
+        </div>
+        <p id="template-note" class="hint"></p>
+        <label>Template JSON</label>
+        <textarea id="template-json" rows="8"></textarea>
+      </section>
+
+      <section class="panel">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

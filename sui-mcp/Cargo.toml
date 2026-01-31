@@ -1,0 +1,28 @@
+[package]
+name = "sui-mcp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rmcp = { version = "0.8", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "1.1"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+base64 = "0.22"
+bcs = "0.1.4"
+fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "d2e2d13be3e550745739144e2a090b9675e4ffcb", package = "fastcrypto-zkp" }
+sui-sdk = { git = "https://github.com/MystenLabs/sui", package = "sui-sdk" }
+sui-types = { git = "https://github.com/MystenLabs/sui", package = "sui-types" }
+sui-json = { git = "https://github.com/MystenLabs/sui", package = "sui-json" }
+sui-json-rpc-types = { git = "https://github.com/MystenLabs/sui", package = "sui-json-rpc-types" }
+move-core-types = { git = "https://github.com/MystenLabs/sui", package = "move-core-types" }
+
+sui-graphql = { git = "https://github.com/MystenLabs/sui-rust-sdk", package = "sui-graphql" }
+sui-rpc = { git = "https://github.com/MystenLabs/sui-rust-sdk", package = "sui-rpc" }
+sui-crypto = { git = "https://github.com/MystenLabs/sui-rust-sdk", package = "sui-crypto", features = ["ed25519", "secp256k1", "secp256r1"] }
+sui-sdk-types = { git = "https://github.com/MystenLabs/sui-rust-sdk", package = "sui-sdk-types", features = ["serde", "hash"] }
+sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk", package = "sui-transaction-builder" }
