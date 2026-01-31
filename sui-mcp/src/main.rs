@@ -1328,10 +1328,14 @@ struct EvmGetContractRequest {
 struct EvmCallViewRequest {
     #[schemars(description = "EVM chain id")]
     chain_id: u64,
-    #[schemars(description = "Contract address")]
-    address: String,
+    #[schemars(description = "Contract address (optional if contract_name is provided)")]
+    address: Option<String>,
+    #[schemars(description = "Contract name/alias in ABI registry (optional)")]
+    contract_name: Option<String>,
     #[schemars(description = "Function name (e.g. 'balanceOf')")]
     function: String,
+    #[schemars(description = "Optional exact function signature (e.g. 'balanceOf(address)')")]
+    function_signature: Option<String>,
     #[schemars(
         description = "Arguments as JSON array (supports basic types: address, uint/int, bool, string, bytes)"
     )]
@@ -1344,10 +1348,16 @@ struct EvmExecuteContractCallRequest {
     chain_id: u64,
     #[schemars(description = "Sender address")]
     sender: String,
-    #[schemars(description = "Contract address")]
-    address: String,
+    #[schemars(description = "Contract address (optional if contract_name is provided)")]
+    address: Option<String>,
+    #[schemars(description = "Contract name/alias in ABI registry (optional)")]
+    contract_name: Option<String>,
     #[schemars(description = "Function name")]
     function: String,
+    #[schemars(
+        description = "Optional exact function signature (e.g. 'transfer(address,uint256)')"
+    )]
+    function_signature: Option<String>,
     #[schemars(
         description = "Arguments as JSON array (supports basic types: address, uint/int, bool, string, bytes)"
     )]

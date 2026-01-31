@@ -626,24 +626,145 @@
         Ok((entry, abi))
     }
 
+    fn find_contract_by_name(chain_id: u64, name: &str) -> Result<(Value, ethers::abi::Abi), ErrorData> {
+        let root = Self::evm_abi_registry_dir().join(chain_id.to_string());
+        let rd = std::fs::read_dir(&root).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read registry dir: {}", e)),
+            data: None,
+        })?;
+
+        let needle = name.trim().to_lowercase();
+
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&p) else { continue };
+            let Ok(entry) = serde_json::from_slice::<Value>(&bytes) else { continue };
+            let entry_name = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
+            let entry_addr = entry
+                .get("address")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
+
+            if entry_name == needle || entry_addr == needle {
+                let abi_val = entry.get("abi").cloned().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("ABI entry missing 'abi'"),
+                    data: None,
+                })?;
+                let abi: ethers::abi::Abi = serde_json::from_value(abi_val).map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Invalid ABI JSON: {}", e)),
+                    data: None,
+                })?;
+                return Ok((entry, abi));
+            }
+        }
+
+        Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Contract not found in registry by name/address: {}", name)),
+            data: None,
+        })
+    }
+
+    fn resolve_contract_for_call(
+        chain_id: u64,
+        address: Option<String>,
+        contract_name: Option<String>,
+    ) -> Result<(String, Value, ethers::abi::Abi), ErrorData> {
+        if let Some(addr) = address {
+            let (entry, abi) = Self::load_registered_abi(chain_id, &addr)?;
+            return Ok((Self::normalize_evm_address(&addr)?, entry, abi));
+        }
+        if let Some(name) = contract_name {
+            let (entry, abi) = Self::find_contract_by_name(chain_id, &name)?;
+            let addr = entry
+                .get("address")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("Registry entry missing address"),
+                    data: None,
+                })?;
+            return Ok((addr.to_string(), entry, abi));
+        }
+        Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Must provide address or contract_name"),
+            data: None,
+        })
+    }
+
+    fn function_signature(func: &ethers::abi::Function) -> String {
+        let types = func
+            .inputs
+            .iter()
+            .map(|p| p.kind.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{}({})", func.name, types)
+    }
+
+    fn abi_find_function_exact<'a>(
+        abi: &'a ethers::abi::Abi,
+        signature: &str,
+    ) -> Option<&'a ethers::abi::Function> {
+        let sig = signature.trim();
+        let name = sig.split('(').next().unwrap_or(sig);
+        for f in abi.functions().filter(|f| f.name == name) {
+            if Self::function_signature(f) == sig {
+                return Some(f);
+            }
+        }
+        None
+    }
+
     #[tool(description = "EVM ABI Registry: call a view/pure function using registered ABI")]
     async fn evm_call_view(
         &self,
         Parameters(request): Parameters<EvmCallViewRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let provider = self.evm_provider(request.chain_id).await?;
-        let contract = Self::parse_evm_address(&request.address)?;
-        let (_entry, abi) = Self::load_registered_abi(request.chain_id, &request.address)?;
+
+        let (address_norm, _entry, abi) = Self::resolve_contract_for_call(
+            request.chain_id,
+            request.address.clone(),
+            request.contract_name.clone(),
+        )?;
+        let contract = Self::parse_evm_address(&address_norm)?;
 
         let args = request.args.unwrap_or(Value::Array(vec![]));
-        let args_arr = args.as_array().cloned().ok_or_else(|| ErrorData{code:ErrorCode(-32602),message:Cow::from("args must be a JSON array"),data:None})?;
+        let args_arr = args
+            .as_array()
+            .cloned()
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("args must be a JSON array"),
+                data: None,
+            })?;
 
-        let func = Self::abi_find_function(&abi, &request.function, args_arr.len()).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from("Function not found in ABI (by name + arg count)"),
-            data: None,
-        })?;
-
+        let func = if let Some(sig) = request.function_signature.as_deref() {
+            Self::abi_find_function_exact(&abi, sig).ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Function not found in ABI (by exact signature)"),
+                data: None,
+            })?
+        } else {
+            Self::abi_find_function(&abi, &request.function, args_arr.len()).ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Function not found in ABI (by name + arg count). Tip: pass function_signature to disambiguate overloads."),
+                data: None,
+            })?
+        };
         let mut tokens: Vec<ethers::abi::Token> = Vec::new();
         for (i, param) in func.inputs.iter().enumerate() {
             tokens.push(Self::json_to_token(&param.kind, &args_arr[i])?);
@@ -672,8 +793,9 @@
 
         let response = Self::pretty_json(&json!({
             "chain_id": request.chain_id,
-            "address": Self::normalize_evm_address(&request.address)?,
+            "address": address_norm,
             "function": request.function,
+            "function_signature": request.function_signature.unwrap_or_else(|| Self::function_signature(func)),
             "args": args_arr,
             "result_hex": format!("0x{}", hex::encode(raw.as_ref()))
         }))?;
@@ -685,17 +807,36 @@
         &self,
         Parameters(request): Parameters<EvmExecuteContractCallRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let contract = Self::parse_evm_address(&request.address)?;
-        let (_entry, abi) = Self::load_registered_abi(request.chain_id, &request.address)?;
+        let (address_norm, _entry, abi) = Self::resolve_contract_for_call(
+            request.chain_id,
+            request.address.clone(),
+            request.contract_name.clone(),
+        )?;
+        let contract = Self::parse_evm_address(&address_norm)?;
 
         let args = request.args.unwrap_or(Value::Array(vec![]));
-        let args_arr = args.as_array().cloned().ok_or_else(|| ErrorData{code:ErrorCode(-32602),message:Cow::from("args must be a JSON array"),data:None})?;
+        let args_arr = args
+            .as_array()
+            .cloned()
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("args must be a JSON array"),
+                data: None,
+            })?;
 
-        let func = Self::abi_find_function(&abi, &request.function, args_arr.len()).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from("Function not found in ABI (by name + arg count)"),
-            data: None,
-        })?;
+        let func = if let Some(sig) = request.function_signature.as_deref() {
+            Self::abi_find_function_exact(&abi, sig).ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Function not found in ABI (by exact signature)"),
+                data: None,
+            })?
+        } else {
+            Self::abi_find_function(&abi, &request.function, args_arr.len()).ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Function not found in ABI (by name + arg count). Tip: pass function_signature to disambiguate overloads."),
+                data: None,
+            })?
+        };
 
         let mut tokens: Vec<ethers::abi::Token> = Vec::new();
         for (i, param) in func.inputs.iter().enumerate() {
