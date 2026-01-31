@@ -120,16 +120,7 @@
                         }))
                         .await?;
 
-                    let payload = Self::extract_first_json(&result).unwrap_or(json!({
-                        "raw": Self::extract_text(&result)
-                    }));
-
-                    let response = Self::pretty_json(&json!({
-                        "resolved_network": resolved_network,
-                        "result": payload
-                    }))?;
-
-                    return Ok(CallToolResult::success(vec![Content::text(response)]));
+                    return Self::wrap_resolved_network_result(&resolved_network, &result);
                 }
 
                 // Sui default (zkLogin flow)
@@ -516,6 +507,75 @@
                     }
                 }));
             }
+        } else if lower.contains("gas price")
+            || lower.contains("reference gas")
+            || lower.contains("手续费")
+            || lower.contains("gas")
+        {
+            intent = "get_reference_gas_price".to_string();
+            confidence = 0.7;
+            plan.push(json!({
+                "tool": "get_reference_gas_price",
+                "params": {}
+            }));
+        } else if lower.contains("protocol config") || lower.contains("协议配置") {
+            intent = "get_protocol_config".to_string();
+            confidence = 0.65;
+            plan.push(json!({
+                "tool": "get_protocol_config",
+                "params": {}
+            }));
+        } else if lower.contains("chain id")
+            || lower.contains("chain identifier")
+            || lower.contains("链 id")
+            || lower.contains("链标识")
+        {
+            intent = "get_chain_identifier".to_string();
+            confidence = 0.65;
+            plan.push(json!({
+                "tool": "get_chain_identifier",
+                "params": {}
+            }));
+        } else if lower.contains("checkpoint") || lower.contains("检查点") {
+            intent = "get_latest_checkpoint_sequence".to_string();
+            confidence = 0.6;
+            plan.push(json!({
+                "tool": "get_latest_checkpoint_sequence",
+                "params": {}
+            }));
+        } else if lower.contains("total tx")
+            || lower.contains("total transactions")
+            || lower.contains("交易总数")
+            || lower.contains("总交易")
+        {
+            intent = "get_total_transactions".to_string();
+            confidence = 0.6;
+            plan.push(json!({
+                "tool": "get_total_transactions",
+                "params": {}
+            }));
+        } else if lower.contains("coins") || lower.contains("coin") || lower.contains("我的 coin") {
+            intent = "get_coins".to_string();
+            confidence = 0.6;
+            plan.push(json!({
+                "tool": "get_coins",
+                "params": {
+                    "address": sender,
+                    "coin_type": null,
+                    "limit": 50
+                }
+            }));
+        } else if lower.contains("events") || lower.contains("事件") {
+            intent = "query_transaction_events".to_string();
+            confidence = 0.55;
+            let digest = addresses.get(0).cloned().unwrap_or_else(|| "<digest>".to_string());
+            entities["digest"] = json!(digest);
+            plan.push(json!({
+                "tool": "query_transaction_events",
+                "params": {
+                    "digest": digest
+                }
+            }));
         } else if lower.contains("transfer") || lower.contains("转账") || lower.contains("发送") {
             intent = "transfer".to_string();
             confidence = 0.6;
