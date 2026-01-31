@@ -66,21 +66,41 @@
         match intent.as_str() {
             "get_balance" => {
                 if family == "evm" {
-                    return self
+                    let result = self
                         .evm_get_balance(Parameters(EvmGetBalanceRequest {
                             address: sender,
                             chain_id,
                             token_address: None,
                         }))
-                        .await;
+                        .await?;
+
+                    let payload = Self::extract_first_json(&result).unwrap_or(json!({
+                        "raw": Self::extract_text(&result)
+                    }));
+
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "result": payload
+                    }))?;
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
                 }
 
-                return self
+                let result = self
                     .get_balance(Parameters(GetBalanceRequest {
                         address: sender,
                         coin_type: None,
                     }))
-                    .await;
+                    .await?;
+
+                let payload = Self::extract_first_json(&result).unwrap_or(json!({
+                    "raw": Self::extract_text(&result)
+                }));
+
+                let response = Self::pretty_json(&json!({
+                    "resolved_network": resolved_network,
+                    "result": payload
+                }))?;
+                Ok(CallToolResult::success(vec![Content::text(response)]))
             }
             "transfer" => {
                 if family == "evm" {
