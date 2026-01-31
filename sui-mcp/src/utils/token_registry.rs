@@ -112,6 +112,9 @@ impl SuiMcpServer {
             // HyperEVM (Circle docs)
             998 => Some("0xb88339CB7199b77E23DB6E890353E22632Ba630f"),
 
+            // Avalanche C-Chain Mainnet
+            43114 => Some("0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"),
+
             _ => None,
         }
     }
