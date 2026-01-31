@@ -55,6 +55,11 @@ Add this to your Claude Desktop configuration file:
 
 - `SUI_RPC_URL` - The Sui RPC endpoint to use (defaults to `https://fullnode.mainnet.sui.io:443`)
 
+EVM:
+- `EVM_DEFAULT_CHAIN_ID` - Default EVM chain id (defaults to Base Sepolia 84532)
+- `EVM_RPC_URL_<chain_id>` - Override the RPC URL for an EVM chain (e.g. `EVM_RPC_URL_8453=https://mainnet.base.org`).
+  If not set, the server falls back to built-in public RPC defaults for common chains (see `evm_rpc_url`).
+
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
 
 Sui:
