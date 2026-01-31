@@ -64,6 +64,128 @@
         let chain_id = resolved_network.get("chain_id").and_then(Value::as_u64);
 
         match intent.as_str() {
+            "get_reference_gas_price" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("get_reference_gas_price is only supported for Sui"),
+                        data: None,
+                    });
+                }
+
+                let result = self.get_reference_gas_price().await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "get_chain_identifier" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("get_chain_identifier is only supported for Sui"),
+                        data: None,
+                    });
+                }
+
+                let result = self.get_chain_identifier().await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "get_protocol_config" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("get_protocol_config is only supported for Sui"),
+                        data: None,
+                    });
+                }
+
+                let result = self.get_protocol_config().await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "get_latest_checkpoint_sequence" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "get_latest_checkpoint_sequence is only supported for Sui",
+                        ),
+                        data: None,
+                    });
+                }
+
+                let result = self.get_latest_checkpoint_sequence().await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "get_total_transactions" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("get_total_transactions is only supported for Sui"),
+                        data: None,
+                    });
+                }
+
+                let result = self.get_total_transactions().await?;
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "get_coins" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("get_coins is only supported for Sui"),
+                        data: None,
+                    });
+                }
+
+                let coin_type = entities
+                    .get("coin_type")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
+
+                let result = self
+                    .get_coins(Parameters(GetCoinsRequest {
+                        address: sender,
+                        coin_type,
+                        limit: Some(50),
+                    }))
+                    .await?;
+
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
+            "query_transaction_events" => {
+                if family == "evm" {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("query_transaction_events is only supported for Sui"),
+                        data: None,
+                    });
+                }
+
+                let digest = entities
+                    .get("digest")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("digest is required for query_transaction_events"),
+                        data: None,
+                    })?;
+
+                if digest.starts_with('<') {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "digest is required for query_transaction_events (provide a tx digest)",
+                        ),
+                        data: None,
+                    });
+                }
+
+                let result = self
+                    .query_transaction_events(Parameters(QueryEventsRequest {
+                        digest: digest.to_string(),
+                    }))
+                    .await?;
+
+                return Self::wrap_resolved_network_result(&resolved_network, &result);
+            }
             "get_balance" => {
                 if family == "evm" {
                     let result = self
