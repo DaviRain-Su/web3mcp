@@ -385,6 +385,24 @@ pub struct EvmExecuteErc20ApproveRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmBuildErc20ApproveTxRequest {
+    #[schemars(description = "Owner/sender address")]
+    pub sender: String,
+    #[schemars(description = "ERC20 token contract address")]
+    pub token: String,
+    #[schemars(description = "Spender address")]
+    pub spender: String,
+    #[schemars(
+        description = "Token amount in base units (raw integer). Use max uint256 to give infinite approval."
+    )]
+    pub amount_raw: String,
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Optional gas limit override")]
+    pub gas_limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmRegisterContractRequest {
     #[schemars(description = "EVM chain id")]
     pub chain_id: u64,

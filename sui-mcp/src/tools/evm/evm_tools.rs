@@ -1303,12 +1303,40 @@
             max_priority_fee_per_gas_wei: None,
         };
 
+        // Best-effort suggested approval for ERC20 sells.
+        let allowance_target = quote.get("allowanceTarget").and_then(Value::as_str).map(|s| s.to_string());
+        let sell_token_address = quote.get("sellTokenAddress").and_then(Value::as_str).map(|s| s.to_string());
+
+        let suggested_approve = if let (Some(target), Some(token_addr)) = (allowance_target.clone(), sell_token_address.clone()) {
+            // If sell token is not ETH (0x uses ETH for native), then sellTokenAddress should exist.
+            // Default: infinite approval.
+            let max_u256 = ethers::types::U256::MAX.to_string();
+            let built = self.evm_build_erc20_approve_tx(Parameters(EvmBuildErc20ApproveTxRequest {
+                sender: request.sender.clone(),
+                token: token_addr,
+                spender: target,
+                amount_raw: max_u256,
+                chain_id: request.chain_id,
+                gas_limit: None,
+            })).await;
+
+            match built {
+                Ok(ok) => Self::evm_extract_first_json(&ok).and_then(|j| j.get("tx").cloned()),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         let response = Self::pretty_json(&json!({
             "chain_id": request.chain_id,
             "sender": request.sender,
             "tx": tx,
             "quote": quote,
-            "note": "Run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction (or use intent confirm flow)"
+            "allowance_target": allowance_target,
+            "sell_token_address": sell_token_address,
+            "suggested_approve_tx": suggested_approve,
+            "note": "Run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction (or use intent confirm flow). If selling ERC20, you may need to approve allowance_target first."
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
@@ -1702,6 +1730,42 @@
             request.allow_sender_mismatch.unwrap_or(false),
         )
         .await
+    }
+
+    #[tool(description = "EVM ERC20: build approve(token, spender, amount_raw) tx (no signing/broadcast)")]
+    async fn evm_build_erc20_approve_tx(
+        &self,
+        Parameters(request): Parameters<EvmBuildErc20ApproveTxRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let from = Self::parse_evm_address(&request.sender)?;
+        let token = Self::parse_evm_address(&request.token)?;
+        let spender = Self::parse_evm_address(&request.spender)?;
+        let amount = Self::parse_evm_u256("amount_raw", &request.amount_raw)?;
+
+        let data = Self::encode_erc20_call(
+            "approve(address,uint256)",
+            vec![
+                ethers::abi::Token::Address(spender),
+                ethers::abi::Token::Uint(amount),
+            ],
+        );
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(from),
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            value: Some(ethers::types::U256::from(0)),
+            data: Some(data),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        let tx = Self::tx_request_to_evm_tx(&tx_request, request.chain_id);
+
+        let response = Self::pretty_json(&json!({
+            "tx": tx,
+            "note": "Run evm_preflight -> evm_sign_transaction_local -> evm_send_raw_transaction"
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
     #[tool(description = "EVM ERC20: one-step approve(token, spender, amount_raw) with local signing")]

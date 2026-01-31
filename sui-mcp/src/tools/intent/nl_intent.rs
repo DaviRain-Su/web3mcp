@@ -212,6 +212,17 @@
                     &tx_summary_hash,
                 )?;
 
+                // If 0x indicates an allowanceTarget, we likely need to approve before swapping.
+                let allowance_target = built_json
+                    .get("allowance_target")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
+                let sell_token_address = built_json
+                    .get("sell_token_address")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
+                let suggested_approve_tx = built_json.get("suggested_approve_tx").cloned();
+
                 let response = Self::pretty_json(&json!({
                     "resolved_network": resolved_network,
                     "mode": "dry_run_only",
@@ -222,6 +233,12 @@
                     "tx_summary_hash": tx_summary_hash,
                     "build": built_json,
                     "preflight": preflight_json,
+                    "allowance": {
+                        "sell_token_address": sell_token_address,
+                        "allowance_target": allowance_target,
+                        "suggested_approve_tx": suggested_approve_tx,
+                        "note": "If allowance_target is present and sell_token_address is ERC20, approve first. This is a suggested infinite approval tx; review before confirming."
+                    },
                     "next": {
                         "how_to_confirm": format!("confirm {} hash:{} (and include same network like 'on Base')", confirmation_id, tx_summary_hash)
                     },
