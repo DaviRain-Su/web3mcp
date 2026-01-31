@@ -9,7 +9,8 @@
         let sender = request.sender.clone().unwrap_or_else(|| "<sender>".to_string());
         let network = request.network.clone();
 
-        let (intent, action, entities, confidence, plan) = Self::parse_intent_plan(&text, &lower, sender, network.clone());
+        let (intent, action, entities, confidence, plan) =
+            Self::parse_intent_plan(&text, &lower, sender, network.clone());
         let pipeline = Self::tool_plan_to_pipeline(&plan);
 
         let response = Self::pretty_json(&json!({
@@ -54,8 +55,26 @@
 
         let gas_budget = request.gas_budget.unwrap_or(1_000_000);
 
+        // Network routing: humans can say "Base", "Ethereum", "BSC", etc.
+        let resolved_network = Self::resolve_intent_network(network.clone(), &lower);
+        let family = resolved_network
+            .get("family")
+            .and_then(Value::as_str)
+            .unwrap_or("sui");
+        let chain_id = resolved_network.get("chain_id").and_then(Value::as_u64);
+
         match intent.as_str() {
             "get_balance" => {
+                if family == "evm" {
+                    return self
+                        .evm_get_balance(Parameters(EvmGetBalanceRequest {
+                            address: sender,
+                            chain_id,
+                            token_address: None,
+                        }))
+                        .await;
+                }
+
                 return self
                     .get_balance(Parameters(GetBalanceRequest {
                         address: sender,
@@ -64,6 +83,100 @@
                     .await;
             }
             "transfer" => {
+                if family == "evm" {
+                    let recipient = recipient.ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("recipient is required for EVM transfer"),
+                        data: None,
+                    })?;
+
+                    // Humans usually specify amount in ETH-like units, not wei.
+                    // We parse a number from the text and treat it as ETH by default.
+                    let amount_str = entities
+                        .get("amount")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from(
+                                "amount is required for EVM transfer (e.g. 'send 0.01 ETH to 0x... on Base')",
+                            ),
+                            data: None,
+                        })?;
+
+                    let amount_wei = ethers::utils::parse_units(amount_str, 18).map_err(|e| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!("Invalid amount: {}", e)),
+                        data: None,
+                    })?;
+
+                    let built = self
+                        .evm_build_transfer_native(Parameters(EvmBuildTransferNativeRequest {
+                            sender: sender.clone(),
+                            recipient: recipient.clone(),
+                            amount_wei: amount_wei.to_string(),
+                            chain_id,
+                            data_hex: None,
+                            gas_limit: None,
+                            confirm_large_transfer: Some(false),
+                            large_transfer_threshold_wei: None,
+                        }))
+                        .await?;
+
+                    let built_json = Self::extract_first_json(&built).ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Failed to parse EVM build result"),
+                        data: None,
+                    })?;
+                    let mut tx: EvmTxRequest = serde_json::from_value(built_json).map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to decode EVM tx: {}", e)),
+                        data: None,
+                    })?;
+
+                    let preflight = self
+                        .evm_preflight(Parameters(EvmPreflightRequest { tx: tx.clone() }))
+                        .await?;
+                    let pre_json = Self::extract_first_json(&preflight).ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Failed to parse EVM preflight result"),
+                        data: None,
+                    })?;
+                    tx = serde_json::from_value(pre_json.get("tx").cloned().unwrap_or(pre_json)).map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+                        data: None,
+                    })?;
+
+                    let signed = self
+                        .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
+                            tx: tx.clone(),
+                            allow_sender_mismatch: Some(false),
+                        }))
+                        .await?;
+                    let signed_json = Self::extract_first_json(&signed).ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Failed to parse EVM sign result"),
+                        data: None,
+                    })?;
+                    let raw_tx = signed_json
+                        .get("raw_tx")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from("Missing raw_tx from signer"),
+                            data: None,
+                        })?
+                        .to_string();
+
+                    return self
+                        .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
+                            raw_tx,
+                            chain_id,
+                        }))
+                        .await;
+                }
+
+                // Sui default (zkLogin flow)
                 let recipient = recipient.ok_or_else(|| ErrorData {
                     code: ErrorCode(-32602),
                     message: Cow::from("recipient is required for transfer"),
@@ -332,6 +445,62 @@
         }
     }
 
+    fn resolve_intent_network(network: Option<String>, lower: &str) -> Value {
+        let raw = network.unwrap_or_else(|| "".to_string());
+        let key = raw.trim().to_lowercase();
+
+        // If user didn't specify network, infer a default.
+        // For now: default to Sui unless they mention EVM chains explicitly.
+        let inferred = if key.is_empty() {
+            if lower.contains("base") {
+                "base-sepolia".to_string()
+            } else if lower.contains("arbitrum") || lower.contains("arb") {
+                "arbitrum".to_string()
+            } else if lower.contains("bsc") || lower.contains("bnb") {
+                "bsc".to_string()
+            } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
+                "ethereum".to_string()
+            } else {
+                "sui".to_string()
+            }
+        } else {
+            key
+        };
+
+        // Normalize common human phrases to family + chain_id.
+        let (family, chain_id, name) = if inferred.contains("sui") {
+            ("sui", None, "sui")
+        } else if inferred.contains("base") {
+            // Prefer Base Sepolia for safe defaults unless user explicitly asks mainnet.
+            let is_test = inferred.contains("sepolia")
+                || inferred.contains("test")
+                || inferred.contains("测试")
+                || inferred.contains("testnet");
+            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+            let cid = if is_main { 8453 } else if is_test { 84532 } else { 84532 };
+            ("evm", Some(cid), if cid == 8453 { "base" } else { "base-sepolia" })
+        } else if inferred.contains("arbitrum") || inferred == "arb" {
+            // Default to Arbitrum One mainnet if unspecified.
+            ("evm", Some(42161), "arbitrum")
+        } else if inferred.contains("bsc") || inferred.contains("bnb") {
+            ("evm", Some(56), "bsc")
+        } else if inferred.contains("sepolia") {
+            ("evm", Some(11155111), "sepolia")
+        } else if inferred.contains("ethereum") || inferred.contains("eth") {
+            ("evm", Some(1), "ethereum")
+        } else {
+            // Fallback to Sui
+            ("sui", None, "sui")
+        };
+
+        json!({
+            "raw": raw,
+            "normalized": name,
+            "family": family,
+            "chain_id": chain_id
+        })
+    }
+
     fn parse_intent_plan(
         text: &str,
         lower: &str,
@@ -344,6 +513,7 @@
             .and_then(|value| value.parse::<f64>().ok())
             .map(|value| value as u64);
         let addresses = Self::extract_addresses(text);
+        let resolved_network = Self::resolve_intent_network(network, lower);
 
         let token_list = ["sui", "usdc", "usdt", "eth", "btc"];
         let mut tokens = Vec::new();
@@ -365,7 +535,8 @@
             "amount_u64": amount_u64,
             "from_coin": from_token,
             "to_coin": to_token,
-            "addresses": addresses
+            "addresses": addresses,
+            "network": resolved_network
         });
 
         if lower.contains("swap") || lower.contains("兑换") || lower.contains("换") {
@@ -383,29 +554,102 @@
         } else if lower.contains("balance") || lower.contains("余额") {
             intent = "get_balance".to_string();
             confidence = 0.8;
-            plan.push(json!({
-                "tool": "get_balance",
-                "params": {
-                    "address": sender,
-                    "coin_type": null
-                }
-            }));
+
+            let family = entities
+                .get("network")
+                .and_then(|v| v.get("family"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("sui");
+
+            if family == "evm" {
+                let chain_id = entities
+                    .get("network")
+                    .and_then(|v| v.get("chain_id"))
+                    .and_then(|v| v.as_u64());
+
+                plan.push(json!({
+                    "tool": "evm_get_balance",
+                    "params": {
+                        "address": sender,
+                        "chain_id": chain_id,
+                        "token_address": null
+                    }
+                }));
+            } else {
+                plan.push(json!({
+                    "tool": "get_balance",
+                    "params": {
+                        "address": sender,
+                        "coin_type": null
+                    }
+                }));
+            }
         } else if lower.contains("transfer") || lower.contains("转账") || lower.contains("发送") {
             intent = "transfer".to_string();
             confidence = 0.6;
             let recipient = addresses.get(0).cloned().unwrap_or_else(|| "<recipient>".to_string());
             entities["recipient"] = json!(recipient);
-            plan.push(json!({
-                "tool": "build_transfer_sui",
-                "params": {
-                    "sender": sender,
-                    "recipient": recipient,
-                    "input_coins": [],
-                    "auto_select_coins": true,
-                    "amount": amount_u64,
-                    "gas_budget": 1000000
-                }
-            }));
+
+            let family = entities
+                .get("network")
+                .and_then(|v| v.get("family"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("sui");
+
+            if family == "evm" {
+                let chain_id = entities
+                    .get("network")
+                    .and_then(|v| v.get("chain_id"))
+                    .and_then(|v| v.as_u64());
+
+                // For EVM we keep the plan explicit: build -> preflight -> sign -> send.
+                // amount_wei is left as a placeholder because humans usually speak in ETH.
+                plan.push(json!({
+                    "tool": "evm_build_transfer_native",
+                    "params": {
+                        "sender": sender,
+                        "recipient": recipient,
+                        "amount_wei": "<amount_wei>",
+                        "chain_id": chain_id,
+                        "data_hex": null,
+                        "gas_limit": null,
+                        "confirm_large_transfer": false,
+                        "large_transfer_threshold_wei": null
+                    }
+                }));
+                plan.push(json!({
+                    "tool": "evm_preflight",
+                    "params": {
+                        "tx": "<evm_tx_from_previous_step>"
+                    }
+                }));
+                plan.push(json!({
+                    "tool": "evm_sign_transaction_local",
+                    "params": {
+                        "tx": "<evm_tx_from_previous_step>",
+                        "allow_sender_mismatch": false
+                    }
+                }));
+                plan.push(json!({
+                    "tool": "evm_send_raw_transaction",
+                    "params": {
+                        "raw_tx": "<raw_tx_from_previous_step>",
+                        "chain_id": chain_id
+                    }
+                }));
+            } else {
+                plan.push(json!({
+                    "tool": "build_transfer_sui",
+                    "params": {
+                        "sender": sender,
+                        "recipient": recipient,
+                        "input_coins": [],
+                        "auto_select_coins": true,
+                        "amount": amount_u64,
+                        "gas_budget": 1000000
+                    }
+                }));
+            }
         } else if lower.contains("transfer object") || lower.contains("转对象") || lower.contains("转物") {
             intent = "transfer_object".to_string();
             confidence = 0.55;
@@ -674,4 +918,9 @@
             },
             _ => None,
         }
+    }
+
+    fn extract_first_json(result: &CallToolResult) -> Option<Value> {
+        let text = Self::extract_text(result)?;
+        serde_json::from_str::<Value>(&text).ok()
     }

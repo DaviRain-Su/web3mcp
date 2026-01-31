@@ -17,10 +17,10 @@ use serde_json::{json, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
+use std::io::Write;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::io::Write;
 use sui_crypto::simple::SimpleVerifier;
 use sui_crypto::Verifier;
 use sui_graphql::Client as GraphqlClient;
@@ -146,7 +146,10 @@ impl SuiMcpServer {
                 "Ensure the signer matches the transaction sender and the signature is correct",
             );
         }
-        if lower.contains("gas budget") || lower.contains("gasbudget") || lower.contains("gas too low") {
+        if lower.contains("gas budget")
+            || lower.contains("gasbudget")
+            || lower.contains("gas too low")
+        {
             return Some("Increase gas_budget or rerun with gas estimation enabled");
         }
         if lower.contains("object locked") || lower.contains("objectlocked") {
@@ -523,7 +526,6 @@ impl SuiMcpServer {
             .or_else(|| std::env::var("SUI_NETWORK").ok())
             .unwrap_or_else(|| "mainnet".to_string())
     }
-
 
     async fn auto_fill_move_call_internal(
         &self,
@@ -1132,9 +1134,13 @@ struct GetAllBalancesRequest {
 struct EvmGetBalanceRequest {
     #[schemars(description = "EVM address (0x...) to query")]
     address: String,
-    #[schemars(description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)")]
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
     chain_id: Option<u64>,
-    #[schemars(description = "Optional ERC20 token contract address. If omitted, returns native ETH balance.")]
+    #[schemars(
+        description = "Optional ERC20 token contract address. If omitted, returns native ETH balance."
+    )]
     token_address: Option<String>,
 }
 
@@ -1142,7 +1148,9 @@ struct EvmGetBalanceRequest {
 struct EvmGetTransactionRequest {
     #[schemars(description = "Transaction hash (0x...)")]
     tx_hash: String,
-    #[schemars(description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)")]
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
     chain_id: Option<u64>,
 }
 
@@ -1672,7 +1680,9 @@ struct ExecuteBatchTransactionRequest {
     gas_object_id: Option<String>,
     #[schemars(description = "Signer address or alias (defaults to sender)")]
     signer: Option<String>,
-    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
@@ -2068,7 +2078,9 @@ struct AutoFillMoveCallRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct DappManifestRequest {
-    #[schemars(description = "Optional manifest file path (defaults to SUI_DAPP_MANIFEST or ./dapps.json)")]
+    #[schemars(
+        description = "Optional manifest file path (defaults to SUI_DAPP_MANIFEST or ./dapps.json)"
+    )]
     path: Option<String>,
 }
 
@@ -2092,7 +2104,9 @@ struct DappMoveCallRequest {
     gas_object_id: Option<String>,
     #[schemars(description = "Optional gas price override")]
     gas_price: Option<u64>,
-    #[schemars(description = "Optional manifest file path (defaults to SUI_DAPP_MANIFEST or ./dapps.json)")]
+    #[schemars(
+        description = "Optional manifest file path (defaults to SUI_DAPP_MANIFEST or ./dapps.json)"
+    )]
     manifest_path: Option<String>,
 }
 
