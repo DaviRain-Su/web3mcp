@@ -1327,6 +1327,35 @@ struct EvmFindContractsRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EvmPlanContractCallRequest {
+    #[schemars(description = "EVM chain id")]
+    chain_id: u64,
+
+    #[schemars(
+        description = "Contract address (optional if contract_name/contract_query is provided)"
+    )]
+    address: Option<String>,
+    #[schemars(description = "Contract name/alias in ABI registry (optional)")]
+    contract_name: Option<String>,
+    #[schemars(description = "Contract fuzzy query (e.g. 'usdc', 'cetus', partial address)")]
+    contract_query: Option<String>,
+
+    #[schemars(
+        description = "If true, pick the top contract match automatically when query is ambiguous"
+    )]
+    accept_best_match: Option<bool>,
+
+    #[schemars(description = "Natural language instruction")]
+    text: String,
+
+    #[schemars(description = "Optional function hint (e.g. 'approve', 'swap', 'deposit')")]
+    function_hint: Option<String>,
+
+    #[schemars(description = "Optional max function candidates (default 5)")]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct EvmGetContractRequest {
     #[schemars(description = "EVM chain id")]
     chain_id: u64,

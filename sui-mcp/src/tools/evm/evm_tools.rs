@@ -515,6 +515,135 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn extract_hex_addresses(text: &str) -> Vec<String> {
+        text.split_whitespace()
+            .filter(|w| w.starts_with("0x") && w.len() >= 10)
+            .map(|w| w.trim_matches(|c: char| c == ',' || c == ';' || c == ')' || c == '(' || c == '"').to_string())
+            .collect()
+    }
+
+    fn extract_numbers(text: &str) -> Vec<String> {
+        // Very simple: collect tokens that parse as decimal numbers (or 0x hex).
+        let mut out = Vec::new();
+        for raw in text.split_whitespace() {
+            let w = raw.trim_matches(|c: char| c == ',' || c == ';' || c == ')' || c == '(' || c == '"');
+            if w.is_empty() {
+                continue;
+            }
+            if w.starts_with("0x") {
+                // treat as a number-ish token as well
+                out.push(w.to_string());
+                continue;
+            }
+            // allow digits with dot
+            if w.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                out.push(w.to_string());
+            }
+        }
+        out
+    }
+
+    fn score_function(name: &str, signature: &str, text: &str, hint: Option<&str>) -> i64 {
+        let t = text.to_lowercase();
+        let n = name.to_lowercase();
+        let s = signature.to_lowercase();
+        let mut score = 0;
+
+        if t.contains(&n) {
+            score += 200;
+        }
+        if t.contains(&s) {
+            score += 400;
+        }
+        if let Some(h) = hint {
+            let h = h.to_lowercase();
+            if n == h {
+                score += 300;
+            }
+            if n.contains(&h) {
+                score += 120;
+            }
+            if t.contains(&h) {
+                score += 80;
+            }
+        }
+
+        // Generic action keywords.
+        for (kw, bonus) in [
+            ("approve", 60),
+            ("transfer", 60),
+            ("swap", 60),
+            ("deposit", 40),
+            ("withdraw", 40),
+            ("mint", 40),
+            ("burn", 40),
+            ("borrow", 40),
+            ("repay", 40),
+        ] {
+            if t.contains(kw) && n.contains(kw) {
+                score += bonus;
+            }
+        }
+
+        score
+    }
+
+    fn infer_args_for_function(
+        func: &ethers::abi::Function,
+        text: &str,
+    ) -> (Vec<Value>, Vec<Value>) {
+        use ethers::abi::ParamType;
+
+        let addrs = Self::extract_hex_addresses(text);
+        let nums = Self::extract_numbers(text);
+        let mut addr_i = 0usize;
+        let mut num_i = 0usize;
+
+        let mut filled: Vec<Value> = Vec::new();
+        let mut missing: Vec<Value> = Vec::new();
+
+        for input in func.inputs.iter() {
+            match &input.kind {
+                ParamType::Address => {
+                    if addr_i < addrs.len() {
+                        filled.push(Value::String(addrs[addr_i].clone()));
+                        addr_i += 1;
+                    } else {
+                        filled.push(Value::String("<address>".to_string()));
+                        missing.push(json!({"name": input.name, "type": "address"}));
+                    }
+                }
+                ParamType::Uint(_) | ParamType::Int(_) => {
+                    if num_i < nums.len() {
+                        // For integers we keep as string to avoid JSON number limits.
+                        filled.push(Value::String(nums[num_i].clone()));
+                        num_i += 1;
+                    } else {
+                        filled.push(Value::String("<amount>".to_string()));
+                        missing.push(json!({"name": input.name, "type": input.kind.to_string()}));
+                    }
+                }
+                ParamType::Bool => {
+                    // naive
+                    if text.to_lowercase().contains("true") {
+                        filled.push(Value::Bool(true));
+                    } else if text.to_lowercase().contains("false") {
+                        filled.push(Value::Bool(false));
+                    } else {
+                        filled.push(Value::Bool(false));
+                        missing.push(json!({"name": input.name, "type": "bool"}));
+                    }
+                }
+                _ => {
+                    filled.push(Value::String("<value>".to_string()));
+                    missing.push(json!({"name": input.name, "type": input.kind.to_string()}));
+                }
+            }
+        }
+
+        (filled, missing)
+    }
+
     #[tool(description = "EVM ABI Registry: fuzzy search contracts by name/address/path (helps natural-language workflows)")]
     async fn evm_find_contracts(
         &self,
@@ -567,26 +696,23 @@
                 let hay_path = path_str.to_lowercase();
 
                 let mut score: i64 = 0;
-                // Address exact match wins.
                 if hay_addr == query {
                     score += 1000;
                 }
-                // Prefix matches.
                 if hay_name.starts_with(&query) {
                     score += 300;
                 }
                 if hay_addr.starts_with(&query) {
                     score += 300;
                 }
-                // Substring matches.
                 if hay_name.contains(&query) {
+                    score += 120;
+                }
+                if hay_addr.contains(&query) {
                     score += 120;
                 }
                 if hay_path.contains(&query) {
                     score += 60;
-                }
-                if hay_addr.contains(&query) {
-                    score += 120;
                 }
 
                 if score > 0 {
@@ -632,6 +758,82 @@
             data: None,
         })?;
         let response = Self::pretty_json(&v)?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM ABI Registry: plan a contract call from natural language (no execution). Returns candidate functions + inferred args + missing fields.")]
+    async fn evm_plan_contract_call(
+        &self,
+        Parameters(request): Parameters<EvmPlanContractCallRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let text = request.text.clone();
+        let hint = request.function_hint.as_deref();
+        let limit = request.limit.unwrap_or(5).min(20);
+
+        // Resolve contract (B-mode default): do NOT auto-pick unless accept_best_match=true.
+        let accept = request.accept_best_match.unwrap_or(false);
+        let (address, entry, abi) = Self::resolve_contract_for_call(
+            request.chain_id,
+            request.address.clone(),
+            request.contract_name.clone(),
+            request.contract_query.clone(),
+            accept,
+        )?;
+
+        // Score functions.
+        let mut funcs: Vec<(i64, Value)> = Vec::new();
+        for f in abi.functions() {
+            let sig = Self::function_signature(f);
+            let score = Self::score_function(&f.name, &sig, &text, hint);
+            if score <= 0 {
+                continue;
+            }
+
+            let (filled_args, missing) = Self::infer_args_for_function(f, &text);
+
+            funcs.push((
+                score,
+                json!({
+                    "score": score,
+                    "function": f.name,
+                    "signature": sig,
+                    "inputs": f.inputs.iter().map(|p| json!({"name": p.name, "type": p.kind.to_string()})).collect::<Vec<_>>(),
+                    "filled_args": filled_args,
+                    "missing": missing
+                }),
+            ));
+        }
+
+        funcs.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut items: Vec<Value> = funcs.into_iter().take(limit).map(|(_, v)| v).collect();
+
+        // If we have no scored functions, still provide a few functions as fallback.
+        if items.is_empty() {
+            let mut fallback: Vec<Value> = Vec::new();
+            for f in abi.functions().take(limit) {
+                fallback.push(json!({
+                    "score": 0,
+                    "function": f.name,
+                    "signature": Self::function_signature(f),
+                    "inputs": f.inputs.iter().map(|p| json!({"name": p.name, "type": p.kind.to_string()})).collect::<Vec<_>>()
+                }));
+            }
+            items = fallback;
+        }
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id,
+            "contract": {
+                "address": address,
+                "name": entry.get("name"),
+                "entry": entry
+            },
+            "text": request.text,
+            "function_hint": request.function_hint,
+            "candidates": items,
+            "note": "This tool only plans. Use evm_call_view / evm_execute_contract_call with contract_name/address/contract_query + function_signature + args to execute. Default behavior is safe: if contract_query is ambiguous, require explicit confirmation unless accept_best_match=true."
+        }))?;
+
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
