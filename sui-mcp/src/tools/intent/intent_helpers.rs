@@ -35,6 +35,81 @@
         Ok(())
     }
 
+    async fn build_transfer_sui_intent_tx(
+        &self,
+        sender: String,
+        recipient: String,
+        input_coins: Vec<String>,
+        amount: Option<u64>,
+        gas_budget: u64,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.build_transfer_sui(Parameters(BuildTransferSuiRequest {
+            sender,
+            recipient,
+            input_coins,
+            amount,
+            gas_budget: Some(gas_budget),
+            auto_select_coins: Some(false),
+            confirm_large_transfer: Some(false),
+            large_transfer_threshold: None,
+        }))
+        .await
+    }
+
+    async fn build_transfer_object_intent_tx(
+        &self,
+        sender: String,
+        object_id: String,
+        recipient: String,
+        gas_budget: u64,
+        gas_object_id: Option<String>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.build_transfer_object(Parameters(BuildTransferObjectRequest {
+            sender,
+            object_id,
+            recipient,
+            gas_budget: Some(gas_budget),
+            gas_object_id,
+        }))
+        .await
+    }
+
+    async fn build_add_stake_intent_tx(
+        &self,
+        sender: String,
+        validator: String,
+        coins: Vec<String>,
+        amount: Option<u64>,
+        gas_budget: u64,
+        gas_object_id: Option<String>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.build_add_stake(Parameters(BuildAddStakeRequest {
+            sender,
+            validator,
+            coins,
+            amount,
+            gas_budget: Some(gas_budget),
+            gas_object_id,
+        }))
+        .await
+    }
+
+    async fn build_withdraw_stake_intent_tx(
+        &self,
+        sender: String,
+        staked_sui: String,
+        gas_budget: u64,
+        gas_object_id: Option<String>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.build_withdraw_stake(Parameters(BuildWithdrawStakeRequest {
+            sender,
+            staked_sui,
+            gas_budget: Some(gas_budget),
+            gas_object_id,
+        }))
+        .await
+    }
+
     async fn execute_zklogin_intent_tx(
         &self,
         tx_bytes: String,

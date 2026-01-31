@@ -208,16 +208,13 @@
                     data: None,
                 })?;
                 let tx = self
-                    .build_transfer_sui(Parameters(BuildTransferSuiRequest {
-                        sender: sender.clone(),
+                    .build_transfer_sui_intent_tx(
+                        sender.clone(),
                         recipient,
                         input_coins,
                         amount,
-                        gas_budget: Some(gas_budget),
-                        auto_select_coins: Some(false),
-                        confirm_large_transfer: Some(false),
-                        large_transfer_threshold: None,
-                    }))
+                        gas_budget,
+                    )
                     .await?;
                 let exec = self
                     .execute_zklogin_from_builder_result(
@@ -244,13 +241,13 @@
                 })?;
 
                 let tx = self
-                    .build_transfer_object(Parameters(BuildTransferObjectRequest {
-                        sender: sender.clone(),
+                    .build_transfer_object_intent_tx(
+                        sender.clone(),
                         object_id,
                         recipient,
-                        gas_budget: Some(gas_budget),
-                        gas_object_id: request.gas_object_id.clone(),
-                    }))
+                        gas_budget,
+                        request.gas_object_id.clone(),
+                    )
                     .await?;
                 let exec = self
                     .execute_zklogin_from_builder_result(
@@ -277,14 +274,14 @@
                 })?;
 
                 let tx = self
-                    .build_add_stake(Parameters(BuildAddStakeRequest {
-                        sender: sender.clone(),
+                    .build_add_stake_intent_tx(
+                        sender.clone(),
                         validator,
                         coins,
                         amount,
-                        gas_budget: Some(gas_budget),
-                        gas_object_id: request.gas_object_id.clone(),
-                    }))
+                        gas_budget,
+                        request.gas_object_id.clone(),
+                    )
                     .await?;
                 let exec = self
                     .execute_zklogin_from_builder_result(
@@ -307,12 +304,12 @@
                 })?;
 
                 let tx = self
-                    .build_withdraw_stake(Parameters(BuildWithdrawStakeRequest {
-                        sender: sender.clone(),
+                    .build_withdraw_stake_intent_tx(
+                        sender.clone(),
                         staked_sui,
-                        gas_budget: Some(gas_budget),
-                        gas_object_id: request.gas_object_id.clone(),
-                    }))
+                        gas_budget,
+                        request.gas_object_id.clone(),
+                    )
                     .await?;
                 let exec = self
                     .execute_zklogin_from_builder_result(
