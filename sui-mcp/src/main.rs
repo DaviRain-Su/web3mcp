@@ -1,4 +1,7 @@
 use anyhow::{bail, Result};
+
+#[path = "intent/adapters.rs"]
+mod intent_adapters;
 use base64::engine::general_purpose::STANDARD as Base64Engine;
 use base64::Engine;
 use fastcrypto_zkp::bn254::zk_login::ZkLoginInputs;
@@ -13,18 +16,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fs;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::io::Write;
 use sui_crypto::simple::SimpleVerifier;
 use sui_crypto::Verifier;
 use sui_graphql::Client as GraphqlClient;
 use sui_json::SuiJsonValue;
 use sui_json_rpc_types::{
-    CheckpointId, EventFilter, RPCTransactionRequestParams, SuiMoveNormalizedFunction,
-    SuiMoveNormalizedModule, SuiMoveNormalizedType, SuiObjectDataOptions, SuiObjectResponseQuery,
-    SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
+    CheckpointId, DryRunTransactionBlockResponse, EventFilter, RPCTransactionRequestParams,
+    SuiMoveNormalizedFunction, SuiMoveNormalizedModule, SuiMoveNormalizedType,
+    SuiObjectDataOptions, SuiObjectResponseQuery, SuiTransactionBlockEffectsAPI,
+    SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
     SuiTransactionBlockResponseQuery, SuiTypeTag, TransactionFilter, ZkLoginIntentScope,
 };
 use sui_keys::keystore::AccountKeystore;
@@ -108,6 +113,17 @@ impl SuiMcpServer {
         }
     }
 
+    async fn preflight_tx_data(
+        &self,
+        tx_data: &TransactionData,
+    ) -> Result<DryRunTransactionBlockResponse, ErrorData> {
+        self.client
+            .read_api()
+            .dry_run_transaction_block(tx_data.clone())
+            .await
+            .map_err(|e| Self::sdk_error("preflight_tx", e))
+    }
+
     fn error_hint(error: &str) -> Option<&'static str> {
         let lower = error.to_lowercase();
         if lower.contains("insufficient gas") || lower.contains("insufficientgas") {
@@ -130,7 +146,51 @@ impl SuiMcpServer {
                 "Ensure the signer matches the transaction sender and the signature is correct",
             );
         }
+        if lower.contains("gas budget") || lower.contains("gasbudget") || lower.contains("gas too low") {
+            return Some("Increase gas_budget or rerun with gas estimation enabled");
+        }
+        if lower.contains("object locked") || lower.contains("objectlocked") {
+            return Some("Object is locked by another transaction; retry after it completes");
+        }
+        if lower.contains("version") && lower.contains("mismatch") {
+            return Some("Object version mismatch; refetch object and rebuild the transaction");
+        }
         None
+    }
+
+    fn write_audit_log(&self, tool: &str, entry: Value) {
+        let path = if let Ok(path) = std::env::var("SUI_MCP_AUDIT_LOG") {
+            std::path::PathBuf::from(path)
+        } else if let Ok(home) = std::env::var("HOME") {
+            std::path::PathBuf::from(home)
+                .join(".sui-mcp")
+                .join("audit.log")
+        } else {
+            return;
+        };
+
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+
+        let record = json!({
+            "timestamp_ms": timestamp,
+            "tool": tool,
+            "entry": entry
+        });
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(file, "{}", record.to_string());
+        }
     }
 
     fn decode_base64(label: &str, value: &str) -> Result<Vec<u8>, ErrorData> {
@@ -464,61 +524,6 @@ impl SuiMcpServer {
             .unwrap_or_else(|| "mainnet".to_string())
     }
 
-    fn load_cetus_config(path: Option<String>) -> Result<Option<CetusConfig>, ErrorData> {
-        let path = path
-            .or_else(|| std::env::var("CETUS_CONFIG_PATH").ok())
-            .unwrap_or_else(|| "config/cetus.json".to_string());
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => return Ok(None),
-        };
-        let config: CetusConfig = serde_json::from_str(&content).map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Invalid Cetus config: {}", e)),
-            data: None,
-        })?;
-        Ok(Some(config))
-    }
-
-    fn resolve_cetus_action(
-        config: Option<CetusConfig>,
-        network: &str,
-        action: &str,
-        package_id: Option<String>,
-        module: Option<String>,
-        function: Option<String>,
-    ) -> Result<(String, String, String), ErrorData> {
-        if package_id.is_some() && module.is_some() && function.is_some() {
-            return Ok((package_id.unwrap(), module.unwrap(), function.unwrap()));
-        }
-
-        let Some(config) = config else {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Missing Cetus config; set CETUS_CONFIG_PATH or provide package/module/function"),
-                data: None,
-            });
-        };
-        let network_config = config.networks.get(network).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Cetus config missing network '{}'", network)),
-            data: None,
-        })?;
-        let action_config = network_config
-            .actions
-            .get(action)
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Cetus config missing action '{}'", action)),
-                data: None,
-            })?;
-
-        Ok((
-            package_id.unwrap_or_else(|| network_config.package_id.clone()),
-            module.unwrap_or_else(|| action_config.module.clone()),
-            function.unwrap_or_else(|| action_config.function.clone()),
-        ))
-    }
 
     async fn auto_fill_move_call_internal(
         &self,
@@ -1271,6 +1276,10 @@ struct KeystoreExecuteTransactionRequest {
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1341,6 +1350,16 @@ struct ExecuteTransferSuiRequest {
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
+    #[schemars(description = "Merge small SUI coins before transfer (default: false)")]
+    auto_merge_small_coins: Option<bool>,
+    #[schemars(description = "Merge when coin count exceeds this threshold (default: 10)")]
+    merge_threshold: Option<usize>,
+    #[schemars(description = "Maximum number of coins to merge (default: 10)")]
+    merge_max_inputs: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1363,6 +1382,12 @@ struct ExecuteTransferObjectRequest {
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
+    #[schemars(description = "Confirm sensitive action (required)")]
+    confirm: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1385,6 +1410,12 @@ struct ExecutePaySuiRequest {
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
+    #[schemars(description = "Confirm sensitive action (required)")]
+    confirm: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1409,6 +1440,12 @@ struct ExecuteAddStakeRequest {
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
+    #[schemars(description = "Confirm sensitive action (required)")]
+    confirm: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1429,6 +1466,12 @@ struct ExecuteWithdrawStakeRequest {
     keystore_path: Option<String>,
     #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
     allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
+    #[schemars(description = "Confirm sensitive action (required)")]
+    confirm: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1527,10 +1570,34 @@ struct BuildBatchTransactionRequest {
     sender: String,
     #[schemars(description = "Batch transaction requests")]
     requests: Vec<Value>,
-    #[schemars(description = "Gas budget for the transaction")]
-    gas_budget: u64,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
     #[schemars(description = "Optional gas object ID")]
     gas_object_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecuteBatchTransactionRequest {
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Batch transaction requests")]
+    requests: Vec<Value>,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Optional gas object ID")]
+    gas_object_id: Option<String>,
+    #[schemars(description = "Signer address or alias (defaults to sender)")]
+    signer: Option<String>,
+    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    keystore_path: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution (default: false)")]
+    preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    allow_preflight_failure: Option<bool>,
+    #[schemars(description = "Confirm sensitive action (required)")]
+    confirm: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1916,6 +1983,55 @@ struct AutoFillMoveCallRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DappManifestRequest {
+    #[schemars(description = "Optional manifest file path (defaults to SUI_DAPP_MANIFEST or ./dapps.json)")]
+    path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DappMoveCallRequest {
+    #[schemars(description = "Dapp name as listed in manifest")]
+    dapp: String,
+    #[schemars(description = "Sender address")]
+    sender: String,
+    #[schemars(description = "Move module name")]
+    module: String,
+    #[schemars(description = "Move function name")]
+    function: String,
+    #[schemars(description = "Type arguments (optional)")]
+    type_args: Option<Vec<String>>,
+    #[schemars(description = "Arguments as JSON values; use null or '<auto>' for object params")]
+    arguments: Vec<Value>,
+    #[schemars(description = "Gas budget for the transaction (optional)")]
+    gas_budget: Option<u64>,
+    #[schemars(description = "Optional gas object ID")]
+    gas_object_id: Option<String>,
+    #[schemars(description = "Optional gas price override")]
+    gas_price: Option<u64>,
+    #[schemars(description = "Optional manifest file path (defaults to SUI_DAPP_MANIFEST or ./dapps.json)")]
+    manifest_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct DappManifest {
+    dapps: Vec<DappEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct DappEntry {
+    name: String,
+    package: String,
+    modules: Option<Vec<String>>,
+    functions: Option<Vec<DappFunctionEntry>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct DappFunctionEntry {
+    module: String,
+    function: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct AutoPrepareMoveCallRequest {
     #[schemars(description = "Sender address")]
     sender: String,
@@ -1975,96 +2091,6 @@ struct VerifySimpleSignatureRequest {
     message_base64: String,
     #[schemars(description = "Simple signature (base64 flag||sig||pk)")]
     signature_base64: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusConfigRequest {
-    #[schemars(description = "Optional config path override")]
-    path: Option<String>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusPrepareRequest {
-    #[schemars(
-        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
-    )]
-    action: String,
-    #[schemars(description = "Network override")]
-    network: Option<String>,
-    #[schemars(description = "Sender address")]
-    sender: String,
-    #[schemars(description = "Package ID override")]
-    package_id: Option<String>,
-    #[schemars(description = "Module override")]
-    module: Option<String>,
-    #[schemars(description = "Function override")]
-    function: Option<String>,
-    #[schemars(description = "Type arguments")]
-    type_args: Option<Vec<String>>,
-    #[schemars(description = "Arguments as JSON values")]
-    arguments: Vec<Value>,
-    #[schemars(description = "Gas budget")]
-    gas_budget: u64,
-    #[schemars(description = "Optional gas object ID")]
-    gas_object_id: Option<String>,
-    #[schemars(description = "Optional gas price")]
-    gas_price: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusExecuteRequest {
-    #[schemars(
-        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
-    )]
-    action: String,
-    #[schemars(description = "Network override")]
-    network: Option<String>,
-    #[schemars(description = "Sender address")]
-    sender: String,
-    #[schemars(description = "Package ID override")]
-    package_id: Option<String>,
-    #[schemars(description = "Module override")]
-    module: Option<String>,
-    #[schemars(description = "Function override")]
-    function: Option<String>,
-    #[schemars(description = "Type arguments")]
-    type_args: Option<Vec<String>>,
-    #[schemars(description = "Arguments as JSON values")]
-    arguments: Vec<Value>,
-    #[schemars(description = "Gas budget")]
-    gas_budget: u64,
-    #[schemars(description = "Optional gas object ID")]
-    gas_object_id: Option<String>,
-    #[schemars(description = "Optional gas price")]
-    gas_price: Option<u64>,
-    #[schemars(description = "ZkLogin inputs JSON string from prover")]
-    zk_login_inputs_json: String,
-    #[schemars(description = "Address seed used for zkLogin (decimal string)")]
-    address_seed: String,
-    #[schemars(description = "Maximum epoch for the zkLogin signature")]
-    max_epoch: u64,
-    #[schemars(description = "Ephemeral user signature over tx bytes (base64 flag||sig||pubkey)")]
-    user_signature: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusQuoteRequest {
-    #[schemars(description = "Action: quote")]
-    action: String,
-    #[schemars(description = "Network override")]
-    network: Option<String>,
-    #[schemars(description = "Sender address")]
-    sender: String,
-    #[schemars(description = "Package ID override")]
-    package_id: Option<String>,
-    #[schemars(description = "Module override")]
-    module: Option<String>,
-    #[schemars(description = "Function override")]
-    function: Option<String>,
-    #[schemars(description = "Type arguments")]
-    type_args: Option<Vec<String>>,
-    #[schemars(description = "Arguments as JSON values")]
-    arguments: Vec<Value>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -2145,72 +2171,6 @@ struct IntentExecuteRequest {
     user_signature: Option<String>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusGenerateConfigRequest {
-    #[schemars(description = "Network name")]
-    network: String,
-    #[schemars(description = "Package id for this network")]
-    package_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusGeneratePayloadRequest {
-    #[schemars(
-        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
-    )]
-    action: String,
-    #[schemars(description = "Network override")]
-    network: Option<String>,
-    #[schemars(description = "Sender address")]
-    sender: String,
-    #[schemars(description = "Package ID override")]
-    package_id: Option<String>,
-    #[schemars(description = "Module override")]
-    module: Option<String>,
-    #[schemars(description = "Function override")]
-    function: Option<String>,
-    #[schemars(description = "Optional gas budget")]
-    gas_budget: Option<u64>,
-    #[schemars(description = "Optional gas price")]
-    gas_price: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusValidatePayloadRequest {
-    #[schemars(
-        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
-    )]
-    action: String,
-    #[schemars(description = "Network override")]
-    network: Option<String>,
-    #[schemars(description = "Package ID override")]
-    package_id: Option<String>,
-    #[schemars(description = "Module override")]
-    module: Option<String>,
-    #[schemars(description = "Function override")]
-    function: Option<String>,
-    #[schemars(description = "Type arguments")]
-    type_args: Option<Vec<String>>,
-    #[schemars(description = "Arguments as JSON values")]
-    arguments: Vec<Value>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct CetusActionParamsRequest {
-    #[schemars(
-        description = "Action: swap|swap_exact_in|swap_exact_out|add_liquidity|remove_liquidity|open_position|close_position|increase_liquidity|decrease_liquidity|collect_fees|quote"
-    )]
-    action: String,
-    #[schemars(description = "Network override")]
-    network: Option<String>,
-    #[schemars(description = "Package ID override")]
-    package_id: Option<String>,
-    #[schemars(description = "Module override")]
-    module: Option<String>,
-    #[schemars(description = "Function override")]
-    function: Option<String>,
-}
-
 struct AutoFilledMoveCall {
     type_args: Vec<String>,
     arguments: Vec<Value>,
@@ -2219,23 +2179,6 @@ struct AutoFilledMoveCall {
     gas_price: Option<u64>,
     warnings: Vec<Value>,
     gas: Option<Value>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct CetusConfig {
-    networks: HashMap<String, CetusNetworkConfig>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct CetusNetworkConfig {
-    package_id: String,
-    actions: HashMap<String, CetusActionConfig>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct CetusActionConfig {
-    module: String,
-    function: String,
 }
 
 include!(concat!(env!("OUT_DIR"), "/router_impl.rs"));

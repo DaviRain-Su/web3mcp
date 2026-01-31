@@ -54,6 +54,21 @@
         &self,
         Parameters(request): Parameters<ExecuteTransferSuiRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        let merge_summary = if request.auto_merge_small_coins.unwrap_or(false) {
+            Some(
+                self.merge_small_sui_coins(
+                    &request.sender,
+                    request.merge_threshold.unwrap_or(10),
+                    request.merge_max_inputs.unwrap_or(10),
+                    request.keystore_path.as_deref(),
+                    request.signer.as_deref(),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+
         let (tx_data, input_coin_ids, _) = self
             .build_transfer_sui_data(
                 &request.sender,
@@ -86,12 +101,14 @@
             });
         }
 
-        let result = self
+        let (result, preflight) = self
             .sign_and_execute_tx_data(
                 &keystore,
                 signer,
                 tx_data,
                 request.allow_sender_mismatch,
+                request.preflight,
+                request.allow_preflight_failure,
                 "execute_transfer_sui",
             )
             .await?;
@@ -99,9 +116,23 @@
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
             "input_coins": input_coin_ids,
+            "merge_summary": merge_summary,
+            "dry_run": preflight,
             "result": result,
             "summary": summary
         }))?;
+
+        self.write_audit_log(
+            "execute_transfer_sui",
+            json!({
+                "sender": request.sender,
+                "recipient": request.recipient,
+                "amount": request.amount,
+                "signer": signer.to_string(),
+                "digest": result.digest,
+                "merge_summary": merge_summary
+            }),
+        );
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -112,6 +143,13 @@
         &self,
         Parameters(request): Parameters<ExecuteTransferObjectRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        if !request.confirm.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("transfer_object requires confirm=true"),
+                data: None,
+            });
+        }
         let (tx_data, _) = self
             .build_transfer_object_data(
                 &request.sender,
@@ -129,21 +167,35 @@
             Self::parse_address(&request.sender)?
         };
 
-        let result = self
+        let (result, preflight) = self
             .sign_and_execute_tx_data(
                 &keystore,
                 signer,
                 tx_data,
                 request.allow_sender_mismatch,
+                request.preflight,
+                request.allow_preflight_failure,
                 "execute_transfer_object",
             )
             .await?;
 
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
+            "dry_run": preflight,
             "result": result,
             "summary": summary
         }))?;
+
+        self.write_audit_log(
+            "execute_transfer_object",
+            json!({
+                "sender": request.sender,
+                "recipient": request.recipient,
+                "object_id": request.object_id,
+                "signer": signer.to_string(),
+                "digest": result.digest
+            }),
+        );
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -154,6 +206,13 @@
         &self,
         Parameters(request): Parameters<ExecutePaySuiRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        if !request.confirm.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("pay_sui requires confirm=true"),
+                data: None,
+            });
+        }
         let (tx_data, _) = self
             .build_pay_sui_data(
                 &request.sender,
@@ -171,21 +230,35 @@
             Self::parse_address(&request.sender)?
         };
 
-        let result = self
+        let (result, preflight) = self
             .sign_and_execute_tx_data(
                 &keystore,
                 signer,
                 tx_data,
                 request.allow_sender_mismatch,
+                request.preflight,
+                request.allow_preflight_failure,
                 "execute_pay_sui",
             )
             .await?;
 
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
+            "dry_run": preflight,
             "result": result,
             "summary": summary
         }))?;
+
+        self.write_audit_log(
+            "execute_pay_sui",
+            json!({
+                "sender": request.sender,
+                "recipients": request.recipients,
+                "amounts": request.amounts,
+                "signer": signer.to_string(),
+                "digest": result.digest
+            }),
+        );
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -196,6 +269,13 @@
         &self,
         Parameters(request): Parameters<ExecuteAddStakeRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        if !request.confirm.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("stake requires confirm=true"),
+                data: None,
+            });
+        }
         let (tx_data, _) = self
             .build_add_stake_data(
                 &request.sender,
@@ -214,21 +294,35 @@
             Self::parse_address(&request.sender)?
         };
 
-        let result = self
+        let (result, preflight) = self
             .sign_and_execute_tx_data(
                 &keystore,
                 signer,
                 tx_data,
                 request.allow_sender_mismatch,
+                request.preflight,
+                request.allow_preflight_failure,
                 "execute_add_stake",
             )
             .await?;
 
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
+            "dry_run": preflight,
             "result": result,
             "summary": summary
         }))?;
+
+        self.write_audit_log(
+            "execute_add_stake",
+            json!({
+                "sender": request.sender,
+                "validator": request.validator,
+                "amount": request.amount,
+                "signer": signer.to_string(),
+                "digest": result.digest
+            }),
+        );
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -239,6 +333,13 @@
         &self,
         Parameters(request): Parameters<ExecuteWithdrawStakeRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        if !request.confirm.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("withdraw_stake requires confirm=true"),
+                data: None,
+            });
+        }
         let (tx_data, _) = self
             .build_withdraw_stake_data(
                 &request.sender,
@@ -255,21 +356,34 @@
             Self::parse_address(&request.sender)?
         };
 
-        let result = self
+        let (result, preflight) = self
             .sign_and_execute_tx_data(
                 &keystore,
                 signer,
                 tx_data,
                 request.allow_sender_mismatch,
+                request.preflight,
+                request.allow_preflight_failure,
                 "execute_withdraw_stake",
             )
             .await?;
 
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
+            "dry_run": preflight,
             "result": result,
             "summary": summary
         }))?;
+
+        self.write_audit_log(
+            "execute_withdraw_stake",
+            json!({
+                "sender": request.sender,
+                "staked_sui": request.staked_sui,
+                "signer": signer.to_string(),
+                "digest": result.digest
+            }),
+        );
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -437,6 +551,132 @@
         Ok((tx_data, resolved_gas_budget))
     }
 
+    async fn build_batch_transaction_data(
+        &self,
+        sender: &str,
+        requests: Vec<Value>,
+        gas_budget: Option<u64>,
+        gas_object_id: Option<&str>,
+    ) -> Result<(TransactionData, u64), ErrorData> {
+        let sender = Self::parse_address(sender)?;
+        let gas = match gas_object_id {
+            Some(gas_id) => Some(Self::parse_object_id(gas_id)?),
+            None => None,
+        };
+
+        let requests = requests
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value::<RPCTransactionRequestParams>(value).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid batch request: {}", e)),
+                    data: None,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut resolved_gas_budget = gas_budget.unwrap_or(1_000_000);
+        let tx_data = self
+            .client
+            .transaction_builder()
+            .batch_transaction(sender, requests.clone(), gas, resolved_gas_budget)
+            .await
+            .map_err(|e| Self::sdk_error("build_batch_transaction", e))?;
+
+        if gas_budget.is_none() {
+            let estimated = self.estimate_gas_budget(&tx_data).await?;
+            resolved_gas_budget = Self::gas_budget_with_buffer(estimated);
+            let rebuilt = self
+                .client
+                .transaction_builder()
+                .batch_transaction(sender, requests, gas, resolved_gas_budget)
+                .await
+                .map_err(|e| Self::sdk_error("build_batch_transaction", e))?;
+            return Ok((rebuilt, resolved_gas_budget));
+        }
+
+        Ok((tx_data, resolved_gas_budget))
+    }
+
+    async fn merge_small_sui_coins(
+        &self,
+        sender: &str,
+        threshold: usize,
+        max_inputs: usize,
+        keystore_path: Option<&str>,
+        signer: Option<&str>,
+    ) -> Result<Value, ErrorData> {
+        let sender_addr = Self::parse_address(sender)?;
+        let coins = self
+            .client
+            .coin_read_api()
+            .get_coins(sender_addr, None, None, None)
+            .await
+            .map_err(|e| Self::sdk_error("merge_small_sui_coins", e))?;
+
+        if coins.data.len() <= threshold {
+            return Ok(json!({
+                "merged": false,
+                "reason": "below_threshold",
+                "coin_count": coins.data.len()
+            }));
+        }
+
+        let mut coin_list = coins.data;
+        coin_list.sort_by(|a, b| b.balance.cmp(&a.balance));
+        let target = coin_list[0].coin_object_id;
+        let merge_candidates = coin_list
+            .into_iter()
+            .skip(1)
+            .take(max_inputs)
+            .map(|coin| coin.coin_object_id)
+            .collect::<Vec<_>>();
+
+        if merge_candidates.is_empty() {
+            return Ok(json!({
+                "merged": false,
+                "reason": "no_merge_candidates"
+            }));
+        }
+
+        let keystore = self.load_file_keystore(keystore_path)?;
+        let signer = if let Some(signer) = signer {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            sender_addr
+        };
+
+        let mut digests = Vec::new();
+        for coin_to_merge in merge_candidates.iter() {
+            let tx_data = self
+                .client
+                .transaction_builder()
+                .merge_coins(sender_addr, target, *coin_to_merge, None, 1_000_000)
+                .await
+                .map_err(|e| Self::sdk_error("merge_small_sui_coins", e))?;
+
+            let (result, _preflight) = self
+                .sign_and_execute_tx_data(
+                    &keystore,
+                    signer,
+                    tx_data,
+                    Some(false),
+                    Some(false),
+                    Some(true),
+                    "merge_small_sui_coins",
+                )
+                .await?;
+            digests.push(result.digest);
+        }
+
+        Ok(json!({
+            "merged": true,
+            "target": target.to_string(),
+            "merged_coins": merge_candidates.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "digests": digests
+        }))
+    }
+
     async fn build_pay_sui_data(
         &self,
         sender: &str,
@@ -589,8 +829,10 @@
         signer: SuiAddress,
         tx_data: TransactionData,
         allow_sender_mismatch: Option<bool>,
+        preflight: Option<bool>,
+        allow_preflight_failure: Option<bool>,
         context: &str,
-    ) -> Result<SuiTransactionBlockResponse, ErrorData> {
+    ) -> Result<(SuiTransactionBlockResponse, Option<DryRunTransactionBlockResponse>), ErrorData> {
         let tx_sender = tx_data.sender();
         if tx_sender != signer && !allow_sender_mismatch.unwrap_or(false) {
             return Err(ErrorData {
@@ -602,6 +844,25 @@
                 data: None,
             });
         }
+
+        let preflight_result = if preflight.unwrap_or(false) {
+            let result = self.preflight_tx_data(&tx_data).await?;
+            if result.execution_error_source.is_some()
+                && !allow_preflight_failure.unwrap_or(false)
+            {
+                return Err(ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!(
+                        "Dry-run failed: {}",
+                        result.execution_error_source.as_ref().unwrap()
+                    )),
+                    data: None,
+                });
+            }
+            Some(result)
+        } else {
+            None
+        };
 
         let signature = keystore
             .sign_secure(&signer, &tx_data, shared_crypto::intent::Intent::sui_transaction())
@@ -624,11 +885,14 @@
             .with_object_changes()
             .with_balance_changes();
 
-        self.client
+        let result = self
+            .client
             .quorum_driver_api()
             .execute_transaction_block(tx, options, None)
             .await
-            .map_err(|e| Self::sdk_error(context, e))
+            .map_err(|e| Self::sdk_error(context, e))?;
+
+        Ok((result, preflight_result))
     }
 
     /// Build a pay SUI transaction
@@ -811,32 +1075,78 @@
         &self,
         Parameters(request): Parameters<BuildBatchTransactionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let sender = Self::parse_address(&request.sender)?;
-        let gas = match request.gas_object_id {
-            Some(gas_id) => Some(Self::parse_object_id(&gas_id)?),
-            None => None,
+        let (tx_data, gas_budget) = self
+            .build_batch_transaction_data(
+                &request.sender,
+                request.requests,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
+
+        let response = Self::pretty_json(&json!({
+            "tx_bytes": Self::encode_tx_bytes(&tx_data)?,
+            "gas_budget": gas_budget
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Execute a batch transaction using local keystore
+    #[tool(description = "Execute a batch transaction using local keystore")]
+    async fn execute_batch_transaction(
+        &self,
+        Parameters(request): Parameters<ExecuteBatchTransactionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if !request.confirm.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("batch transaction requires confirm=true"),
+                data: None,
+            });
+        }
+        let (tx_data, _) = self
+            .build_batch_transaction_data(
+                &request.sender,
+                request.requests,
+                request.gas_budget,
+                request.gas_object_id.as_deref(),
+            )
+            .await?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(signer) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(signer))?
+        } else {
+            Self::parse_address(&request.sender)?
         };
 
-        let requests = request
-            .requests
-            .into_iter()
-            .map(|value| {
-                serde_json::from_value::<RPCTransactionRequestParams>(value).map_err(|e| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(format!("Invalid batch request: {}", e)),
-                    data: None,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let (result, preflight) = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                request.preflight,
+                request.allow_preflight_failure,
+                "execute_batch_transaction",
+            )
+            .await?;
 
-        let tx_data = self
-            .client
-            .transaction_builder()
-            .batch_transaction(sender, requests, gas, request.gas_budget)
-            .await
-            .map_err(|e| Self::sdk_error("build_batch_transaction", e))?;
+        let summary = Self::summarize_transaction(&result);
+        let response = Self::pretty_json(&json!({
+            "dry_run": preflight,
+            "result": result,
+            "summary": summary
+        }))?;
 
-        let response = Self::tx_response(&tx_data)?;
+        self.write_audit_log(
+            "execute_batch_transaction",
+            json!({
+                "sender": request.sender,
+                "signer": signer.to_string(),
+                "digest": result.digest
+            }),
+        );
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 

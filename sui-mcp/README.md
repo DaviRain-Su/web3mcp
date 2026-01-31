@@ -87,6 +87,20 @@ Once configured with Claude Desktop, you can ask Claude to:
 Design notes for the multi-chain intent router are in `docs/intent-router.md`.
 Chinese version: `docs/intent-router.zh.md`.
 
+## Claude Prompts
+
+See `docs/claude-prompts.md` for ready-to-use prompts.
+
+## Multi-chain adapters
+
+Stub adapters live at `src/intent/adapters.rs` for future EVM/Solana integration.
+
+## Dapp Manifest
+
+You can dynamically load Sui dapps via a manifest file (`dapps.json` by default). Use `list_dapps` and `dapp_move_call_payload` to generate call payloads.
+
+The example manifest `examples/dapps.json` includes Cetus mainnet/testnet package IDs.
+
 ### Example: Build transfer without coin selection
 
 ```json
@@ -128,6 +142,7 @@ Other one-step execute tools:
 - `execute_pay_sui`
 - `execute_add_stake`
 - `execute_withdraw_stake`
+- `execute_batch_transaction`
 
 ### Safety checks
 
@@ -137,6 +152,14 @@ Other one-step execute tools:
 ### Gas estimation
 
 When `gas_budget` is omitted on build/execute tools, the server will dry-run the transaction, estimate gas usage, and apply a buffer.
+
+### Preflight
+
+Execution tools accept `preflight=true` to run a dry-run before signing. If the dry-run fails, execution stops unless `allow_preflight_failure=true`.
+
+### Audit log
+
+Set `SUI_MCP_AUDIT_LOG` to enable JSONL audit logs (defaults to `~/.sui-mcp/audit.log`).
 
 ### Example: Wallet overview
 

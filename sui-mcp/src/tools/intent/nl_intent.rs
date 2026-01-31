@@ -20,7 +20,7 @@
             "entities": entities,
             "tool_plan": plan,
             "pipeline": pipeline,
-            "notes": "Fill <...> placeholders using cetus_action_params or generate_move_call_payload before executing."
+            "notes": "Fill <...> placeholders using generate_move_call_payload before executing."
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -35,7 +35,8 @@
         let lower = text.to_lowercase();
         let sender = request.sender.clone();
         let network = request.network.clone();
-        let (intent, action, entities, _confidence, _plan) = Self::parse_intent_plan(&text, &lower, sender.clone(), network.clone());
+        let (intent, _action, entities, _confidence, _plan) =
+            Self::parse_intent_plan(&text, &lower, sender.clone(), network.clone());
 
         let amount = request.amount.or_else(|| entities.get("amount_u64").and_then(|v| v.as_u64()));
         let recipient = request
@@ -268,79 +269,6 @@
                     }))
                     .await;
             }
-            "cetus_quote" => {
-                let type_args = request.type_args.ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("type_args is required for cetus quote"),
-                    data: None,
-                })?;
-                let arguments = request.arguments.ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("arguments is required for cetus quote"),
-                    data: None,
-                })?;
-
-                return self
-                    .cetus_quote(Parameters(CetusQuoteRequest {
-                        action: action.unwrap_or_else(|| "quote".to_string()),
-                        network,
-                        sender,
-                        package_id: None,
-                        module: None,
-                        function: None,
-                        type_args: Some(type_args),
-                        arguments,
-                    }))
-                    .await;
-            }
-            "cetus_swap" => {
-                let type_args = request.type_args.ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("type_args is required for cetus swap"),
-                    data: None,
-                })?;
-                let arguments = request.arguments.ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("arguments is required for cetus swap"),
-                    data: None,
-                })?;
-
-                return self
-                    .cetus_execute(Parameters(CetusExecuteRequest {
-                        action: action.unwrap_or_else(|| "swap".to_string()),
-                        network,
-                        sender,
-                        package_id: None,
-                        module: None,
-                        function: None,
-                        type_args: Some(type_args),
-                        arguments,
-                        gas_budget,
-                        gas_object_id: request.gas_object_id.clone(),
-                        gas_price: request.gas_price,
-                        zk_login_inputs_json: request.zk_login_inputs_json.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("zk_login_inputs_json required"),
-                            data: None,
-                        })?,
-                        address_seed: request.address_seed.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("address_seed required"),
-                            data: None,
-                        })?,
-                        max_epoch: request.max_epoch.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("max_epoch required"),
-                            data: None,
-                        })?,
-                        user_signature: request.user_signature.ok_or_else(|| ErrorData {
-                            code: ErrorCode(-32602),
-                            message: Cow::from("user_signature required"),
-                            data: None,
-                        })?,
-                    }))
-                    .await;
-            }
             "mint" | "borrow" | "lend" => {
                 let package = request.package.ok_or_else(|| ErrorData {
                     code: ErrorCode(-32602),
@@ -441,54 +369,17 @@
         });
 
         if lower.contains("swap") || lower.contains("兑换") || lower.contains("换") {
-            intent = "cetus_swap".to_string();
-            confidence = 0.7;
+            intent = "swap".to_string();
+            confidence = 0.5;
             if lower.contains("exact out") || lower.contains("精确输出") {
                 action = Some("swap_exact_out".to_string());
             } else if lower.contains("exact in") || lower.contains("精确输入") {
                 action = Some("swap_exact_in".to_string());
             }
-
-            plan.push(json!({
-                "tool": "cetus_action_params",
-                "params": {
-                    "action": action.clone().unwrap_or_else(|| "swap".to_string()),
-                    "network": network
-                }
-            }));
-            plan.push(json!({
-                "tool": "cetus_generate_payload",
-                "params": {
-                    "action": action.clone().unwrap_or_else(|| "swap".to_string()),
-                    "network": network,
-                    "sender": sender
-                }
-            }));
-            plan.push(json!({
-                "tool": "cetus_prepare",
-                "params": {
-                    "action": action.clone().unwrap_or_else(|| "swap".to_string()),
-                    "network": network,
-                    "sender": sender,
-                    "type_args": ["<from_coin>", "<to_coin>"],
-                    "arguments": ["<pool>", "<amount_in>", "<min_amount_out>", "<clock>"] ,
-                    "gas_budget": 1000000
-                }
-            }));
         } else if lower.contains("quote") || lower.contains("报价") {
-            intent = "cetus_quote".to_string();
-            confidence = 0.65;
+            intent = "quote".to_string();
+            confidence = 0.5;
             action = Some("quote".to_string());
-            plan.push(json!({
-                "tool": "cetus_quote",
-                "params": {
-                    "action": "quote",
-                    "network": network,
-                    "sender": sender,
-                    "type_args": ["<from_coin>", "<to_coin>"],
-                    "arguments": ["<pool>", "<amount>", "<by_amount_in>"]
-                }
-            }));
         } else if lower.contains("balance") || lower.contains("余额") {
             intent = "get_balance".to_string();
             confidence = 0.8;

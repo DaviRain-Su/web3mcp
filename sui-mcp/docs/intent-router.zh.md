@@ -14,7 +14,7 @@
 - `intent_execute`: 执行校验后的计划并返回结果。
 
 2) **链适配器（链相关）**
-- **SuiAdapter**：映射到 Sui 工具（`build_transfer_sui`、`execute_transaction_with_keystore`、`cetus_*`）。
+- **SuiAdapter**：映射到 Sui 工具（`build_transfer_sui`、`execute_transaction_with_keystore`、`auto_fill_move_call`）。
 - **EvmAdapter**：映射到 EVM 工具（`eth_sendTransaction`、ERC20 transfer、gas estimate）。
 - **SolanaAdapter**：映射到 Solana 工具（system transfer、SPL transfer）。
 

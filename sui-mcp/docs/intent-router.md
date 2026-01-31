@@ -14,7 +14,7 @@ Provide a chain-agnostic intent layer that can parse user intent, generate execu
 - `intent_execute`: Execute a validated plan and return results.
 
 2) **Chain Adapters (Chain-specific)**
-- **SuiAdapter**: map intent to Sui tools (`build_transfer_sui`, `execute_transaction_with_keystore`, `cetus_*`).
+- **SuiAdapter**: map intent to Sui tools (`build_transfer_sui`, `execute_transaction_with_keystore`, `auto_fill_move_call`).
 - **EvmAdapter**: map intent to EVM tools (`eth_sendTransaction`, ERC20 transfer, gas estimate).
 - **SolanaAdapter**: map intent to Solana tools (system transfer, SPL transfer).
 

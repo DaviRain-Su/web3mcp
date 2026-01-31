@@ -96,6 +96,27 @@
             });
         }
 
+        let preflight = if request.preflight.unwrap_or(false) {
+            Some(self.preflight_tx_data(&tx_data).await?)
+        } else {
+            None
+        };
+
+        if let Some(dry_run) = preflight.as_ref() {
+            if dry_run.execution_error_source.is_some()
+                && !request.allow_preflight_failure.unwrap_or(false)
+            {
+                return Err(ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!(
+                        "Dry-run failed: {}",
+                        dry_run.execution_error_source.as_ref().unwrap()
+                    )),
+                    data: None,
+                });
+            }
+        }
+
         let signature = keystore
             .sign_secure(&signer, &tx_data, shared_crypto::intent::Intent::sui_transaction())
             .await
@@ -126,9 +147,18 @@
 
         let summary = Self::summarize_transaction(&result);
         let response = Self::pretty_json(&json!({
+            "dry_run": preflight,
             "result": result,
             "summary": summary
         }))?;
+
+        self.write_audit_log(
+            "execute_transaction_with_keystore",
+            json!({
+                "signer": signer.to_string(),
+                "digest": result.digest
+            }),
+        );
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }

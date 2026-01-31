@@ -1,0 +1,58 @@
+{
+  "dapps": [
+    {
+      "name": "cetus-mainnet",
+      "package": "0x95b8d278b876cae22206131fb9724f701c9444515813042f54f0a426c9a3bc2f",
+      "modules": ["router"],
+      "functions": [
+        { "module": "router", "function": "swap_exact_in" }
+      ]
+    },
+    {
+      "name": "cetus-testnet",
+      "package": "0xf5ff7d5ba73b581bca6b4b9fa0049cd320360abd154b809f8700a8fd3cfaf7ca",
+      "modules": ["clmm_pool", "coin", "config", "launchpad_pool"],
+      "functions": [
+        { "module": "clmm_pool", "function": "add_clmm_pool" },
+        { "module": "clmm_pool", "function": "add_extension_to_pool" },
+        { "module": "clmm_pool", "function": "close_clmm_pool" },
+        { "module": "clmm_pool", "function": "open_clmm_pool" },
+        { "module": "clmm_pool", "function": "remove_clmm_pool" },
+        { "module": "clmm_pool", "function": "remove_extension_from_pool" },
+        { "module": "clmm_pool", "function": "update_clmm_pool" },
+        { "module": "clmm_pool", "function": "update_extension_from_pool" },
+        { "module": "clmm_pool", "function": "update_pool_type" },
+        { "module": "clmm_pool", "function": "update_rewarder_display" },
+
+        { "module": "coin", "function": "add_coin" },
+        { "module": "coin", "function": "add_extension_to_coin" },
+        { "module": "coin", "function": "remove_coin" },
+        { "module": "coin", "function": "remove_extension_from_coin" },
+        { "module": "coin", "function": "update_coin" },
+        { "module": "coin", "function": "update_coin_name" },
+        { "module": "coin", "function": "update_coin_symbol" },
+        { "module": "coin", "function": "update_coingecko_id" },
+        { "module": "coin", "function": "update_extension_from_coin" },
+        { "module": "coin", "function": "update_pyth_id" },
+
+        { "module": "config", "function": "add_role" },
+        { "module": "config", "function": "remove_member" },
+        { "module": "config", "function": "remove_role" },
+        { "module": "config", "function": "set_roles" },
+
+        { "module": "launchpad_pool", "function": "add_extension_to_pool" },
+        { "module": "launchpad_pool", "function": "add_launchpad_pool" },
+        { "module": "launchpad_pool", "function": "remove_extension_from_pool" },
+        { "module": "launchpad_pool", "function": "update_extension_from_pool" }
+      ]
+    },
+    {
+      "name": "example-dapp",
+      "package": "0x...",
+      "modules": ["module"],
+      "functions": [
+        { "module": "module", "function": "mint" }
+      ]
+    }
+  ]
+}
