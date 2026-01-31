@@ -449,33 +449,162 @@
     }
 
     fn resolve_intent_network(network: Option<String>, lower: &str) -> Value {
+        fn is_test(s: &str) -> bool {
+            s.contains("test") || s.contains("testnet") || s.contains("sepolia") || s.contains("amoy") || s.contains("mumbai") || s.contains("alfajores") || s.contains("测试")
+        }
+        fn is_main(s: &str) -> bool {
+            s.contains("mainnet") || s.contains("main") || s.contains("one") || s.contains("主网")
+        }
+        fn is_dev(s: &str) -> bool {
+            s.contains("dev") || s.contains("devnet")
+        }
+
+        #[derive(Clone, Copy)]
+        struct EvmChainRule {
+            keywords: &'static [&'static str],
+            name_main: &'static str,
+            name_test: &'static str,
+            name_dev: Option<&'static str>,
+            chain_id_main: u64,
+            chain_id_test: Option<u64>,
+            chain_id_dev: Option<u64>,
+        }
+
+        // Note: keep this list tight and high-signal; first match wins.
+        const EVM_RULES: &[EvmChainRule] = &[
+            EvmChainRule {
+                keywords: &["base"],
+                name_main: "base",
+                name_test: "base-sepolia",
+                name_dev: None,
+                chain_id_main: 8453,
+                chain_id_test: Some(84532),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["arbitrum", "arb"],
+                name_main: "arbitrum",
+                name_test: "arbitrum-sepolia",
+                name_dev: None,
+                chain_id_main: 42161,
+                chain_id_test: Some(421614),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["optimism", "op"],
+                name_main: "optimism",
+                name_test: "op-sepolia",
+                name_dev: None,
+                chain_id_main: 10,
+                chain_id_test: Some(11155420),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["polygon", "matic"],
+                name_main: "polygon",
+                name_test: "polygon-amoy",
+                name_dev: None,
+                chain_id_main: 137,
+                chain_id_test: Some(80002),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["avax", "avalanche"],
+                name_main: "avalanche",
+                name_test: "avalanche-fuji",
+                name_dev: None,
+                chain_id_main: 43114,
+                chain_id_test: Some(43113),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["bsc", "bnb"],
+                name_main: "bsc",
+                name_test: "bsc-testnet",
+                name_dev: None,
+                chain_id_main: 56,
+                chain_id_test: Some(97),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["celo"],
+                name_main: "celo",
+                name_test: "celo-alfajores",
+                name_dev: None,
+                chain_id_main: 42220,
+                chain_id_test: Some(44787),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["kava"],
+                name_main: "kava",
+                name_test: "kava-testnet",
+                name_dev: None,
+                chain_id_main: 2222,
+                chain_id_test: Some(2221),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["world chain", "worldchain"],
+                name_main: "worldchain",
+                name_test: "worldchain-sepolia",
+                name_dev: None,
+                chain_id_main: 480,
+                chain_id_test: Some(4801),
+                chain_id_dev: None,
+            },
+            EvmChainRule {
+                keywords: &["monad"],
+                name_main: "monad",
+                name_test: "monad-testnet",
+                name_dev: Some("monad-devnet"),
+                chain_id_main: 143,
+                chain_id_test: Some(10143),
+                chain_id_dev: Some(20143),
+            },
+            // Kaia: Kairos testnet exists as 1001
+            EvmChainRule {
+                keywords: &["kaia"],
+                name_main: "kaia",
+                name_test: "kaia-kairos",
+                name_dev: None,
+                chain_id_main: 8217,
+                chain_id_test: Some(1001),
+                chain_id_dev: None,
+            },
+            // HyperEVM: chainid.network currently lists only testnet=998.
+            EvmChainRule {
+                keywords: &["hyperevm", "hyper evm", "hyperliquid"],
+                name_main: "hyperevm",
+                name_test: "hyperevm-testnet",
+                name_dev: None,
+                chain_id_main: 998,
+                chain_id_test: Some(998),
+                chain_id_dev: None,
+            },
+            // Ethereum last (because 'eth' is a substring in lots of words).
+            EvmChainRule {
+                keywords: &["ethereum", "eth"],
+                name_main: "ethereum",
+                name_test: "sepolia",
+                name_dev: None,
+                chain_id_main: 1,
+                chain_id_test: Some(11155111),
+                chain_id_dev: None,
+            },
+        ];
+
         let raw = network.unwrap_or_else(|| "".to_string());
         let key = raw.trim().to_lowercase();
 
-        // If user didn't specify network, infer a default.
-        // For now: default to Sui unless they mention EVM chains explicitly.
+        // If user didn't specify a network, infer from the text.
         let inferred = if key.is_empty() {
-            if lower.contains("base") {
-                "base-sepolia".to_string()
-            } else if lower.contains("arbitrum") || lower.contains("arb") {
-                "arbitrum-sepolia".to_string()
-            } else if lower.contains("bsc") || lower.contains("bnb") {
-                "bsc-testnet".to_string()
-            } else if lower.contains("kava") {
-                "kava".to_string()
-            } else if lower.contains("celo") {
-                "celo".to_string()
-            } else if lower.contains("monad") {
-                "monad".to_string()
-            } else if lower.contains("hyperevm") || lower.contains("hyper evm") || lower.contains("hyperliquid") {
-                "hyperevm".to_string()
-            } else if lower.contains("world chain") || lower.contains("worldchain") {
-                "worldchain".to_string()
-            } else if lower.contains("polygon") || lower.contains("matic") {
-                "polygon".to_string()
-            } else if lower.contains("ethereum") || lower.contains("以太坊") || lower.contains("eth") {
-                // safer default: Sepolia
-                "sepolia".to_string()
+            // prefer EVM routing if user mentions any EVM chain keywords
+            if EVM_RULES
+                .iter()
+                .any(|rule| Self::match_any(lower, rule.keywords))
+            {
+                lower.to_string()
             } else {
                 "sui".to_string()
             }
@@ -483,164 +612,53 @@
             key
         };
 
-        // Normalize common human phrases to family + chain_id.
-        let (family, chain_id, name) = if inferred.contains("sui") {
-            ("sui", None, "sui")
-        } else if inferred.contains("base") {
-            // Prefer Base Sepolia for safe defaults unless user explicitly asks mainnet.
-            let is_test = inferred.contains("sepolia")
-                || inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            let cid = if is_main { 8453 } else if is_test { 84532 } else { 84532 };
-            ("evm", Some(cid), if cid == 8453 { "base" } else { "base-sepolia" })
-        } else if inferred.contains("arbitrum") || inferred == "arb" {
-            // Prefer Arbitrum Sepolia for safe defaults unless user explicitly asks mainnet.
-            let is_test = inferred.contains("sepolia")
-                || inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("one")
-                || inferred.contains("mainnet")
-                || inferred.contains("主网");
-            let cid = if is_main { 42161 } else if is_test { 421614 } else { 421614 };
-            (
-                "evm",
-                Some(cid),
-                if cid == 42161 { "arbitrum" } else { "arbitrum-sepolia" },
-            )
-        } else if inferred.contains("bsc") || inferred.contains("bnb") {
-            let is_test = inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            let cid = if is_main { 56 } else if is_test { 97 } else { 97 };
-            ("evm", Some(cid), if cid == 56 { "bsc" } else { "bsc-testnet" })
-        } else if inferred.contains("kava") {
-            let is_test = inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            let cid = if is_main { 2222 } else if is_test { 2221 } else { 2222 };
-            ("evm", Some(cid), if cid == 2222 { "kava" } else { "kava-testnet" })
-        } else if inferred.contains("celo") {
-            let is_test = inferred.contains("alfajores")
-                || inferred.contains("sepolia")
-                || inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            // Default to mainnet.
-            let cid = if is_main {
-                42220
-            } else if is_test {
-                // Prefer Alfajores for now.
-                44787
-            } else {
-                42220
-            };
-            (
-                "evm",
-                Some(cid),
-                if cid == 42220 { "celo" } else { "celo-alfajores" },
-            )
-        } else if inferred.contains("monad") {
-            let is_test = inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_dev = inferred.contains("dev") || inferred.contains("devnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
+        // Sui is the default fallback.
+        if inferred.contains("sui") {
+            return json!({
+                "raw": raw,
+                "normalized": "sui",
+                "family": "sui",
+                "chain_id": null
+            });
+        }
 
-            let cid = if is_main {
-                143
-            } else if is_test {
-                10143
-            } else if is_dev {
-                20143
-            } else {
-                143
-            };
-
-            (
-                "evm",
-                Some(cid),
-                if cid == 143 {
-                    "monad"
-                } else if cid == 10143 {
-                    "monad-testnet"
-                } else {
-                    "monad-devnet"
-                },
-            )
-        } else if inferred.contains("hyperevm")
-            || inferred.contains("hyper evm")
-            || inferred.contains("hyperliquid")
+        if let Some(rule) = EVM_RULES
+            .iter()
+            .find(|rule| Self::match_any(&inferred, rule.keywords))
         {
-            // chainid.network currently lists Hyperliquid EVM Testnet as chain_id=998
-            // NOTE: mainnet chain_id is not in our local mapping yet.
-            let is_test = inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let cid = if is_test { 998 } else { 998 };
-            ("evm", Some(cid), "hyperevm")
-        } else if inferred.contains("world chain") || inferred.contains("worldchain") {
-            let is_test = inferred.contains("sepolia")
-                || inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            let cid = if is_main { 480 } else if is_test { 4801 } else { 480 };
-            (
-                "evm",
-                Some(cid),
-                if cid == 480 { "worldchain" } else { "worldchain-sepolia" },
-            )
-        } else if inferred.contains("polygon") || inferred.contains("matic") {
-            let is_test = inferred.contains("amoy")
-                || inferred.contains("mumbai")
-                || inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            let cid = if is_main {
-                137
-            } else if is_test {
-                // Prefer Amoy for safe defaults.
-                80002
+            let cid = if is_dev(&inferred) {
+                rule.chain_id_dev.or(rule.chain_id_test).unwrap_or(rule.chain_id_main)
+            } else if is_test(&inferred) {
+                rule.chain_id_test.unwrap_or(rule.chain_id_main)
+            } else if is_main(&inferred) {
+                rule.chain_id_main
             } else {
-                137
+                // Safe default: if a test chain_id exists, prefer it; otherwise mainnet.
+                rule.chain_id_test.unwrap_or(rule.chain_id_main)
             };
-            (
-                "evm",
-                Some(cid),
-                if cid == 137 { "polygon" } else { "polygon-amoy" },
-            )
-        } else if inferred.contains("sepolia") {
-            // Ethereum Sepolia
-            ("evm", Some(11155111), "sepolia")
-        } else if inferred.contains("ethereum") || inferred.contains("eth") {
-            let is_test = inferred.contains("sepolia")
-                || inferred.contains("test")
-                || inferred.contains("测试")
-                || inferred.contains("testnet");
-            let is_main = inferred.contains("mainnet") || inferred.contains("主网");
-            let cid = if is_main { 1 } else if is_test { 11155111 } else { 1 };
-            (
-                "evm",
-                Some(cid),
-                if cid == 1 { "ethereum" } else { "sepolia" },
-            )
-        } else {
-            // Fallback to Sui
-            ("sui", None, "sui")
-        };
 
+            let name = if Some(cid) == rule.chain_id_dev {
+                rule.name_dev.unwrap_or(rule.name_test)
+            } else if Some(cid) == rule.chain_id_test {
+                rule.name_test
+            } else {
+                rule.name_main
+            };
+
+            return json!({
+                "raw": raw,
+                "normalized": name,
+                "family": "evm",
+                "chain_id": cid
+            });
+        }
+
+        // Final fallback
         json!({
             "raw": raw,
-            "normalized": name,
-            "family": family,
-            "chain_id": chain_id
+            "normalized": "sui",
+            "family": "sui",
+            "chain_id": null
         })
     }
 
