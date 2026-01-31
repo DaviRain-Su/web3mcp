@@ -67,8 +67,11 @@ Selection rule:
 - If `SUI_NETWORK` contains `test` or `SUI_RPC_URL` contains `testnet` → use testnet USDC
 - Else → use mainnet USDC
 
-Source: Circle blog “Now Available: Native USDC on Sui”
-<https://www.circle.com/blog/now-available-native-usdc-on-sui>
+Source:
+- Circle Docs “USDC Contract Addresses”
+  <https://developers.circle.com/stablecoins/usdc-contract-addresses>
+- (Also referenced by) Circle blog “Now Available: Native USDC on Sui”
+  <https://www.circle.com/blog/now-available-native-usdc-on-sui>
 
 How to find these values:
 - Use a Sui token list / explorer for your target network (mainnet/testnet) and copy the **coin type** string.

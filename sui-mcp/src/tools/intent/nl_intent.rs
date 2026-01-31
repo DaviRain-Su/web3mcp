@@ -559,54 +559,42 @@
                     }
                 }));
             }
-        } else if lower.contains("gas price")
-            || lower.contains("reference gas")
-            || lower.contains("手续费")
-            || lower.contains("gas")
-        {
+        } else if Self::match_any(lower, &["gas price", "reference gas", "手续费", "gas"]) {
             intent = "get_reference_gas_price".to_string();
             confidence = 0.7;
             plan.push(json!({
                 "tool": "get_reference_gas_price",
                 "params": {}
             }));
-        } else if lower.contains("protocol config") || lower.contains("协议配置") {
+        } else if Self::match_any(lower, &["protocol config", "协议配置"]) {
             intent = "get_protocol_config".to_string();
             confidence = 0.65;
             plan.push(json!({
                 "tool": "get_protocol_config",
                 "params": {}
             }));
-        } else if lower.contains("chain id")
-            || lower.contains("chain identifier")
-            || lower.contains("链 id")
-            || lower.contains("链标识")
-        {
+        } else if Self::match_any(lower, &["chain id", "chain identifier", "链 id", "链标识"]) {
             intent = "get_chain_identifier".to_string();
             confidence = 0.65;
             plan.push(json!({
                 "tool": "get_chain_identifier",
                 "params": {}
             }));
-        } else if lower.contains("checkpoint") || lower.contains("检查点") {
+        } else if Self::match_any(lower, &["checkpoint", "检查点"]) {
             intent = "get_latest_checkpoint_sequence".to_string();
             confidence = 0.6;
             plan.push(json!({
                 "tool": "get_latest_checkpoint_sequence",
                 "params": {}
             }));
-        } else if lower.contains("total tx")
-            || lower.contains("total transactions")
-            || lower.contains("交易总数")
-            || lower.contains("总交易")
-        {
+        } else if Self::match_any(lower, &["total tx", "total transactions", "交易总数", "总交易"]) {
             intent = "get_total_transactions".to_string();
             confidence = 0.6;
             plan.push(json!({
                 "tool": "get_total_transactions",
                 "params": {}
             }));
-        } else if lower.contains("coins") || lower.contains("coin") || lower.contains("我的 coin") {
+        } else if Self::match_any(lower, &["coins", "coin", "我的 coin"]) {
             intent = "get_coins".to_string();
             confidence = 0.6;
 
@@ -627,7 +615,7 @@
                     "limit": 50
                 }
             }));
-        } else if lower.contains("events") || lower.contains("事件") {
+        } else if Self::match_any(lower, &["events", "事件"]) {
             intent = "query_transaction_events".to_string();
             confidence = 0.55;
 
@@ -864,6 +852,10 @@
             return Some(value);
         }
         Self::extract_chinese_number(lower).map(|value| value.to_string())
+    }
+
+    fn match_any(lower: &str, needles: &[&str]) -> bool {
+        needles.iter().any(|needle| lower.contains(needle))
     }
 
     fn extract_arabic_number(text: &str) -> Option<String> {

@@ -24,7 +24,10 @@ impl SuiMcpServer {
     }
 
     fn builtin_sui_usdc_coin_type() -> String {
-        // Source: Circle blog "Now Available: Native USDC on Sui"
+        // Source: Circle Docs "USDC Contract Addresses" (preferred)
+        // https://developers.circle.com/stablecoins/usdc-contract-addresses
+        //
+        // Also referenced in Circle blog:
         // https://www.circle.com/blog/now-available-native-usdc-on-sui
         // Mainnet: 0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC
         // Testnet: 0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
