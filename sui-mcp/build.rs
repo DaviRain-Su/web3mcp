@@ -5,6 +5,8 @@ fn main() {
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir).join("router_impl.rs");
 
+    let helper_sections = ["src/tools/move/automation/move_auto_helpers.rs"];
+
     let sections = [
         "src/tools/read/balances/read_balances.rs",
         "src/tools/read/objects/read_objects.rs",
@@ -36,7 +38,20 @@ fn main() {
         "src/tools/evm/evm_tools.rs",
     ];
 
-    let mut content = String::from("#[tool_router]\nimpl SuiMcpServer {\n");
+    let mut content = String::new();
+
+    // 1) Plain impl block for helper methods (not tools)
+    content.push_str("impl SuiMcpServer {\n");
+    for section in helper_sections {
+        let data = fs::read_to_string(section)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {}", section, e));
+        content.push_str(&data);
+        content.push('\n');
+    }
+    content.push_str("}\n\n");
+
+    // 2) Tool router impl block (tools only)
+    content.push_str("#[tool_router]\nimpl SuiMcpServer {\n");
     for section in sections {
         let data = fs::read_to_string(section)
             .unwrap_or_else(|e| panic!("Failed to read {}: {}", section, e));
@@ -47,6 +62,9 @@ fn main() {
 
     fs::write(&out_path, content).expect("Failed to write router_impl.rs");
 
+    for section in helper_sections {
+        println!("cargo:rerun-if-changed={}", section);
+    }
     for section in sections {
         println!("cargo:rerun-if-changed={}", section);
     }
