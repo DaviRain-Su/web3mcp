@@ -187,32 +187,16 @@
             .await?;
 
         let summary = Self::summarize_transaction(&result);
-        let modules = self
-            .client
-            .read_api()
-            .get_normalized_move_modules_by_package(package)
-            .await
-            .map_err(|e| Self::sdk_error("auto_execute_move_call_filled", e))?;
-        let module = modules.get(&request.module).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from("Unable to load module schema"),
-            data: None,
-        })?;
-        let function_def = module.exposed_functions.get(&request.function).ok_or_else(|| {
-            ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Unable to load function schema"),
-                data: None,
-            }
-        })?;
-        let form_schema = Self::move_call_form_schema(
-            &request.package,
-            &request.module,
-            &request.function,
-            function_def,
-            &modules,
-            2,
-        );
+        let form_schema = self
+            .build_move_call_form_schema(
+                package,
+                &request.package,
+                &request.module,
+                &request.function,
+                2,
+                "auto_execute_move_call_filled",
+            )
+            .await?;
 
         let response = Self::pretty_json(&json!({
             "payload": payload,
@@ -223,6 +207,44 @@
             "tx_bytes": tx_bytes
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    async fn build_move_call_form_schema(
+        &self,
+        package_id: ObjectID,
+        package_str: &str,
+        module: &str,
+        function: &str,
+        max_depth: usize,
+        context: &str,
+    ) -> Result<Value, ErrorData> {
+        let modules = self
+            .client
+            .read_api()
+            .get_normalized_move_modules_by_package(package_id)
+            .await
+            .map_err(|e| Self::sdk_error(context, e))?;
+
+        let module_def = modules.get(module).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Unable to load module schema"),
+            data: None,
+        })?;
+
+        let function_def = module_def.exposed_functions.get(function).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Unable to load function schema"),
+            data: None,
+        })?;
+
+        Ok(Self::move_call_form_schema(
+            package_str,
+            module,
+            function,
+            function_def,
+            &modules,
+            max_depth,
+        ))
     }
 
     fn parse_type_args(type_args: Vec<String>) -> Result<Vec<SuiTypeTag>, ErrorData> {
