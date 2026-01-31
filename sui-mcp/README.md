@@ -98,6 +98,19 @@ Once configured with Claude Desktop, you can ask Claude to:
 }
 ```
 
+### Example: Wallet overview
+
+```json
+{
+  "tool": "get_wallet_overview",
+  "params": {
+    "address": "0x...",
+    "include_coins": true,
+    "coins_limit": 10
+  }
+}
+```
+
 ## Local Keystore (no zkLogin)
 
 This server can sign and execute transactions using your local Sui keystore (e.g. `~/.sui/sui_config/sui.keystore`).

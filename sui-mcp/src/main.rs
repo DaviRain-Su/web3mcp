@@ -1117,6 +1117,22 @@ struct GetCoinsRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct WalletOverviewRequest {
+    #[schemars(description = "Optional Sui address to query")]
+    address: Option<String>,
+    #[schemars(description = "Optional signer address or alias (used if address is omitted and keystore has multiple accounts)")]
+    signer: Option<String>,
+    #[schemars(description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)")]
+    keystore_path: Option<String>,
+    #[schemars(description = "Optional coin type for balance/coins (defaults to 0x2::sui::SUI)")]
+    coin_type: Option<String>,
+    #[schemars(description = "Include coin objects in response (default: false)")]
+    include_coins: Option<bool>,
+    #[schemars(description = "Optional limit for coin objects (default: 20, max: 50)")]
+    coins_limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ZkLoginExecuteTransactionRequest {
     #[schemars(description = "Base64-encoded transaction bytes (BCS TransactionData)")]
     tx_bytes: String,
