@@ -12,19 +12,19 @@ use rmcp::{
     model::*,
     tool, tool_handler, tool_router, ServerHandler, ServiceExt,
 };
-use serde::{Deserialize, Serialize};
+// (moved) tool request schemas live in src/types.rs
 use serde_json::{json, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
-use std::io::Write;
+// (moved) std::io::Write used in utils/audit.rs
 use std::pin::Pin;
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
+// (moved) SystemTime/UNIX_EPOCH used in utils/audit.rs
 use sui_crypto::simple::SimpleVerifier;
 use sui_crypto::Verifier;
 use sui_graphql::Client as GraphqlClient;
-use sui_json::SuiJsonValue;
+// (moved) SuiJsonValue parsing in utils/sui_parse.rs
 use sui_json_rpc_types::{
     CheckpointId, DryRunTransactionBlockResponse, EventFilter, RPCTransactionRequestParams,
     SuiMoveNormalizedFunction, SuiMoveNormalizedModule, SuiMoveNormalizedType,
@@ -39,7 +39,7 @@ use sui_sdk::{SuiClient, SuiClientBuilder};
 use sui_sdk_types::SimpleSignature;
 use sui_types::base_types::{ObjectID, SequenceNumber, SuiAddress};
 use sui_types::crypto::{Signature, ToFromBytes};
-use sui_types::digests::{CheckpointDigest, TransactionDigest};
+// (moved) digests parsing in utils/sui_parse.rs
 use sui_types::dynamic_field::{DynamicFieldName, DynamicFieldType};
 use sui_types::object::Owner;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
@@ -88,30 +88,7 @@ impl SuiMcpServer {
         Ok(url.to_string())
     }
 
-    fn pretty_json<T: Serialize>(value: &T) -> Result<String, ErrorData> {
-        serde_json::to_string_pretty(value).map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to serialize: {}", e)),
-            data: None,
-        })
-    }
-
-    fn clamp_limit(limit: Option<usize>, default: usize, max: usize) -> usize {
-        limit.unwrap_or(default).min(max)
-    }
-
-    fn sdk_error(context: &str, error: impl std::fmt::Display) -> ErrorData {
-        let error_string = error.to_string();
-        let mut message = format!("{} failed: {}", context, error_string);
-        if let Some(hint) = Self::error_hint(&error_string) {
-            message = format!("{} (hint: {})", message, hint);
-        }
-        ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(message),
-            data: None,
-        }
-    }
+    // Utilities moved to src/utils/* (json/errors)
 
     async fn preflight_tx_data(
         &self,
@@ -124,159 +101,13 @@ impl SuiMcpServer {
             .map_err(|e| Self::sdk_error("preflight_tx", e))
     }
 
-    fn error_hint(error: &str) -> Option<&'static str> {
-        let lower = error.to_lowercase();
-        if lower.contains("insufficient gas") || lower.contains("insufficientgas") {
-            return Some("Increase gas_budget or ensure your gas coin has enough balance");
-        }
-        if lower.contains("insufficient funds") || lower.contains("insufficientbalance") {
-            return Some("Check sender balance or select different input coins");
-        }
-        if lower.contains("objectnotfound") || lower.contains("object not found") {
-            return Some("Verify the object id and ownership, and ensure it still exists");
-        }
-        if lower.contains("locked") || lower.contains("sequencenumber") || lower.contains("version")
-        {
-            return Some(
-                "The object may be locked or outdated; retry later or fetch the latest version",
-            );
-        }
-        if lower.contains("signature") && lower.contains("invalid") {
-            return Some(
-                "Ensure the signer matches the transaction sender and the signature is correct",
-            );
-        }
-        if lower.contains("gas budget")
-            || lower.contains("gasbudget")
-            || lower.contains("gas too low")
-        {
-            return Some("Increase gas_budget or rerun with gas estimation enabled");
-        }
-        if lower.contains("object locked") || lower.contains("objectlocked") {
-            return Some("Object is locked by another transaction; retry after it completes");
-        }
-        if lower.contains("version") && lower.contains("mismatch") {
-            return Some("Object version mismatch; refetch object and rebuild the transaction");
-        }
-        None
-    }
+    // Utilities moved to src/utils/errors.rs
 
-    fn write_audit_log(&self, tool: &str, entry: Value) {
-        let path = if let Ok(path) = std::env::var("SUI_MCP_AUDIT_LOG") {
-            std::path::PathBuf::from(path)
-        } else if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home)
-                .join(".sui-mcp")
-                .join("audit.log")
-        } else {
-            return;
-        };
+    // Utilities moved to src/utils/audit.rs
 
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+    // Utilities moved to src/utils/base64.rs
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-
-        let record = json!({
-            "timestamp_ms": timestamp,
-            "tool": tool,
-            "entry": entry
-        });
-
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(file, "{}", record.to_string());
-        }
-    }
-
-    fn decode_base64(label: &str, value: &str) -> Result<Vec<u8>, ErrorData> {
-        Base64Engine.decode(value).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid base64 for {}: {}", label, e)),
-            data: None,
-        })
-    }
-
-    fn encode_tx_bytes(tx_data: &TransactionData) -> Result<String, ErrorData> {
-        let bytes = bcs::to_bytes(tx_data).map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to serialize transaction: {}", e)),
-            data: None,
-        })?;
-        Ok(Base64Engine.encode(bytes))
-    }
-
-    fn parse_address(address: &str) -> Result<SuiAddress, ErrorData> {
-        SuiAddress::from_str(address).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid Sui address: {}", e)),
-            data: None,
-        })
-    }
-
-    fn parse_object_id(object_id: &str) -> Result<ObjectID, ErrorData> {
-        ObjectID::from_str(object_id).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid object ID: {}", e)),
-            data: None,
-        })
-    }
-
-    fn parse_digest(digest: &str) -> Result<TransactionDigest, ErrorData> {
-        TransactionDigest::from_str(digest).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid transaction digest: {}", e)),
-            data: None,
-        })
-    }
-
-    fn parse_checkpoint_digest(digest: &str) -> Result<CheckpointDigest, ErrorData> {
-        CheckpointDigest::from_str(digest).map_err(|e| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid checkpoint digest: {}", e)),
-            data: None,
-        })
-    }
-
-    fn parse_addresses(addresses: &[String]) -> Result<Vec<SuiAddress>, ErrorData> {
-        addresses
-            .iter()
-            .map(|addr| Self::parse_address(addr))
-            .collect()
-    }
-
-    fn parse_object_ids(object_ids: &[String]) -> Result<Vec<ObjectID>, ErrorData> {
-        object_ids
-            .iter()
-            .map(|id| Self::parse_object_id(id))
-            .collect()
-    }
-
-    fn parse_json_args(args: &[Value]) -> Result<Vec<SuiJsonValue>, ErrorData> {
-        args.iter()
-            .map(|value| {
-                SuiJsonValue::new(value.clone()).map_err(|e| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(format!("Invalid Move argument: {}", e)),
-                    data: None,
-                })
-            })
-            .collect()
-    }
-
-    fn tx_response(tx_data: &TransactionData) -> Result<String, ErrorData> {
-        let payload = json!({
-            "tx_bytes": Self::encode_tx_bytes(tx_data)?,
-        });
-        Self::pretty_json(&payload)
-    }
+    // Utilities moved to src/utils/sui_parse.rs and src/utils/json.rs
 
     fn summarize_transaction(response: &SuiTransactionBlockResponse) -> Value {
         let (status, error) = response
@@ -1097,6 +928,8 @@ impl SuiMcpServer {
 }
 
 mod types;
+mod utils;
+
 pub use types::*;
 
 struct AutoFilledMoveCall {
