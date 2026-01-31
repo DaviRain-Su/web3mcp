@@ -16,18 +16,7 @@
             data: None,
         })?;
 
-        let type_args = request
-            .type_args
-            .into_iter()
-            .enumerate()
-            .map(|(index, arg)| {
-                SuiTypeTag::new(arg).try_into().map_err(|e| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(format!("Invalid type arg at index {}: {}", index, e)),
-                    data: None,
-                })
-            })
-            .collect::<Result<Vec<TypeTag>, _>>()?;
+        let type_args = Self::parse_type_args_to_typetag(request.type_args)?;
 
         let modules = self
             .client
@@ -145,31 +134,11 @@
             None => None,
         };
 
-        let type_args = request
-            .type_args
-            .into_iter()
-            .enumerate()
-            .map(|(index, arg)| {
-                let tag = SuiTypeTag::new(arg);
-                if let Err(error) = tag.clone().try_into() as Result<TypeTag, _> {
-                    return Err(ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(format!(
-                            "Invalid type arg at index {}: {}",
-                            index, error
-                        )),
-                        data: None,
-                    });
-                }
-                Ok(tag)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let type_args = Self::parse_type_args(request.type_args)?;
         let call_args = Self::parse_json_args(&request.arguments)?;
 
         let tx_data = self
-            .client
-            .transaction_builder()
-            .move_call(
+            .build_move_call_tx_data(
                 sender,
                 package,
                 &request.module,
@@ -179,9 +148,9 @@
                 gas,
                 request.gas_budget,
                 request.gas_price,
+                "prepare_move_call",
             )
-            .await
-            .map_err(|e| Self::sdk_error("prepare_move_call", e))?;
+            .await?;
 
         let tx_bytes = Self::encode_tx_bytes(&tx_data)?;
         let response = Self::pretty_json(&json!({
@@ -236,14 +205,16 @@
             })
             .collect::<Vec<_>>();
 
-        let form_schema = Self::move_call_form_schema(
-            &request.package,
-            &request.module,
-            &request.function,
-            function_def,
-            &modules,
-            2,
-        );
+        let form_schema = self
+            .build_move_call_form_schema(
+                package,
+                &request.package,
+                &request.module,
+                &request.function,
+                2,
+                "generate_move_call_payload",
+            )
+            .await?;
 
         let payload = json!({
             "sender": request.sender,

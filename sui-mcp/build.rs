@@ -5,7 +5,10 @@ fn main() {
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir).join("router_impl.rs");
 
-    let helper_sections = ["src/tools/move/automation/move_auto_helpers.rs"];
+    let helper_sections = [
+        "src/tools/move/automation/move_auto_helpers.rs",
+        "src/tools/move/resolution/move_resolve_helpers.rs",
+    ];
 
     let sections = [
         "src/tools/read/balances/read_balances.rs",
