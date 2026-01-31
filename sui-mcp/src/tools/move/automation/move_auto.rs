@@ -85,9 +85,7 @@
         let call_args = Self::parse_json_args(&request.arguments)?;
 
         let tx_data = self
-            .client
-            .transaction_builder()
-            .move_call(
+            .build_move_call_tx_data(
                 sender,
                 package,
                 &request.module,
@@ -97,9 +95,9 @@
                 gas,
                 request.gas_budget,
                 request.gas_price,
+                "auto_execute_move_call",
             )
-            .await
-            .map_err(|e| Self::sdk_error("auto_execute_move_call", e))?;
+            .await?;
 
         let (tx_bytes, result) = self
             .execute_tx_with_zklogin(
@@ -159,9 +157,7 @@
             Self::parse_execute_payload(&payload, request.gas_budget)?;
 
         let tx_data = self
-            .client
-            .transaction_builder()
-            .move_call(
+            .build_move_call_tx_data(
                 sender,
                 package,
                 &request.module,
@@ -171,9 +167,9 @@
                 gas,
                 gas_budget,
                 gas_price,
+                "auto_execute_move_call_filled",
             )
-            .await
-            .map_err(|e| Self::sdk_error("auto_execute_move_call_filled", e))?;
+            .await?;
 
         let (tx_bytes, result) = self
             .execute_tx_with_zklogin(
@@ -245,6 +241,36 @@
             &modules,
             max_depth,
         ))
+    }
+
+    async fn build_move_call_tx_data(
+        &self,
+        sender: SuiAddress,
+        package: ObjectID,
+        module: &str,
+        function: &str,
+        type_args: Vec<SuiTypeTag>,
+        call_args: Vec<SuiJsonValue>,
+        gas: Option<ObjectID>,
+        gas_budget: u64,
+        gas_price: Option<u64>,
+        context: &str,
+    ) -> Result<TransactionData, ErrorData> {
+        self.client
+            .transaction_builder()
+            .move_call(
+                sender,
+                package,
+                module,
+                function,
+                type_args,
+                call_args,
+                gas,
+                gas_budget,
+                gas_price,
+            )
+            .await
+            .map_err(|e| Self::sdk_error(context, e))
     }
 
     fn parse_type_args(type_args: Vec<String>) -> Result<Vec<SuiTypeTag>, ErrorData> {
