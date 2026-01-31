@@ -97,6 +97,19 @@ Stub adapters live at `src/intent/adapters.rs` for future EVM/Solana integration
 
 ## Human-friendly EVM network mapping (testnet-first)
 
+## ABI Registry (EVM)
+
+This repo supports a dir-based ABI registry so you can add new DApps without modifying code.
+
+Default location (can be overridden with `EVM_ABI_REGISTRY_DIR`):
+- `~/.web3mcp/abi_registry/evm/<chain_id>/<address>.json`
+
+An ERC20 ABI template is included:
+- `abi_registry/evm/84532/erc20.example.json`
+
+To use it, copy it and replace `address` with your token contract address (keep the file name as the address):
+- `abi_registry/evm/84532/0xYourTokenAddressHere.json`
+
 This server is evolving into a multi-chain MCP server. For EVM execution, we keep the user experience human-friendly:
 users can say “Base testnet”, “Ethereum Sepolia”, “Arbitrum testnet”, etc., and the intent router maps that to an EVM `chain_id`.
 
