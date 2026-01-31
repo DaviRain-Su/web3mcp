@@ -663,19 +663,39 @@
         &self,
         Parameters(mut request): Parameters<EvmParseAmountRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        // Allow shorthand in amount field: "1.5 usdc" / "0.1 eth"
+        // Allow shorthand in amount field:
+        // - "1.5 usdc" / "0.1 eth"
+        // - "1.5 token 0x..." / "1.5 contract 0x..." / "1.5 erc20 0x..."
         let mut amount_str = request.amount.trim().to_string();
-        if request.symbol.is_none() {
+
+        if request.symbol.is_none() && request.token_address.is_none() {
             let parts = amount_str
                 .split_whitespace()
-                .map(|s| s.trim())
+                .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>();
+
+            // Case 1: <num> <symbol>
             if parts.len() == 2 {
-                let num = parts[0];
-                let sym = parts[1];
-                request.symbol = Some(sym.to_string());
-                amount_str = num.to_string();
+                let num = parts[0].clone();
+                let sym = parts[1].clone();
+                request.symbol = Some(sym);
+                amount_str = num;
+            }
+
+            // Case 2: <num> (token|contract|erc20) <0xaddr>
+            if parts.len() >= 3 {
+                let maybe_num = parts[0].clone();
+                let maybe_mid = parts[1].to_lowercase();
+                let maybe_addr = parts[2].clone();
+                if matches!(maybe_mid.as_str(), "token" | "contract" | "erc20")
+                    && maybe_addr.starts_with("0x")
+                {
+                    // validate address
+                    let _ = Self::parse_evm_address(&maybe_addr)?;
+                    request.token_address = Some(maybe_addr);
+                    amount_str = maybe_num;
+                }
             }
         }
 

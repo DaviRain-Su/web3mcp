@@ -480,6 +480,24 @@
                 // Tolerant mode: try to auto-convert obvious amount strings (e.g. "1.5" with usdc/usdt/eth in text)
                 // into uint256 wei-like strings before building.
                 if let Value::Array(ref mut arr) = filled_args {
+                    // If user provided a token/contract/erc20 address in the prompt, prefer it.
+                    let token_addr = if lower.contains("token")
+                        || lower.contains("contract")
+                        || lower.contains("erc20")
+                    {
+                        let addrs = entities
+                            .get("addresses")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect::<Vec<_>>();
+                        Self::infer_evm_token_address_from_text(&lower, &addrs)
+                    } else {
+                        None
+                    };
+
                     // infer a symbol from the overall text
                     let sym = if lower.contains("usdc") {
                         Some("usdc".to_string())
@@ -507,7 +525,7 @@
                                         chain_id,
                                         amount: s_trim.to_string(),
                                         symbol: sym.clone(),
-                                        token_address: None,
+                                        token_address: token_addr.clone(),
                                         decimals: None,
                                     }))
                                     .await
