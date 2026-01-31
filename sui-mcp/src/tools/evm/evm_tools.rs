@@ -292,16 +292,7 @@
             .map_err(|e| Self::sdk_error("evm_get_transaction_receipt:get_transaction_receipt", e))?;
 
         let decoded_logs = if let Some(receipt) = &receipt {
-            let mut out = Vec::new();
-            for log in receipt.logs.iter() {
-                let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
-                if let Ok(Some(abi)) = Self::evm_load_contract_abi(chain_id, &addr) {
-                    if let Some(decoded) = Self::evm_decode_log_with_abi(log, &abi) {
-                        out.push(decoded);
-                    }
-                }
-            }
-            out
+            Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>())?
         } else {
             Vec::new()
         };
@@ -311,6 +302,36 @@
             "chain_id": chain_id,
             "tx_hash": request.tx_hash,
             "receipt": receipt,
+            "decoded_logs": decoded_logs
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: decode a transaction receipt JSON using the local ABI registry")]
+    async fn evm_decode_transaction_receipt(
+        &self,
+        Parameters(request): Parameters<EvmDecodeTransactionReceiptRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id;
+
+        let receipt = request
+            .receipt_json
+            .get("receipt")
+            .cloned()
+            .unwrap_or_else(|| request.receipt_json.clone());
+
+        let receipt: ethers::types::TransactionReceipt = serde_json::from_value(receipt).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid receipt_json: {}", e)),
+            data: None,
+        })?;
+
+        let decoded_logs = Self::decode_receipt_logs(chain_id, receipt.logs.iter().collect::<Vec<_>>())?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "tx_hash": format!("0x{}", hex::encode(receipt.transaction_hash.as_bytes())), 
             "decoded_logs": decoded_logs
         }))?;
 
@@ -572,6 +593,22 @@
         }
 
         Ok(None)
+    }
+
+    fn decode_receipt_logs(
+        chain_id: u64,
+        logs: Vec<&ethers::types::Log>,
+    ) -> Result<Vec<Value>, ErrorData> {
+        let mut out = Vec::new();
+        for log in logs {
+            let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
+            if let Ok(Some(abi)) = Self::evm_load_contract_abi(chain_id, &addr) {
+                if let Some(decoded) = Self::evm_decode_log_with_abi(log, &abi) {
+                    out.push(decoded);
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn evm_decode_log_with_abi(

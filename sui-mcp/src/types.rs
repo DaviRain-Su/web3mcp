@@ -80,6 +80,16 @@ pub struct EvmGetTransactionReceiptRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmDecodeTransactionReceiptRequest {
+    #[schemars(description = "EVM chain id")]
+    pub chain_id: u64,
+    #[schemars(
+        description = "Transaction receipt JSON (as returned by evm_get_transaction_receipt)"
+    )]
+    pub receipt_json: Value,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmBuildTransferNativeRequest {
     #[schemars(description = "Sender address (0x...)")]
     pub sender: String,
