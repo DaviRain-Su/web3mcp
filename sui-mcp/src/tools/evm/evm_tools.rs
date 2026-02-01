@@ -3727,6 +3727,214 @@ fn abi_entry_json(
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    // (removed duplicate evm_get_transaction tool; use the earlier definition)
+
+    #[tool(description = "EVM: speed up a pending tx by sending a replacement with the same nonce and higher fees (safe-default: returns confirmation_id)")]
+    async fn evm_speed_up_tx(
+        &self,
+        Parameters(request): Parameters<EvmSpeedUpTxRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let provider = self.evm_provider(request.chain_id).await?;
+        let h = Self::parse_evm_h256(&request.tx_hash)?;
+        let tx = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction(&provider, h)
+            .await
+            .map_err(|e| Self::sdk_error("evm_speed_up_tx:get_transaction", e))?
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Transaction not found by hash"),
+                data: None,
+            })?;
+
+        let from = tx.from;
+        let nonce = tx.nonce;
+
+        // Build base request
+        let to = tx.to.unwrap_or(from);
+        let value = tx.value;
+        let data_hex = Some(format!("0x{}", hex::encode(tx.input.0.clone())));
+
+        // Fee suggestions (best-effort): use legacy gas_price and convert into EIP-1559 params.
+        let gas_price = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_gas_price(&provider)
+            .await
+            .unwrap_or_else(|_| ethers::types::U256::from(0));
+        let suggested_max_fee = gas_price.checked_mul(ethers::types::U256::from(2)).unwrap_or(gas_price);
+        let suggested_max_prio = gas_price.checked_div(ethers::types::U256::from(10)).unwrap_or(ethers::types::U256::from(0));
+
+        let old_max_fee = tx.max_fee_per_gas.unwrap_or(tx.gas_price.unwrap_or(gas_price));
+        let old_max_prio = tx.max_priority_fee_per_gas.unwrap_or(ethers::types::U256::from(0));
+
+        let bump_bps = request.fee_bump_bps.unwrap_or(12_000);
+
+        let max_fee = if let Some(v) = request.max_fee_per_gas_wei.as_deref() {
+            Self::parse_evm_u256("max_fee_per_gas_wei", v)?
+        } else {
+            crate::utils::evm_tx_replace::bump_u256(Some(old_max_fee), Some(suggested_max_fee), bump_bps)
+        };
+        let max_prio = if let Some(v) = request.max_priority_fee_per_gas_wei.as_deref() {
+            Self::parse_evm_u256("max_priority_fee_per_gas_wei", v)?
+        } else {
+            crate::utils::evm_tx_replace::bump_u256(Some(old_max_prio), Some(suggested_max_prio), bump_bps)
+        };
+
+        let tx_req = EvmTxRequest {
+            chain_id: request.chain_id,
+            from: format!("0x{}", hex::encode(from.as_bytes())),
+            to: format!("0x{}", hex::encode(to.as_bytes())),
+            value_wei: value.to_string(),
+            data_hex,
+            nonce: Some(nonce.as_u64()),
+            gas_limit: None,
+            max_fee_per_gas_wei: Some(max_fee.to_string()),
+            max_priority_fee_per_gas_wei: Some(max_prio.to_string()),
+        };
+
+        // Preflight for gas limit and sanity.
+        let pre = self.evm_preflight(Parameters(EvmPreflightRequest { tx: tx_req })).await?;
+        let pre_json = Self::evm_extract_first_json(&pre).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_preflight response"),
+            data: None,
+        })?;
+        let tx_final: EvmTxRequest = serde_json::from_value(pre_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+            data: None,
+        })?;
+
+        let confirmation_id = format!("evm_replace_{}_{}", crate::utils::evm_confirm_store::now_ms(), nonce);
+        let ttl = crate::utils::evm_confirm_store::default_ttl_ms();
+        let now_ms = crate::utils::evm_confirm_store::now_ms();
+        let expires = now_ms + ttl;
+        let hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx_final);
+        crate::utils::evm_confirm_store::insert_pending(&confirmation_id, &tx_final, now_ms, expires, &hash)?;
+
+        self.write_audit_log(
+            "evm_speed_up_tx",
+            json!({
+                "event": "pending",
+                "original_tx_hash": request.tx_hash,
+                "confirmation_id": confirmation_id,
+                "nonce": nonce.as_u64(),
+                "max_fee_per_gas_wei": tx_final.max_fee_per_gas_wei,
+                "max_priority_fee_per_gas_wei": tx_final.max_priority_fee_per_gas_wei,
+            }),
+        );
+
+        let response = Self::pretty_json(&json!({
+            "status": "pending",
+            "original_tx_hash": request.tx_hash,
+            "confirmation_id": confirmation_id,
+            "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final),
+            "tx_summary_hash": hash,
+            "expires_in_ms": ttl,
+            "web3mcp": {
+                "debug": {
+                    "decision": "evm_speed_up_tx",
+                    "decision_label": "evm_speed_up_tx"
+                }
+            },
+            "next": {
+                "how_to_confirm": format!("confirm {} hash:{} (replacement)", confirmation_id, hash)
+            }
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: cancel a pending tx by sending a 0-value self-transfer with the same nonce and higher fees (safe-default: returns confirmation_id)")]
+    async fn evm_cancel_tx(
+        &self,
+        Parameters(request): Parameters<EvmCancelTxRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let provider = self.evm_provider(request.chain_id).await?;
+        let h = Self::parse_evm_h256(&request.tx_hash)?;
+        let tx = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction(&provider, h)
+            .await
+            .map_err(|e| Self::sdk_error("evm_cancel_tx:get_transaction", e))?
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Transaction not found by hash"),
+                data: None,
+            })?;
+
+        let from = tx.from;
+        let nonce = tx.nonce;
+
+        let gas_price = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_gas_price(&provider)
+            .await
+            .unwrap_or_else(|_| ethers::types::U256::from(0));
+        let suggested_max_fee = gas_price.checked_mul(ethers::types::U256::from(2)).unwrap_or(gas_price);
+        let suggested_max_prio = gas_price.checked_div(ethers::types::U256::from(10)).unwrap_or(ethers::types::U256::from(0));
+
+        let old_max_fee = tx.max_fee_per_gas.unwrap_or(tx.gas_price.unwrap_or(gas_price));
+        let old_max_prio = tx.max_priority_fee_per_gas.unwrap_or(ethers::types::U256::from(0));
+
+        let bump_bps = request.fee_bump_bps.unwrap_or(13_000);
+        let max_fee = crate::utils::evm_tx_replace::bump_u256(Some(old_max_fee), Some(suggested_max_fee), bump_bps);
+        let max_prio = crate::utils::evm_tx_replace::bump_u256(Some(old_max_prio), Some(suggested_max_prio), bump_bps);
+
+        let tx_req = EvmTxRequest {
+            chain_id: request.chain_id,
+            from: format!("0x{}", hex::encode(from.as_bytes())),
+            to: format!("0x{}", hex::encode(from.as_bytes())),
+            value_wei: "0".to_string(),
+            data_hex: Some("0x".to_string()),
+            nonce: Some(nonce.as_u64()),
+            gas_limit: None,
+            max_fee_per_gas_wei: Some(max_fee.to_string()),
+            max_priority_fee_per_gas_wei: Some(max_prio.to_string()),
+        };
+
+        let pre = self.evm_preflight(Parameters(EvmPreflightRequest { tx: tx_req })).await?;
+        let pre_json = Self::evm_extract_first_json(&pre).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_preflight response"),
+            data: None,
+        })?;
+        let tx_final: EvmTxRequest = serde_json::from_value(pre_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+            data: None,
+        })?;
+
+        let confirmation_id = format!("evm_cancel_{}_{}", crate::utils::evm_confirm_store::now_ms(), nonce);
+        let ttl = crate::utils::evm_confirm_store::default_ttl_ms();
+        let now_ms = crate::utils::evm_confirm_store::now_ms();
+        let expires = now_ms + ttl;
+        let hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx_final);
+        crate::utils::evm_confirm_store::insert_pending(&confirmation_id, &tx_final, now_ms, expires, &hash)?;
+
+        self.write_audit_log(
+            "evm_cancel_tx",
+            json!({
+                "event": "pending",
+                "original_tx_hash": request.tx_hash,
+                "confirmation_id": confirmation_id,
+                "nonce": nonce.as_u64(),
+                "max_fee_per_gas_wei": tx_final.max_fee_per_gas_wei,
+                "max_priority_fee_per_gas_wei": tx_final.max_priority_fee_per_gas_wei,
+            }),
+        );
+
+        let response = Self::pretty_json(&json!({
+            "status": "pending",
+            "original_tx_hash": request.tx_hash,
+            "confirmation_id": confirmation_id,
+            "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final),
+            "tx_summary_hash": hash,
+            "expires_in_ms": ttl,
+            "web3mcp": {
+                "debug": {
+                    "decision": "evm_cancel_tx",
+                    "decision_label": "evm_cancel_tx"
+                }
+            },
+            "next": {
+                "how_to_confirm": format!("confirm {} hash:{} (cancel)", confirmation_id, hash)
+            }
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: one-step native transfer (build -> preflight -> sign -> send). Amount is in ETH (18 decimals).")]
     async fn evm_execute_transfer_native(
         &self,

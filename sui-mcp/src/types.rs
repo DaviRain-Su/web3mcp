@@ -309,6 +309,30 @@ pub struct EvmSendRawTransactionRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmSpeedUpTxRequest {
+    #[schemars(description = "Chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Pending transaction hash to speed up")]
+    pub tx_hash: String,
+    #[schemars(description = "Fee bump multiplier in basis points (default 12000 = +20%)")]
+    pub fee_bump_bps: Option<u64>,
+    #[schemars(description = "Override maxFeePerGas (wei) (decimal or 0x)")]
+    pub max_fee_per_gas_wei: Option<String>,
+    #[schemars(description = "Override maxPriorityFeePerGas (wei) (decimal or 0x)")]
+    pub max_priority_fee_per_gas_wei: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmCancelTxRequest {
+    #[schemars(description = "Chain id")]
+    pub chain_id: u64,
+    #[schemars(description = "Pending transaction hash to cancel")]
+    pub tx_hash: String,
+    #[schemars(description = "Fee bump multiplier in basis points (default 13000 = +30%)")]
+    pub fee_bump_bps: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmExecuteTransferNativeRequest {
     #[schemars(description = "Sender address (0x...)")]
     pub sender: String,

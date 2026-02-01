@@ -18,9 +18,13 @@ pub mod evm_confirm_ux;
 #[path = "utils/sui_confirm_store.rs"]
 pub mod sui_confirm_store;
 
+#[path = "utils/evm_tx_replace.rs"]
+pub mod evm_tx_replace;
+
 pub mod utils {
     pub use crate::evm_calldata;
     pub use crate::evm_confirm_store;
     pub use crate::evm_confirm_ux;
+    pub use crate::evm_tx_replace;
     pub use crate::sui_confirm_store;
 }
