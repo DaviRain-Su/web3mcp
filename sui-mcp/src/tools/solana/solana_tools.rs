@@ -1193,6 +1193,12 @@
                         .to_string(),
                 );
             }
+            if n == "instructions" || n.contains("sysvarinstructions") {
+                return Some(
+                    "this is the Instructions Sysvar. Many signature-verify/validation flows require it (e.g. checking other instructions in the same tx)."
+                        .to_string(),
+                );
+            }
             if n.contains("user") && n.contains("token") && n.contains("account") {
                 return Some(
                     "looks like a user token account. Usually this is an SPL token account (often the ATA)."
