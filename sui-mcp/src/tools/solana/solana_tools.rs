@@ -2914,6 +2914,7 @@
 
         // Preview analysis: short summary + expandable details
         let mut program_ids: Vec<String> = Vec::new();
+        let mut program_ids_unknown: Vec<String> = Vec::new();
         let mut warnings: Vec<Value> = Vec::new();
         let mut summary_lines: Vec<String> = Vec::new();
         let mut details_instructions: Vec<Value> = Vec::new();
@@ -2945,6 +2946,16 @@
                 .unwrap_or_default();
             if !pid.is_empty() && !program_ids.contains(&pid) {
                 program_ids.push(pid.clone());
+            }
+
+            // Track unknown programs for wallet-like warnings
+            let known_program = pid == token_pid
+                || pid == token_2022_pid
+                || pid == ata_pid
+                || pid == compute_budget_pid
+                || pid == system_pid;
+            if !pid.is_empty() && !known_program && !program_ids_unknown.contains(&pid) {
+                program_ids_unknown.push(pid.clone());
             }
 
             // Default detail record
@@ -3809,6 +3820,27 @@
                 out.insert(0, format!("ComputeBudget: {}", cb_parts.join(", ")));
             }
 
+            // Unknown programs warning (wallet-like)
+            if !program_ids_unknown.is_empty() {
+                // show up to 5, rest in details
+                let shown: Vec<String> = program_ids_unknown.iter().take(5).cloned().collect();
+                let more = program_ids_unknown.len().saturating_sub(shown.len());
+                let line = if more > 0 {
+                    format!("Unknown programs: {} (+{} more)", shown.join(", "), more)
+                } else {
+                    format!("Unknown programs: {}", shown.join(", "))
+                };
+                out.push(line);
+
+                warnings.push(json!({
+                    "kind": "unknown_program",
+                    "severity": "high",
+                    "count": program_ids_unknown.len(),
+                    "program_ids": program_ids_unknown,
+                    "note": "This transaction calls one or more unknown programs. Only confirm if you trust the source and understand what it does."
+                }));
+            }
+
             summary_lines = out;
         }
 
@@ -3833,6 +3865,7 @@
             "replace_recent_blockhash": replace,
             "tx_bytes_len": tx_bytes.len(),
             "program_ids": program_ids,
+            "program_ids_unknown": program_ids_unknown,
             "summary_lines": summary_lines,
             "risk_warnings": warnings,
             "details": {
