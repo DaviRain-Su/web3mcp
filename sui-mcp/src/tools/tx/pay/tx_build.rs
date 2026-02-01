@@ -143,13 +143,6 @@
         &self,
         Parameters(request): Parameters<ExecuteTransferObjectRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !request.confirm.unwrap_or(false) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("transfer_object requires confirm=true"),
-                data: None,
-            });
-        }
         let (tx_data, _) = self
             .build_transfer_object_data(
                 &request.sender,
@@ -159,6 +152,49 @@
                 request.gas_object_id.as_deref(),
             )
             .await?;
+
+        if !request.confirm.unwrap_or(false) {
+            // Safe default: create a pending confirmation instead of broadcasting.
+            let tx_bytes_b64 = Self::encode_tx_bytes(&tx_data)?;
+            let tx_bytes = Self::decode_base64("tx_bytes", &tx_bytes_b64)?;
+
+            let created = crate::utils::evm_confirm_store::now_ms();
+            let ttl = crate::utils::sui_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::sui_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let seed = format!(
+                "{}:{}:{}:{}:{}",
+                created,
+                request.sender,
+                request.recipient,
+                request.object_id,
+                hash
+            );
+            let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
+            let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
+
+            crate::utils::sui_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_bytes_b64,
+                created,
+                expires,
+                &hash,
+                "execute_transfer_object",
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "expires_in_ms": ttl,
+                "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
+                "next": {
+                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                }
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
         let signer = if let Some(signer) = request.signer.as_deref() {
@@ -306,13 +342,6 @@
         &self,
         Parameters(request): Parameters<ExecuteAddStakeRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !request.confirm.unwrap_or(false) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("stake requires confirm=true"),
-                data: None,
-            });
-        }
         let (tx_data, _) = self
             .build_add_stake_data(
                 &request.sender,
@@ -323,6 +352,47 @@
                 request.gas_object_id.as_deref(),
             )
             .await?;
+
+        if !request.confirm.unwrap_or(false) {
+            let tx_bytes_b64 = Self::encode_tx_bytes(&tx_data)?;
+            let tx_bytes = Self::decode_base64("tx_bytes", &tx_bytes_b64)?;
+
+            let created = crate::utils::evm_confirm_store::now_ms();
+            let ttl = crate::utils::sui_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::sui_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let seed = format!(
+                "{}:{}:{}:{}",
+                created,
+                request.sender,
+                request.validator,
+                hash
+            );
+            let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
+            let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
+
+            crate::utils::sui_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_bytes_b64,
+                created,
+                expires,
+                &hash,
+                "execute_add_stake",
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "expires_in_ms": ttl,
+                "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
+                "next": {
+                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                }
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
         let signer = if let Some(signer) = request.signer.as_deref() {
@@ -370,13 +440,6 @@
         &self,
         Parameters(request): Parameters<ExecuteWithdrawStakeRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !request.confirm.unwrap_or(false) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("withdraw_stake requires confirm=true"),
-                data: None,
-            });
-        }
         let (tx_data, _) = self
             .build_withdraw_stake_data(
                 &request.sender,
@@ -385,6 +448,47 @@
                 request.gas_object_id.as_deref(),
             )
             .await?;
+
+        if !request.confirm.unwrap_or(false) {
+            let tx_bytes_b64 = Self::encode_tx_bytes(&tx_data)?;
+            let tx_bytes = Self::decode_base64("tx_bytes", &tx_bytes_b64)?;
+
+            let created = crate::utils::evm_confirm_store::now_ms();
+            let ttl = crate::utils::sui_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::sui_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let seed = format!(
+                "{}:{}:{}:{}",
+                created,
+                request.sender,
+                request.staked_sui,
+                hash
+            );
+            let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
+            let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
+
+            crate::utils::sui_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_bytes_b64,
+                created,
+                expires,
+                &hash,
+                "execute_withdraw_stake",
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "expires_in_ms": ttl,
+                "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
+                "next": {
+                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                }
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
         let signer = if let Some(signer) = request.signer.as_deref() {
@@ -1147,13 +1251,6 @@
         &self,
         Parameters(request): Parameters<ExecuteBatchTransactionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !request.confirm.unwrap_or(false) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("batch transaction requires confirm=true"),
-                data: None,
-            });
-        }
         let (tx_data, _) = self
             .build_batch_transaction_data(
                 &request.sender,
@@ -1162,6 +1259,41 @@
                 request.gas_object_id.as_deref(),
             )
             .await?;
+
+        if !request.confirm.unwrap_or(false) {
+            let tx_bytes_b64 = Self::encode_tx_bytes(&tx_data)?;
+            let tx_bytes = Self::decode_base64("tx_bytes", &tx_bytes_b64)?;
+
+            let created = crate::utils::evm_confirm_store::now_ms();
+            let ttl = crate::utils::sui_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::sui_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let seed = format!("{}:{}:{}", created, request.sender, hash);
+            let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
+            let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
+
+            crate::utils::sui_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_bytes_b64,
+                created,
+                expires,
+                &hash,
+                "execute_batch_transaction",
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "expires_in_ms": ttl,
+                "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
+                "next": {
+                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                }
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
         let signer = if let Some(signer) = request.signer.as_deref() {
