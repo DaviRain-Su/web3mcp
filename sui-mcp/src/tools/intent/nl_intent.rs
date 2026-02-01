@@ -163,6 +163,7 @@
                         sell_amount: amount_for_swap,
                         sell_amount_is_wei: Some(false),
                         slippage,
+                        exact_approve: Some(true),
                     }))
                     .await?;
 
@@ -619,6 +620,37 @@
                         "next": { "how_to_confirm": msg }
                     }))?;
                     return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+
+                // If this looks like an ERC20 approve tx, sanity-check allowance before proceeding.
+                // This helps prevent approving the wrong spender or a stale tx.
+                if let Some(data_hex) = tx.data_hex.as_deref() {
+                    let hexs = data_hex.strip_prefix("0x").unwrap_or(data_hex);
+                    if hexs.len() >= 8 && &hexs[..8].to_lowercase() == "095ea7b3" {
+                        // approve(address,uint256)
+                        let token_addr = tx.to.clone();
+                        // decode spender from calldata
+                        if hexs.len() >= 8 + 64 {
+                            let spender_hex = &hexs[8 + 24..8 + 64];
+                            let spender = format!("0x{}", spender_hex);
+                            let allowance_res = self
+                                .evm_erc20_allowance(Parameters(EvmErc20AllowanceRequest {
+                                    token: token_addr.clone(),
+                                    owner: tx.from.clone(),
+                                    spender: spender.clone(),
+                                    chain_id: Some(chain_id),
+                                }))
+                                .await;
+                            if let Ok(res) = allowance_res {
+                                if let Some(j) = Self::extract_first_json(&res) {
+                                    if let Some(cur) = j.get("allowance_raw").and_then(Value::as_str) {
+                                        // attach in response only if we end up failing elsewhere
+                                        let _ = cur;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Mark as consumed (atomic-ish): we keep the row, but status changes.

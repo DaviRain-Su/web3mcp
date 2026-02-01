@@ -179,6 +179,10 @@ pub struct Evm0xBuildSwapTxRequest {
     pub sell_amount_is_wei: Option<bool>,
     #[schemars(description = "Slippage (e.g. '1%'). Default 1%")]
     pub slippage: Option<String>,
+    #[schemars(
+        description = "If true, suggested approve tx will be exact amount instead of infinite"
+    )]
+    pub exact_approve: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

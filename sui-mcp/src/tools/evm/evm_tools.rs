@@ -1402,18 +1402,31 @@
         let allowance_target = quote.get("allowanceTarget").and_then(Value::as_str).map(|s| s.to_string());
         let sell_token_address = quote.get("sellTokenAddress").and_then(Value::as_str).map(|s| s.to_string());
 
-        let suggested_approve = if let (Some(target), Some(token_addr)) = (allowance_target.clone(), sell_token_address.clone()) {
+        let suggested_approve = if let (Some(target), Some(token_addr)) =
+            (allowance_target.clone(), sell_token_address.clone())
+        {
             // If sell token is not ETH (0x uses ETH for native), then sellTokenAddress should exist.
-            // Default: infinite approval.
-            let max_u256 = ethers::types::U256::MAX.to_string();
-            let built = self.evm_build_erc20_approve_tx(Parameters(EvmBuildErc20ApproveTxRequest {
-                sender: request.sender.clone(),
-                token: token_addr,
-                spender: target,
-                amount_raw: max_u256,
-                chain_id: request.chain_id,
-                gas_limit: None,
-            })).await;
+            let amount_raw = if request.exact_approve.unwrap_or(false) {
+                // Prefer 0x quote sellAmount (already base units)
+                quote
+                    .get("sellAmount")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| ethers::types::U256::MAX.to_string())
+            } else {
+                ethers::types::U256::MAX.to_string()
+            };
+
+            let built = self
+                .evm_build_erc20_approve_tx(Parameters(EvmBuildErc20ApproveTxRequest {
+                    sender: request.sender.clone(),
+                    token: token_addr,
+                    spender: target,
+                    amount_raw,
+                    chain_id: request.chain_id,
+                    gas_limit: None,
+                }))
+                .await;
 
             match built {
                 Ok(ok) => Self::evm_extract_first_json(&ok).and_then(|j| j.get("tx").cloned()),
