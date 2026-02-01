@@ -627,6 +627,12 @@
                     return Ok(CallToolResult::success(vec![Content::text(response)]));
                 }
 
+                // Best-effort EVM calldata classification for debug/audit.
+                let calldata_class = tx
+                    .data_hex
+                    .as_deref()
+                    .and_then(crate::utils::evm_selector::classify_calldata);
+
                 // For swap (and other non-approve tx): if we have expected allowance metadata, block execution unless allowance is sufficient.
                 // This prevents "swap before approve" failures.
                 if let Some(expected_token) = row.expected_token.as_deref() {
@@ -720,6 +726,7 @@
                                             "decision_label": decision_label,
                                             "action": format!("{:?}", d.action),
                                             "approve_status": approve_status,
+                                            "calldata": calldata_class,
                                         }),
                                     );
 
@@ -736,6 +743,7 @@
                                             "required_raw": required.to_string(),
                                             "approve_confirmation_id": row.approve_confirmation_id,
                                             "approve_status": approve_status,
+                                            "calldata": calldata_class,
                                         }),
                                     );
 
@@ -801,6 +809,7 @@
                                         "decision_label": "approve_spender_mismatch",
                                         "expected_spender": expected,
                                         "got_spender": spender,
+                                        "calldata": calldata_class,
                                     }),
                                 );
 
@@ -813,6 +822,7 @@
                                         "confirmation_id": id,
                                         "expected_spender": expected,
                                         "got_spender": spender,
+                                        "calldata": calldata_class,
                                     }),
                                 );
 
@@ -852,6 +862,7 @@
                                             "decision_label": "approve_amount_too_small",
                                             "approve_amount_raw": amount_u256.to_string(),
                                             "required_raw": required_u256.to_string(),
+                                            "calldata": calldata_class,
                                         }),
                                     );
 
@@ -863,6 +874,7 @@
                                             "confirmation_id": id,
                                             "approve_amount_raw": amount_u256.to_string(),
                                             "required_raw": required_u256.to_string(),
+                                            "calldata": calldata_class,
                                         }),
                                     );
 
@@ -924,6 +936,7 @@
                                     "decision_label": "approve_skipped",
                                     "allowance_raw": allowance_raw.to_string(),
                                     "required_raw": required.to_string(),
+                                    "calldata": calldata_class,
                                 }),
                             );
 
@@ -937,6 +950,7 @@
                                     "required_raw": required.to_string(),
                                     "spender": spender,
                                     "token": token_addr,
+                                    "calldata": calldata_class,
                                 }),
                             );
 
