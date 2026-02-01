@@ -668,7 +668,7 @@ pub struct SolanaSplTransferUiAmountRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SolanaSplApproveRequest { 
+pub struct SolanaSplApproveRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
 
@@ -683,7 +683,7 @@ pub struct SolanaSplApproveRequest {
     pub amount_raw: String,
 
     #[schemars(
-        description = "If true (default), validate mint decimals by fetching mint and use approve_checked when available. Currently approve uses approve (non-checked)."
+        description = "If true (default), validate mint+token_account by decoding accounts on chain (recommended)."
     )]
     pub validate_mint_decimals: Option<bool>,
 
@@ -691,6 +691,165 @@ pub struct SolanaSplApproveRequest {
         description = "Optional: override owner token account. If omitted, uses owner's ATA for mint"
     )]
     pub token_account: Option<String>,
+
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+
+    #[schemars(
+        description = "If true, broadcast immediately; if false (default), create a pending confirmation"
+    )]
+    pub confirm: Option<bool>,
+    #[schemars(
+        description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSplRevokeRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Mint address (base58) for SPL token")]
+    pub mint: String,
+    #[schemars(description = "Token owner pubkey (base58)")]
+    pub owner: String,
+
+    #[schemars(
+        description = "Optional: override owner token account. If omitted, uses owner's ATA for mint"
+    )]
+    pub token_account: Option<String>,
+
+    #[schemars(
+        description = "If true (default), validate token_account by decoding it and checking (mint, owner)."
+    )]
+    pub validate_token_account: Option<bool>,
+
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+
+    #[schemars(
+        description = "If true, broadcast immediately; if false (default), create a pending confirmation"
+    )]
+    pub confirm: Option<bool>,
+    #[schemars(
+        description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSplCloseAccountRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Mint address (base58) for SPL token")]
+    pub mint: String,
+    #[schemars(description = "Token owner pubkey (base58)")]
+    pub owner: String,
+
+    #[schemars(
+        description = "Optional: override owner token account. If omitted, uses owner's ATA for mint"
+    )]
+    pub token_account: Option<String>,
+
+    #[schemars(
+        description = "Where to send reclaimed lamports (base58). Default = owner"
+    )]
+    pub destination: Option<String>,
+
+    #[schemars(
+        description = "If true (default), validate token_account by decoding it and checking (mint, owner)."
+    )]
+    pub validate_token_account: Option<bool>,
+
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+
+    #[schemars(
+        description = "If true, broadcast immediately; if false (default), create a pending confirmation"
+    )]
+    pub confirm: Option<bool>,
+    #[schemars(
+        description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSplCreateAtaRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Wallet owner pubkey (base58) for the ATA")]
+    pub owner: String,
+    #[schemars(description = "Mint address (base58) for SPL token")]
+    pub mint: String,
+
+    #[schemars(
+        description = "If true (default), only create if missing (idempotent behavior implemented by checking existence)."
+    )]
+    pub create_if_missing: Option<bool>,
 
     #[schemars(
         description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"

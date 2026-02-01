@@ -894,6 +894,730 @@
         self.solana_spl_transfer(Parameters(req2)).await
     }
 
+    #[tool(description = "Solana SPL: create an associated token account (ATA) (safe default: creates pending confirmation unless confirm=true)")]
+    async fn solana_spl_create_ata(
+        &self,
+        Parameters(request): Parameters<SolanaSplCreateAtaRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref();
+        let network_str = request.network.clone().unwrap_or("mainnet".to_string());
+        let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
+        let client = Self::solana_rpc(network)?;
+
+        let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
+        let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
+        let token_program_id = spl_token::id();
+
+        let ata = spl_associated_token_account::get_associated_token_address(&owner, &mint);
+
+        let create_if_missing = request.create_if_missing.unwrap_or(true);
+        let exists = client.get_account(&ata).await.is_ok();
+        if create_if_missing && exists {
+            let response = Self::pretty_json(&json!({
+                "status": "exists",
+                "rpc_url": rpc_url,
+                "network": network_str,
+                "owner": owner.to_string(),
+                "mint": mint.to_string(),
+                "token_program_id": token_program_id.to_string(),
+                "associated_token_account": ata.to_string(),
+                "note": "ATA already exists; no transaction created."
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let sign = request.sign.unwrap_or(false);
+        let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
+        let kp = if sign {
+            Some(Self::solana_read_keypair_from_json_file(kp_path.as_ref().unwrap())?)
+        } else {
+            None
+        };
+
+        let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+            Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+        } else if let Some(ref k) = kp {
+            solana_sdk::signature::Signer::pubkey(k)
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "fee_payer is required unless sign=true and SOLANA_KEYPAIR_PATH is set",
+                ),
+                data: None,
+            });
+        };
+
+        let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_create_ata", e))?
+        };
+
+        let mut ixs: Vec<solana_sdk::instruction::Instruction> = Vec::new();
+        if let Some(limit) = request.compute_unit_limit {
+            ixs.push(
+                solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_limit(
+                    limit,
+                ),
+            );
+        }
+        if let Some(price) = request.compute_unit_price_micro_lamports {
+            ixs.push(
+                solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_price(
+                    price,
+                ),
+            );
+        }
+
+        ixs.push(
+            spl_associated_token_account::instruction::create_associated_token_account(
+                &fee_payer,
+                &owner,
+                &mint,
+                &token_program_id,
+            ),
+        );
+
+        let message = solana_sdk::message::Message::new(&ixs, Some(&fee_payer));
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+        tx.message.recent_blockhash = recent_blockhash;
+
+        if sign {
+            let k = kp.as_ref().unwrap();
+            tx.sign(&[k], recent_blockhash);
+        }
+
+        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize transaction: {}", e)),
+            data: None,
+        })?;
+        let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+
+        let confirm = request.confirm.unwrap_or(false);
+        if !confirm {
+            let created = crate::utils::solana_confirm_store::now_ms();
+            let ttl = crate::utils::solana_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let id_seed = format!("{}:{}", created, hash);
+            let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+            let confirmation_id = format!("solana_confirm_{}", &id_suffix[..16]);
+
+            let summary = json!({
+                "network": network_str,
+                "rpc_url": rpc_url,
+                "owner": owner.to_string(),
+                "mint": mint.to_string(),
+                "token_program_id": token_program_id.to_string(),
+                "associated_token_account": ata.to_string(),
+                "fee_payer": fee_payer.to_string(),
+                "recent_blockhash": recent_blockhash.to_string(),
+                "signed": sign
+            });
+
+            crate::utils::solana_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_base64,
+                created,
+                expires,
+                &hash,
+                "solana_spl_create_ata",
+                Some(summary.clone()),
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "rpc_url": rpc_url,
+                "network": network_str,
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "summary": summary,
+                "transaction": {
+                    "transaction_base64": tx_base64,
+                    "transaction_bytes_len": tx_bytes.len(),
+                    "keypair_path": kp_path
+                },
+                "expires_in_ms": ttl,
+                "next": {
+                    "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let skip_preflight = request.skip_preflight.unwrap_or(false);
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let timeout_ms = request.timeout_ms.unwrap_or(60_000);
+
+        let mut tx2 = tx;
+        Self::solana_try_sign_if_needed(&mut tx2, kp.as_ref());
+        if tx2.signatures.is_empty()
+            || tx2
+                .signatures
+                .iter()
+                .all(|s| *s == solana_sdk::signature::Signature::default())
+        {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
+                ),
+                data: None,
+            });
+        }
+
+        let sig = client
+            .send_transaction_with_config(
+                &tx2,
+                solana_client::rpc_config::RpcSendTransactionConfig {
+                    skip_preflight,
+                    preflight_commitment: Some(
+                        Self::solana_commitment_from_str(Some(&commitment))?.commitment,
+                    ),
+                    encoding: None,
+                    max_retries: None,
+                    min_context_slot: None,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_spl_create_ata", e))?;
+
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+
+        let response = Self::pretty_json(&json!({
+            "status": "sent",
+            "rpc_url": rpc_url,
+            "network": network_str,
+            "signature": sig.to_string(),
+            "skip_preflight": skip_preflight,
+            "commitment": commitment,
+            "wait": waited,
+            "associated_token_account": ata.to_string()
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana SPL: revoke token delegate (safe default: creates pending confirmation unless confirm=true)")]
+    async fn solana_spl_revoke(
+        &self,
+        Parameters(request): Parameters<SolanaSplRevokeRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // For spl_token::state::Account::unpack
+        use solana_program_pack::Pack as _;
+
+        let network = request.network.as_deref();
+        let network_str = request.network.clone().unwrap_or("mainnet".to_string());
+        let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
+        let client = Self::solana_rpc(network)?;
+
+        let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
+        let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
+        let token_program_id = spl_token::id();
+
+        let token_account = if let Some(s) = request.token_account.as_deref() {
+            Self::solana_parse_pubkey(s.trim(), "token_account")?
+        } else {
+            spl_associated_token_account::get_associated_token_address(&owner, &mint)
+        };
+
+        let validate_token_account = request.validate_token_account.unwrap_or(true);
+        if validate_token_account {
+            let ta_acc = client
+                .get_account(&token_account)
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_revoke", e))?;
+            let ta_state = spl_token::state::Account::unpack(&ta_acc.data).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode token account: {}", e)),
+                data: Some(json!({"token_account": token_account.to_string()})),
+            })?;
+            if ta_state.mint != mint {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token_account mint does not match request.mint"),
+                    data: Some(json!({
+                        "token_account": token_account.to_string(),
+                        "token_account_mint": ta_state.mint.to_string(),
+                        "requested_mint": mint.to_string()
+                    })),
+                });
+            }
+            if ta_state.owner != owner {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token_account owner does not match request.owner"),
+                    data: Some(json!({
+                        "token_account": token_account.to_string(),
+                        "token_account_owner": ta_state.owner.to_string(),
+                        "requested_owner": owner.to_string()
+                    })),
+                });
+            }
+        }
+
+        let sign = request.sign.unwrap_or(false);
+        let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
+        let kp = if sign {
+            Some(Self::solana_read_keypair_from_json_file(kp_path.as_ref().unwrap())?)
+        } else {
+            None
+        };
+
+        let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+            Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+        } else if let Some(ref k) = kp {
+            solana_sdk::signature::Signer::pubkey(k)
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "fee_payer is required unless sign=true and SOLANA_KEYPAIR_PATH is set",
+                ),
+                data: None,
+            });
+        };
+
+        let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_revoke", e))?
+        };
+
+        let mut ixs: Vec<solana_sdk::instruction::Instruction> = Vec::new();
+        if let Some(limit) = request.compute_unit_limit {
+            ixs.push(
+                solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_limit(
+                    limit,
+                ),
+            );
+        }
+        if let Some(price) = request.compute_unit_price_micro_lamports {
+            ixs.push(
+                solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_price(
+                    price,
+                ),
+            );
+        }
+
+        let revoke_ix = spl_token::instruction::revoke(
+            &token_program_id,
+            &token_account,
+            &owner,
+            &[],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to build token revoke instruction: {}", e)),
+            data: None,
+        })?;
+        ixs.push(revoke_ix);
+
+        let message = solana_sdk::message::Message::new(&ixs, Some(&fee_payer));
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+        tx.message.recent_blockhash = recent_blockhash;
+
+        if sign {
+            let k = kp.as_ref().unwrap();
+            tx.sign(&[k], recent_blockhash);
+        }
+
+        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize transaction: {}", e)),
+            data: None,
+        })?;
+        let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+
+        let confirm = request.confirm.unwrap_or(false);
+        if !confirm {
+            let created = crate::utils::solana_confirm_store::now_ms();
+            let ttl = crate::utils::solana_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let id_seed = format!("{}:{}", created, hash);
+            let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+            let confirmation_id = format!("solana_confirm_{}", &id_suffix[..16]);
+
+            let summary = json!({
+                "network": network_str,
+                "rpc_url": rpc_url,
+                "mint": mint.to_string(),
+                "owner": owner.to_string(),
+                "token_account": token_account.to_string(),
+                "validate_token_account": validate_token_account,
+                "fee_payer": fee_payer.to_string(),
+                "recent_blockhash": recent_blockhash.to_string(),
+                "signed": sign
+            });
+
+            crate::utils::solana_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_base64,
+                created,
+                expires,
+                &hash,
+                "solana_spl_revoke",
+                Some(summary.clone()),
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "rpc_url": rpc_url,
+                "network": network_str,
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "summary": summary,
+                "transaction": {
+                    "transaction_base64": tx_base64,
+                    "transaction_bytes_len": tx_bytes.len(),
+                    "keypair_path": kp_path
+                },
+                "expires_in_ms": ttl,
+                "next": {
+                    "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let skip_preflight = request.skip_preflight.unwrap_or(false);
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let timeout_ms = request.timeout_ms.unwrap_or(60_000);
+
+        let mut tx2 = tx;
+        Self::solana_try_sign_if_needed(&mut tx2, kp.as_ref());
+        if tx2.signatures.is_empty()
+            || tx2
+                .signatures
+                .iter()
+                .all(|s| *s == solana_sdk::signature::Signature::default())
+        {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
+                ),
+                data: None,
+            });
+        }
+
+        let sig = client
+            .send_transaction_with_config(
+                &tx2,
+                solana_client::rpc_config::RpcSendTransactionConfig {
+                    skip_preflight,
+                    preflight_commitment: Some(
+                        Self::solana_commitment_from_str(Some(&commitment))?.commitment,
+                    ),
+                    encoding: None,
+                    max_retries: None,
+                    min_context_slot: None,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_spl_revoke", e))?;
+
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+
+        let response = Self::pretty_json(&json!({
+            "status": "sent",
+            "rpc_url": rpc_url,
+            "network": network_str,
+            "signature": sig.to_string(),
+            "skip_preflight": skip_preflight,
+            "commitment": commitment,
+            "wait": waited,
+            "revoke": {
+                "mint": mint.to_string(),
+                "owner": owner.to_string(),
+                "token_account": token_account.to_string(),
+                "validate_token_account": validate_token_account
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana SPL: close a token account (safe default: creates pending confirmation unless confirm=true)")]
+    async fn solana_spl_close_account(
+        &self,
+        Parameters(request): Parameters<SolanaSplCloseAccountRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // For spl_token::state::Account::unpack
+        use solana_program_pack::Pack as _;
+
+        let network = request.network.as_deref();
+        let network_str = request.network.clone().unwrap_or("mainnet".to_string());
+        let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
+        let client = Self::solana_rpc(network)?;
+
+        let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
+        let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
+        let token_program_id = spl_token::id();
+
+        let token_account = if let Some(s) = request.token_account.as_deref() {
+            Self::solana_parse_pubkey(s.trim(), "token_account")?
+        } else {
+            spl_associated_token_account::get_associated_token_address(&owner, &mint)
+        };
+
+        let destination = if let Some(d) = request.destination.as_deref() {
+            Self::solana_parse_pubkey(d.trim(), "destination")?
+        } else {
+            owner
+        };
+
+        let validate_token_account = request.validate_token_account.unwrap_or(true);
+        if validate_token_account {
+            let ta_acc = client
+                .get_account(&token_account)
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_close_account", e))?;
+            let ta_state = spl_token::state::Account::unpack(&ta_acc.data).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode token account: {}", e)),
+                data: Some(json!({"token_account": token_account.to_string()})),
+            })?;
+            if ta_state.mint != mint {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token_account mint does not match request.mint"),
+                    data: Some(json!({
+                        "token_account": token_account.to_string(),
+                        "token_account_mint": ta_state.mint.to_string(),
+                        "requested_mint": mint.to_string()
+                    })),
+                });
+            }
+            if ta_state.owner != owner {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token_account owner does not match request.owner"),
+                    data: Some(json!({
+                        "token_account": token_account.to_string(),
+                        "token_account_owner": ta_state.owner.to_string(),
+                        "requested_owner": owner.to_string()
+                    })),
+                });
+            }
+        }
+
+        let sign = request.sign.unwrap_or(false);
+        let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
+        let kp = if sign {
+            Some(Self::solana_read_keypair_from_json_file(kp_path.as_ref().unwrap())?)
+        } else {
+            None
+        };
+
+        let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+            Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+        } else if let Some(ref k) = kp {
+            solana_sdk::signature::Signer::pubkey(k)
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "fee_payer is required unless sign=true and SOLANA_KEYPAIR_PATH is set",
+                ),
+                data: None,
+            });
+        };
+
+        let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_close_account", e))?
+        };
+
+        let mut ixs: Vec<solana_sdk::instruction::Instruction> = Vec::new();
+        if let Some(limit) = request.compute_unit_limit {
+            ixs.push(
+                solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_limit(
+                    limit,
+                ),
+            );
+        }
+        if let Some(price) = request.compute_unit_price_micro_lamports {
+            ixs.push(
+                solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_price(
+                    price,
+                ),
+            );
+        }
+
+        let close_ix = spl_token::instruction::close_account(
+            &token_program_id,
+            &token_account,
+            &destination,
+            &owner,
+            &[],
+        )
+        .map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to build token close_account instruction: {}", e)),
+            data: None,
+        })?;
+        ixs.push(close_ix);
+
+        let message = solana_sdk::message::Message::new(&ixs, Some(&fee_payer));
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+        tx.message.recent_blockhash = recent_blockhash;
+
+        if sign {
+            let k = kp.as_ref().unwrap();
+            tx.sign(&[k], recent_blockhash);
+        }
+
+        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize transaction: {}", e)),
+            data: None,
+        })?;
+        let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+
+        let confirm = request.confirm.unwrap_or(false);
+        if !confirm {
+            let created = crate::utils::solana_confirm_store::now_ms();
+            let ttl = crate::utils::solana_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let id_seed = format!("{}:{}", created, hash);
+            let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+            let confirmation_id = format!("solana_confirm_{}", &id_suffix[..16]);
+
+            let summary = json!({
+                "network": network_str,
+                "rpc_url": rpc_url,
+                "mint": mint.to_string(),
+                "owner": owner.to_string(),
+                "token_account": token_account.to_string(),
+                "destination": destination.to_string(),
+                "validate_token_account": validate_token_account,
+                "fee_payer": fee_payer.to_string(),
+                "recent_blockhash": recent_blockhash.to_string(),
+                "signed": sign
+            });
+
+            crate::utils::solana_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_base64,
+                created,
+                expires,
+                &hash,
+                "solana_spl_close_account",
+                Some(summary.clone()),
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "rpc_url": rpc_url,
+                "network": network_str,
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "summary": summary,
+                "transaction": {
+                    "transaction_base64": tx_base64,
+                    "transaction_bytes_len": tx_bytes.len(),
+                    "keypair_path": kp_path
+                },
+                "expires_in_ms": ttl,
+                "next": {
+                    "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let skip_preflight = request.skip_preflight.unwrap_or(false);
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let timeout_ms = request.timeout_ms.unwrap_or(60_000);
+
+        let mut tx2 = tx;
+        Self::solana_try_sign_if_needed(&mut tx2, kp.as_ref());
+        if tx2.signatures.is_empty()
+            || tx2
+                .signatures
+                .iter()
+                .all(|s| *s == solana_sdk::signature::Signature::default())
+        {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
+                ),
+                data: None,
+            });
+        }
+
+        let sig = client
+            .send_transaction_with_config(
+                &tx2,
+                solana_client::rpc_config::RpcSendTransactionConfig {
+                    skip_preflight,
+                    preflight_commitment: Some(
+                        Self::solana_commitment_from_str(Some(&commitment))?.commitment,
+                    ),
+                    encoding: None,
+                    max_retries: None,
+                    min_context_slot: None,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_spl_close_account", e))?;
+
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+
+        let response = Self::pretty_json(&json!({
+            "status": "sent",
+            "rpc_url": rpc_url,
+            "network": network_str,
+            "signature": sig.to_string(),
+            "skip_preflight": skip_preflight,
+            "commitment": commitment,
+            "wait": waited,
+            "close_account": {
+                "mint": mint.to_string(),
+                "owner": owner.to_string(),
+                "token_account": token_account.to_string(),
+                "destination": destination.to_string(),
+                "validate_token_account": validate_token_account
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Solana SPL: one-step token approve (build tx; safe default: creates pending confirmation unless confirm=true)")]
     async fn solana_spl_approve(
         &self,
