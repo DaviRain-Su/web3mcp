@@ -303,6 +303,42 @@ pub struct SolanaIdlGetRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlPlanInstructionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Optional args object (name->value)")]
+    pub args: Option<serde_json::Value>,
+    #[schemars(description = "Optional accounts object (name->pubkey) for missing detection")]
+    pub accounts: Option<serde_json::Value>,
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlBuildInstructionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Args object (name->value)")]
+    pub args: serde_json::Value,
+    #[schemars(description = "Accounts object (name->pubkey)")]
+    pub accounts: serde_json::Value,
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaIdlSearchRequest {
     #[schemars(description = "Substring query over program_id/name")]
     pub query: String,

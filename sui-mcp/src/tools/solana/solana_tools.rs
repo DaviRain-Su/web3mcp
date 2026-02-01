@@ -28,7 +28,8 @@
     }
 
     fn solana_rpc_url_default() -> String {
-        Self::solana_rpc_url_for_network(None).unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
+        Self::solana_rpc_url_for_network(None)
+            .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
     }
 
     fn solana_keypair_path() -> Result<String, ErrorData> {
@@ -92,7 +93,9 @@
         Ok(c)
     }
 
-    fn solana_rpc(network: Option<&str>) -> Result<solana_client::nonblocking::rpc_client::RpcClient, ErrorData> {
+    fn solana_rpc(
+        network: Option<&str>,
+    ) -> Result<solana_client::nonblocking::rpc_client::RpcClient, ErrorData> {
         let url = Self::solana_rpc_url_for_network(network)?;
         Ok(solana_client::nonblocking::rpc_client::RpcClient::new(url))
     }
@@ -639,5 +642,185 @@
             "count": out.len(),
             "items": out
         }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: plan an instruction from registered IDL (offline; optional on-chain validation)")]
+    async fn solana_idl_plan_instruction(
+        &self,
+        Parameters(request): Parameters<SolanaIdlPlanInstructionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref().unwrap_or("mainnet");
+        let rpc_url = Self::solana_rpc_url_for_network(Some(network))?;
+
+        let program_id = Self::solana_parse_program_id(request.program_id.trim())?.to_string();
+        let name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
+        let instruction = request.instruction.trim().to_string();
+
+        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &name)?;
+        let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction)?;
+
+        let args_obj = request.args.unwrap_or_else(|| json!({}));
+        let accounts_obj = request.accounts.unwrap_or_else(|| json!({}));
+
+        let mut missing_args: Vec<String> = Vec::new();
+        let mut args_schema: Vec<Value> = Vec::new();
+        for a in &ix.args {
+            args_schema.push(json!({"name": a.name, "type": a.ty}));
+            if args_obj.get(&a.name).is_none() {
+                missing_args.push(a.name.clone());
+            }
+        }
+
+        let mut missing_accounts: Vec<String> = Vec::new();
+        let mut accounts_needed: Vec<Value> = Vec::new();
+        for a in &ix.accounts {
+            let has = accounts_obj.get(&a.name).and_then(|v| v.as_str()).is_some();
+            if !has {
+                missing_accounts.push(a.name.clone());
+            }
+            accounts_needed.push(json!({
+                "name": a.name,
+                "is_signer": a.is_signer,
+                "is_writable": a.is_mut,
+                "provided": accounts_obj.get(&a.name)
+            }));
+        }
+
+        let validate = request.validate_on_chain.unwrap_or(false);
+        let mut onchain: Option<Value> = None;
+        if validate {
+            // Phase 2: on-chain validations (existence/owner/program) can be added here.
+            onchain = Some(json!({
+                "note": "validate_on_chain is not implemented yet (offline-only plan)."
+            }));
+        }
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": network,
+            "program_id": program_id,
+            "idl_name": name,
+            "instruction": ix.name,
+            "args_schema": args_schema,
+            "accounts_needed": accounts_needed,
+            "missing": {
+                "args": missing_args,
+                "accounts": missing_accounts
+            },
+            "validate_on_chain": validate,
+            "onchain": onchain,
+            "tool_context": json!({
+                "tool": "solana_idl_plan_instruction"
+            }),
+            "summary": json!({
+                "program_id": program_id,
+                "idl_name": name,
+                "instruction": instruction,
+                "missing_args": missing_args,
+                "missing_accounts": missing_accounts
+            })
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: build an instruction (program_id + accounts metas + data_base64) from registered IDL")]
+    async fn solana_idl_build_instruction(
+        &self,
+        Parameters(request): Parameters<SolanaIdlBuildInstructionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref().unwrap_or("mainnet");
+        let rpc_url = Self::solana_rpc_url_for_network(Some(network))?;
+
+        let program_id = Self::solana_parse_program_id(request.program_id.trim())?.to_string();
+        let name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
+        let instruction = request.instruction.trim().to_string();
+
+        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &name)?;
+        let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction)?;
+
+        let args_obj = request.args;
+        let accounts_obj = request.accounts;
+
+        // args in order
+        let mut args_pairs: Vec<(crate::utils::solana_idl::IdlArg, Value)> = Vec::new();
+        let mut missing_args: Vec<String> = Vec::new();
+        for a in &ix.args {
+            let v = args_obj.get(&a.name).cloned();
+            if v.is_none() {
+                missing_args.push(a.name.clone());
+                continue;
+            }
+            args_pairs.push((a.clone(), v.unwrap()));
+        }
+        if !missing_args.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Missing required args"),
+                data: Some(json!({"missing_args": missing_args})),
+            });
+        }
+
+        let mut metas: Vec<Value> = Vec::new();
+        let mut missing_accounts: Vec<String> = Vec::new();
+        for a in &ix.accounts {
+            let pk = accounts_obj.get(&a.name).and_then(|v| v.as_str()).map(|s| s.to_string());
+            if pk.is_none() {
+                missing_accounts.push(a.name.clone());
+                continue;
+            }
+            // Validate pubkey format now
+            let _ = Self::solana_parse_pubkey(pk.as_ref().unwrap(), &format!("account:{}", a.name))?;
+            metas.push(json!({
+                "name": a.name,
+                "pubkey": pk,
+                "is_signer": a.is_signer,
+                "is_writable": a.is_mut
+            }));
+        }
+        if !missing_accounts.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Missing required accounts"),
+                data: Some(json!({"missing_accounts": missing_accounts})),
+            });
+        }
+
+        let data = crate::utils::solana_idl::encode_anchor_ix_data(&ix.name, &args_pairs)?;
+        let data_b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+
+        let validate = request.validate_on_chain.unwrap_or(false);
+        let mut onchain: Option<Value> = None;
+        if validate {
+            // Phase 2: on-chain validations can be added here.
+            onchain = Some(json!({
+                "note": "validate_on_chain is not implemented yet (offline-only build)."
+            }));
+        }
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": network,
+            "program_id": program_id,
+            "idl_name": name,
+            "instruction": ix.name,
+            "accounts": metas,
+            "data_base64": data_b64,
+            "validate_on_chain": validate,
+            "onchain": onchain,
+            "tool_context": json!({
+                "tool": "solana_idl_build_instruction"
+            }),
+            "summary": json!({
+                "program_id": program_id,
+                "idl_name": name,
+                "instruction": instruction,
+                "accounts_count": ix.accounts.len(),
+                "args_count": ix.args.len(),
+                "data_len": data.len()
+            })
+        }))?;
+
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
