@@ -49,12 +49,54 @@
     fn solana_is_known_safe_address(addr: &str) -> bool {
         // Addresses that are safe/expected to show up in txs and should not trigger unknown-program alarms.
         // Note: we intentionally treat "known labels" (including mints) as safe here.
-        Self::solana_known_program_label(addr).is_some()
-            || addr == spl_token::id().to_string()
-            || addr == spl_token_2022::id().to_string()
-            || addr == spl_associated_token_account::id().to_string()
-            || addr == solana_compute_budget_interface::id().to_string()
-            || addr == "11111111111111111111111111111111"
+        // (We accept a few string comparisons here; this runs only during previews.)
+        addr == "11111111111111111111111111111111"
+            || addr == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" // SPL Token
+            || addr == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" // SPL Token 2022
+            || addr == "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" // ATA
+            || addr == "ComputeBudget111111111111111111111111111111" // ComputeBudget
+            || addr == "Sysvar1nstructions1111111111111111111111111"
+            || addr == "SysvarC1ock11111111111111111111111111111111"
+            || Self::solana_known_program_label(addr).is_some()
+    }
+
+    fn solana_jup_swap_dex_label(swap_dbg: &str) -> Option<&'static str> {
+        // Best-effort mapping from carbon-jupiter Swap debug output to a human label.
+        // Example debug strings:
+        // - "Whirlpool { a_to_b: true }"
+        // - "RaydiumClmm"
+        // - "MeteoraDlmm"
+        // - "LifinityV2"
+        let s = swap_dbg;
+        if s.starts_with("Whirlpool") || s.starts_with("WhirlpoolSwapV2") {
+            Some("Orca Whirlpool")
+        } else if s.starts_with("Raydium") || s.starts_with("RaydiumClmm") || s.starts_with("RaydiumCP") {
+            Some("Raydium")
+        } else if s.starts_with("Meteora") || s.starts_with("MeteoraDlmm") || s.starts_with("MeteoraDamm") {
+            Some("Meteora")
+        } else if s.starts_with("Orca") {
+            Some("Orca")
+        } else if s.starts_with("Phoenix") {
+            Some("Phoenix")
+        } else if s.starts_with("Openbook") || s.starts_with("OpenBook") {
+            Some("OpenBook")
+        } else if s.starts_with("Jupiter") {
+            Some("Jupiter")
+        } else if s.starts_with("Lifinity") {
+            Some("Lifinity")
+        } else if s.starts_with("Saber") {
+            Some("Saber")
+        } else if s.starts_with("TokenSwap") {
+            Some("TokenSwap")
+        } else if s.starts_with("Marinade") {
+            Some("Marinade")
+        } else if s.starts_with("Perps") {
+            Some("Perps")
+        } else if s.starts_with("Pump") {
+            Some("Pump")
+        } else {
+            None
+        }
     }
 
     fn solana_rpc_url_for_network(network: Option<&str>) -> Result<String, ErrorData> {
@@ -3312,9 +3354,11 @@
                                         "platform_fee_bps": ix.platform_fee_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3363,9 +3407,11 @@
                                         "platform_fee_bps": ix.platform_fee_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3413,9 +3459,11 @@
                                         "platform_fee_bps": ix.platform_fee_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3458,9 +3506,11 @@
                                         "platform_fee_bps": ix.platform_fee_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3505,9 +3555,11 @@
                                         "platform_fee_bps": ix.platform_fee_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3550,9 +3602,11 @@
                                         "platform_fee_bps": ix.platform_fee_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3601,9 +3655,11 @@
                                         "positive_slippage_bps": ix.positive_slippage_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3648,9 +3704,11 @@
                                         "positive_slippage_bps": ix.positive_slippage_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3672,9 +3730,11 @@
                                         "positive_slippage_bps": ix.positive_slippage_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3696,9 +3756,11 @@
                                         "positive_slippage_bps": ix.positive_slippage_bps,
                                         "route_plan_len": ix.route_plan.len(),
                                         "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            let swap_dbg = format!("{:?}", s.swap);
                                             json!({
                                                 "i": i,
-                                                "swap": format!("{:?}", s.swap),
+                                                "swap": swap_dbg,
+                                                "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
