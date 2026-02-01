@@ -703,10 +703,21 @@
                                         m.insert("note".to_string(), Value::String(d.note.clone()));
                                     }
 
+                                    // Normalize decision label to help UIs display a crisp state.
+                                    let decision_label = if matches!(
+                                        d.action,
+                                        crate::utils::evm_confirm_ux::AllowanceConfirmAction::WaitForApproveMined
+                                    ) {
+                                        "approve_sent_wait"
+                                    } else {
+                                        "confirm_approve_first"
+                                    };
+
                                     crate::utils::evm_confirm_ux::attach_web3mcp_debug(
                                         &mut data,
                                         json!({
                                             "decision": "allowance_insufficient",
+                                            "decision_label": decision_label,
                                             "action": format!("{:?}", d.action),
                                             "approve_status": approve_status,
                                         }),
@@ -717,6 +728,7 @@
                                         json!({
                                             "event": "blocked",
                                             "reason": "allowance_insufficient",
+                                            "decision_label": decision_label,
                                             "confirmation_id": id,
                                             "token": expected_token,
                                             "spender": spender,
