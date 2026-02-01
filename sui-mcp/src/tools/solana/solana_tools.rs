@@ -3294,6 +3294,98 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Solana: list pending confirmations (file-backed)")]
+    async fn solana_list_pending_confirmations(
+        &self,
+        Parameters(request): Parameters<SolanaListPendingConfirmationsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // Best-effort cleanup of expired
+        let _ = crate::utils::solana_confirm_store::cleanup_expired();
+
+        let status = request.status.as_deref().map(|s| s.trim().to_lowercase());
+        if let Some(st) = status.as_deref() {
+            let allowed = ["pending"];
+            if !allowed.contains(&st) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("status must be: pending"),
+                    data: None,
+                });
+            }
+        }
+
+        let include_summary = request.include_summary.unwrap_or(true);
+        let limit = request.limit.unwrap_or(20).min(200);
+        let now = crate::utils::solana_confirm_store::now_ms();
+
+        let mut items: Vec<Value> = Vec::new();
+        let all = crate::utils::solana_confirm_store::list_pending()?;
+        for p in all.into_iter().take(limit) {
+            items.push(json!({
+                "id": p.id,
+                "created_ms": p.created_ms,
+                "expires_ms": p.expires_ms,
+                "expires_in_ms": p.expires_ms.saturating_sub(now),
+                "tx_summary_hash": p.tx_summary_hash,
+                "source_tool": p.source_tool,
+                "status": "pending",
+                "summary": if include_summary { p.summary } else { None }
+            }));
+        }
+
+        let response = Self::pretty_json(&json!({
+            "store_path": crate::utils::solana_confirm_store::store_path().to_string_lossy(),
+            "count": items.len(),
+            "items": items,
+            "note": "Use solana_get_pending_confirmation for full record; use solana_confirm_transaction to broadcast."
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get a pending confirmation by id (file-backed)")]
+    async fn solana_get_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<SolanaGetPendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let _ = crate::utils::solana_confirm_store::cleanup_expired();
+        let p = crate::utils::solana_confirm_store::get_pending(request.id.trim())?;
+        let now = crate::utils::solana_confirm_store::now_ms();
+
+        let response = Self::pretty_json(&json!({
+            "store_path": crate::utils::solana_confirm_store::store_path().to_string_lossy(),
+            "item": {
+                "id": p.id,
+                "created_ms": p.created_ms,
+                "expires_ms": p.expires_ms,
+                "expires_in_ms": p.expires_ms.saturating_sub(now),
+                "tx_summary_hash": p.tx_summary_hash,
+                "source_tool": p.source_tool,
+                "status": "pending",
+                "summary": p.summary,
+                "tx_base64": p.tx_base64
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: cleanup pending confirmations (file-backed)")]
+    async fn solana_cleanup_pending_confirmations(
+        &self,
+        Parameters(request): Parameters<SolanaCleanupPendingConfirmationsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let now = crate::utils::solana_confirm_store::now_ms();
+        let res = crate::utils::solana_confirm_store::cleanup(request.delete_older_than_ms, now)?;
+
+        let response = Self::pretty_json(&json!({
+            "store_path": crate::utils::solana_confirm_store::store_path().to_string_lossy(),
+            "result": res
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Solana: confirm and broadcast a pending transaction created by solana_send_transaction")]
     async fn solana_confirm_transaction(
         &self,

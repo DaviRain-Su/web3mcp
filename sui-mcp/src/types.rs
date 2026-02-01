@@ -1086,6 +1086,28 @@ pub struct SolanaTxPreviewRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaListPendingConfirmationsRequest {
+    #[schemars(description = "Optional status filter (pending only currently supported)")]
+    pub status: Option<String>,
+    #[schemars(description = "Include stored summary in each item (default true)")]
+    pub include_summary: Option<bool>,
+    #[schemars(description = "Optional max results (default 20)")]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetPendingConfirmationRequest {
+    #[schemars(description = "Confirmation id (e.g. solana_preview_... or solana_confirm_...)")]
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaCleanupPendingConfirmationsRequest {
+    #[schemars(description = "If provided, delete entries older than this age (ms)")]
+    pub delete_older_than_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaSimulateTransactionRequest {
     #[schemars(
         description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify."

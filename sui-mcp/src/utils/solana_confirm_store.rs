@@ -22,6 +22,47 @@ pub struct Store {
     pub pending: BTreeMap<String, PendingSolanaConfirmation>,
 }
 
+pub fn list_pending() -> Result<Vec<PendingSolanaConfirmation>, ErrorData> {
+    let mut store = read_store()?;
+    // best-effort cleanup
+    let now = now_ms();
+    store.pending.retain(|_, v| v.expires_ms > now);
+    // Not writing back here; callers can call cleanup_expired if they want persistence.
+
+    let mut out: Vec<PendingSolanaConfirmation> = store.pending.values().cloned().collect();
+    out.sort_by(|a, b| b.created_ms.cmp(&a.created_ms));
+    Ok(out)
+}
+
+pub fn cleanup(
+    delete_older_than_ms: Option<u64>,
+    now: u64,
+) -> Result<serde_json::Value, ErrorData> {
+    let mut store = read_store()?;
+    let before = store.pending.len();
+
+    // Always remove expired
+    store.pending.retain(|_, v| v.expires_ms > now);
+
+    // Optionally remove old entries (even if not expired) by created_ms
+    if let Some(age) = delete_older_than_ms {
+        let cutoff = now.saturating_sub(age);
+        store.pending.retain(|_, v| v.created_ms >= cutoff);
+    }
+
+    let after = store.pending.len();
+    let removed = before.saturating_sub(after);
+    if removed > 0 {
+        write_store(&store)?;
+    }
+
+    Ok(serde_json::json!({
+        "before": before,
+        "after": after,
+        "removed": removed
+    }))
+}
+
 pub fn now_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
