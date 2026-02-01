@@ -385,7 +385,7 @@ pub struct SolanaIdlExecuteRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaIdlSimulateInstructionRequest {
     #[schemars(
-        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify."
     )]
     pub simulate_config: Option<SolanaSimulateConfig>,
 
@@ -620,12 +620,16 @@ pub struct SolanaSimulateConfig {
     pub replace_recent_blockhash: Option<bool>,
     #[schemars(description = "Commitment used for simulation context (default confirmed)")]
     pub commitment: Option<String>,
+    #[schemars(
+        description = "If true and sig_verify=true, require a local keypair to produce/verify signatures when tx is missing signatures (default false)."
+    )]
+    pub strict_sig_verify: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaSimulateTransactionRequest {
     #[schemars(
-        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify."
     )]
     pub simulate_config: Option<SolanaSimulateConfig>,
 
@@ -649,7 +653,7 @@ pub struct SolanaSimulateTransactionRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaSimulateInstructionRequest {
     #[schemars(
-        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify."
     )]
     pub simulate_config: Option<SolanaSimulateConfig>,
 

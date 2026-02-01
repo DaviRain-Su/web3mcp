@@ -697,11 +697,33 @@
             .and_then(|c| c.sig_verify)
             .or(request.sig_verify)
             .unwrap_or(false);
+        let strict_sig_verify = cfg
+            .as_ref()
+            .and_then(|c| c.strict_sig_verify)
+            .unwrap_or(false);
         if sig_verify {
-            // Best-effort sign if signatures are missing and a keypair is available.
+            // If strict, require a local keypair when signatures are missing.
+            let need_sign = tx.signatures.is_empty()
+                || tx
+                    .signatures
+                    .iter()
+                    .all(|s| *s == solana_sdk::signature::Signature::default());
+
             let kp = Self::solana_keypair_path()
                 .ok()
                 .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+
+            if strict_sig_verify && need_sign && kp.is_none() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "sig_verify=true requires signatures but no local keypair is available. Set SOLANA_KEYPAIR_PATH or set simulate_config.strict_sig_verify=false",
+                    ),
+                    data: None,
+                });
+            }
+
+            // Best-effort sign if signatures are missing and a keypair is available.
             Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
         }
 
@@ -816,11 +838,31 @@
             .and_then(|c| c.sig_verify)
             .or(request.sig_verify)
             .unwrap_or(false);
+        let strict_sig_verify = cfg
+            .as_ref()
+            .and_then(|c| c.strict_sig_verify)
+            .unwrap_or(false);
         if sig_verify {
-            // Best-effort sign if signatures are missing and a keypair is available.
+            let need_sign = tx.signatures.is_empty()
+                || tx
+                    .signatures
+                    .iter()
+                    .all(|s| *s == solana_sdk::signature::Signature::default());
+
             let kp = Self::solana_keypair_path()
                 .ok()
                 .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+
+            if strict_sig_verify && need_sign && kp.is_none() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "sig_verify=true requires signatures but no local keypair is available. Set SOLANA_KEYPAIR_PATH or set simulate_config.strict_sig_verify=false",
+                    ),
+                    data: None,
+                });
+            }
+
             Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
         }
 
@@ -1828,10 +1870,31 @@
             .and_then(|c| c.sig_verify)
             .or(request.sig_verify)
             .unwrap_or(false);
+        let strict_sig_verify = cfg
+            .as_ref()
+            .and_then(|c| c.strict_sig_verify)
+            .unwrap_or(false);
         if sig_verify {
+            let need_sign = tx.signatures.is_empty()
+                || tx
+                    .signatures
+                    .iter()
+                    .all(|s| *s == solana_sdk::signature::Signature::default());
+
             let kp = Self::solana_keypair_path()
                 .ok()
                 .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+
+            if strict_sig_verify && need_sign && kp.is_none() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "sig_verify=true requires signatures but no local keypair is available. Set SOLANA_KEYPAIR_PATH or set simulate_config.strict_sig_verify=false",
+                    ),
+                    data: None,
+                });
+            }
+
             Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
         }
 
