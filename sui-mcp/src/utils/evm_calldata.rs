@@ -31,10 +31,7 @@ mod tests {
         // approve(0x1111...1111, 0x2a)
         let spender = "1111111111111111111111111111111111111111";
         let amount = "000000000000000000000000000000000000000000000000000000000000002a";
-        let data = format!(
-            "0x095ea7b3{:0>64}{}",
-            spender, amount
-        );
+        let data = format!("0x095ea7b3{:0>64}{}", spender, amount);
         let (s, a) = decode_erc20_approve(&data).expect("decode");
         assert_eq!(s, format!("0x{}", spender));
         assert_eq!(a, U256::from(42u64));

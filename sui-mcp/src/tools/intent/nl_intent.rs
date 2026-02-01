@@ -664,6 +664,8 @@
                                     .unwrap_or_else(|| ethers::types::U256::from(0));
 
                                 if allowance_raw < required {
+                                    let mut approve_status: Option<String> = None;
+
                                     let mut data = json!({
                                         "status": "pending",
                                         "reason": "allowance_insufficient",
@@ -672,7 +674,6 @@
                                         "allowance_raw": allowance_raw.to_string(),
                                         "required_raw": required.to_string(),
                                         "approve_confirmation_id": row.approve_confirmation_id,
-                                        "note": "Run/confirm approve, wait for it to mine, then confirm swap again",
                                     });
 
                                     // If we know the approve confirmation, add its status/tx_hash to improve UX.
@@ -680,6 +681,7 @@
                                         if let Ok(Some(approve_row)) =
                                             crate::utils::evm_confirm_store::get_row(&conn, approve_id)
                                         {
+                                            approve_status = Some(approve_row.status.clone());
                                             if let Value::Object(ref mut m) = data {
                                                 m.insert(
                                                     "approve_status".to_string(),
@@ -688,39 +690,31 @@
                                                 if let Some(h) = approve_row.tx_hash.clone() {
                                                     m.insert("approve_tx_hash".to_string(), Value::String(h));
                                                 }
-                                                if approve_row.status == "sent" {
-                                                    m.insert(
-                                                        "note".to_string(),
-                                                        Value::String(
-                                                            "Approve tx already sent; wait 1-2 blocks for it to mine, then confirm swap again"
-                                                                .to_string(),
-                                                        ),
-                                                    );
-                                                }
                                             }
                                         }
                                     }
 
-                                    let mut msg = format!(
-                                        "Allowance insufficient ({} < {}). Please confirm the approve tx first.",
-                                        allowance_raw, required
+                                    let d = crate::utils::evm_confirm_ux::allowance_insufficient_decision(
+                                        &allowance_raw.to_string(),
+                                        &required.to_string(),
+                                        approve_status.as_deref(),
                                     );
-                                    if let Some(obj) = data.as_object() {
-                                        if obj
-                                            .get("approve_status")
-                                            .and_then(Value::as_str)
-                                            == Some("sent")
-                                        {
-                                            msg = format!(
-                                                "Allowance insufficient ({} < {}). Approve tx already sent—wait 1-2 blocks, then confirm swap again.",
-                                                allowance_raw, required
-                                            );
-                                        }
+                                    if let Value::Object(ref mut m) = data {
+                                        m.insert("note".to_string(), Value::String(d.note.clone()));
                                     }
+
+                                    crate::utils::evm_confirm_ux::attach_web3mcp_debug(
+                                        &mut data,
+                                        json!({
+                                            "decision": "allowance_insufficient",
+                                            "action": format!("{:?}", d.action),
+                                            "approve_status": approve_status,
+                                        }),
+                                    );
 
                                     return Err(ErrorData {
                                         code: ErrorCode(-32602),
-                                        message: Cow::from(msg),
+                                        message: Cow::from(d.message),
                                         data: Some(data),
                                     });
                                 }

@@ -12,7 +12,11 @@ pub mod evm_confirm_store;
 #[path = "utils/evm_calldata.rs"]
 pub mod evm_calldata;
 
+#[path = "utils/evm_confirm_ux.rs"]
+pub mod evm_confirm_ux;
+
 pub mod utils {
     pub use crate::evm_calldata;
     pub use crate::evm_confirm_store;
+    pub use crate::evm_confirm_ux;
 }
