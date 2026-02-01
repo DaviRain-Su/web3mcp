@@ -264,6 +264,416 @@ pub struct EvmBuildTransferNativeRequest {
     pub large_transfer_threshold_wei: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlRegisterRequest {
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(
+        description = "IDL name/version key (directory name). If omitted, will attempt to infer from IDL metadata.name, else 'default'."
+    )]
+    pub name: Option<String>,
+    #[schemars(description = "IDL JSON content")]
+    pub idl_json: String,
+    #[schemars(description = "Overwrite if existing")]
+    pub overwrite: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlRegisterFileRequest {
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(
+        description = "IDL name/version key (directory name). If omitted, will attempt to infer from file content metadata.name, else file stem."
+    )]
+    pub name: Option<String>,
+    #[schemars(description = "Local file path to an IDL JSON")]
+    pub path: String,
+    #[schemars(description = "Overwrite if existing")]
+    pub overwrite: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlListRequest {
+    #[schemars(description = "Optional program id to filter")]
+    pub program_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlGetRequest {
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlPlanInstructionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Optional args object (name->value)")]
+    pub args: Option<serde_json::Value>,
+    #[schemars(description = "Optional accounts object (name->pubkey) for missing detection")]
+    pub accounts: Option<serde_json::Value>,
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlBuildInstructionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Args object (name->value)")]
+    pub args: serde_json::Value,
+    #[schemars(description = "Accounts object (name->pubkey)")]
+    pub accounts: serde_json::Value,
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlExecuteRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Args object (name->value)")]
+    pub args: serde_json::Value,
+    #[schemars(description = "Accounts object (name->pubkey)")]
+    pub accounts: serde_json::Value,
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+
+    #[schemars(
+        description = "If true, broadcast immediately; if false (default), create a pending confirmation"
+    )]
+    pub confirm: Option<bool>,
+    #[schemars(
+        description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlSimulateInstructionRequest {
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+    )]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    // Back-compat fields
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Args object (name->value)")]
+    pub args: serde_json::Value,
+    #[schemars(description = "Accounts object (name->pubkey)")]
+    pub accounts: serde_json::Value,
+
+    #[schemars(description = "Fee payer pubkey (base58)")]
+    pub fee_payer: String,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "If true, replace recent blockhash with latest before simulation (default true)"
+    )]
+    pub replace_recent_blockhash: Option<bool>,
+    #[schemars(description = "If true, RPC verifies signatures during simulation (default false)")]
+    pub sig_verify: Option<bool>,
+    #[schemars(description = "Commitment used for simulation context (default confirmed)")]
+    pub commitment: Option<String>,
+
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlSearchRequest {
+    #[schemars(description = "Substring query over program_id/name")]
+    pub query: String,
+    #[schemars(description = "Max results (default 50)")]
+    pub limit: Option<u32>,
+}
+
+// ---------------- Solana common RPC tools ----------------
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetBalanceRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Account address (base58)")]
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetAccountInfoRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Account address (base58)")]
+    pub address: String,
+    #[schemars(description = "Encoding: base64|base64+zstd|jsonParsed (default base64)")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetLatestBlockhashRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetSignatureStatusRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Transaction signature (base58)")]
+    pub signature: String,
+    #[schemars(description = "Search history (default false)")]
+    pub search_transaction_history: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetTransactionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Transaction signature (base58)")]
+    pub signature: String,
+    #[schemars(description = "Encoding: json|jsonParsed|base64 (default json)")]
+    pub encoding: Option<String>,
+    #[schemars(description = "Max supported transaction version (default 0)")]
+    pub max_supported_transaction_version: Option<u8>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetSlotRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetBlockHeightRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaRequestAirdropRequest {
+    #[schemars(description = "Network: devnet|testnet (mainnet not supported)")]
+    pub network: Option<String>,
+    #[schemars(description = "Recipient address (base58)")]
+    pub address: String,
+    #[schemars(description = "Lamports amount (e.g., 1000000000 for 1 SOL)")]
+    pub lamports: u64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetTokenAccountsRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Owner address (base58)")]
+    pub owner: String,
+    #[schemars(description = "Optional mint address (base58) to filter")]
+    pub mint: Option<String>,
+    #[schemars(description = "Encoding: base64|jsonParsed (default jsonParsed)")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetTokenBalanceRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Owner address (base58)")]
+    pub owner: String,
+    #[schemars(description = "Mint address (base58)")]
+    pub mint: String,
+}
+
+// ---------------- Solana tx build ----------------
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SolanaAccountMetaInput {
+    #[schemars(description = "Account pubkey (base58)")]
+    pub pubkey: String,
+    #[schemars(description = "Is signer")]
+    pub is_signer: bool,
+    #[schemars(description = "Is writable")]
+    pub is_writable: bool,
+    #[schemars(description = "Optional name (for debugging)")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SolanaInstructionInput {
+    #[schemars(description = "Program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "Account metas")]
+    pub accounts: Vec<SolanaAccountMetaInput>,
+    #[schemars(description = "Instruction data (base64)")]
+    pub data_base64: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaTxBuildRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+    #[schemars(description = "One or more instructions")]
+    pub instructions: Vec<SolanaInstructionInput>,
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSendTransactionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Transaction bytes (base64). Can be signed or unsigned")]
+    pub transaction_base64: String,
+    #[schemars(
+        description = "If true, broadcast immediately; if false (default), create a pending confirmation"
+    )]
+    pub confirm: Option<bool>,
+    #[schemars(
+        description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaConfirmTransactionRequest {
+    #[schemars(description = "Confirmation id returned by solana_send_transaction")]
+    pub id: String,
+    #[schemars(description = "tx_summary_hash returned by solana_send_transaction")]
+    pub hash: String,
+    #[schemars(
+        description = "Network override: mainnet|devnet|testnet (optional; default from stored request context if available; otherwise mainnet)"
+    )]
+    pub network: Option<String>,
+    #[schemars(
+        description = "Commitment to wait for: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSimulateConfig {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "If true, RPC verifies signatures during simulation (default false)")]
+    pub sig_verify: Option<bool>,
+    #[schemars(
+        description = "If true, replace recent blockhash with latest before simulation (default true)"
+    )]
+    pub replace_recent_blockhash: Option<bool>,
+    #[schemars(description = "Commitment used for simulation context (default confirmed)")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSimulateTransactionRequest {
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+    )]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    // Back-compat fields
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(
+        description = "Transaction bytes (base64). Signed recommended but not required if sig_verify=false"
+    )]
+    pub transaction_base64: String,
+    #[schemars(description = "If true, RPC verifies signatures during simulation (default false)")]
+    pub sig_verify: Option<bool>,
+    #[schemars(
+        description = "If true, replace recent blockhash with latest before simulation (default true)"
+    )]
+    pub replace_recent_blockhash: Option<bool>,
+    #[schemars(description = "Commitment used for simulation context (default confirmed)")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSimulateInstructionRequest {
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+    )]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    // Back-compat fields
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Fee payer pubkey (base58)")]
+    pub fee_payer: String,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+    #[schemars(description = "Instruction to simulate")]
+    pub instruction: SolanaInstructionInput,
+
+    #[schemars(
+        description = "If true, replace recent blockhash with latest before simulation (default true)"
+    )]
+    pub replace_recent_blockhash: Option<bool>,
+    #[schemars(description = "If true, RPC verifies signatures during simulation (default false)")]
+    pub sig_verify: Option<bool>,
+    #[schemars(description = "Commitment used for simulation context (default confirmed)")]
+    pub commitment: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvmTxRequest {
     #[schemars(description = "Chain id")]
