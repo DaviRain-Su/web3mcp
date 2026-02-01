@@ -277,6 +277,14 @@
                                 .unwrap_or_else(|| ethers::types::U256::from(0))
                         };
 
+                        // Store metadata so confirm-time can block swap if allowance is still insufficient.
+                        let _ = crate::utils::evm_confirm_store::set_expected_allowance(
+                            &confirmation_id,
+                            &token_addr,
+                            &spender,
+                            &sell_amount_wei.to_string(),
+                        );
+
                         let needs_approve = sell_amount_wei > ethers::types::U256::from(0)
                             && allowance_raw < sell_amount_wei;
 
@@ -313,8 +321,9 @@
                                     )?;
 
                                     // Store safety metadata for confirm-time checks.
-                                    let _ = crate::utils::evm_confirm_store::set_expected_approve(
+                                    let _ = crate::utils::evm_confirm_store::set_expected_allowance(
                                         &approve_confirmation_id,
+                                        &token_addr,
                                         &spender,
                                         &sell_amount_wei.to_string(),
                                     );
@@ -607,6 +616,65 @@
                         "note": "Tx changed during confirm-time preflight (likely nonce/fees). Re-confirm with new hash." 
                     }))?;
                     return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+
+                // For swap (and other non-approve tx): if we have expected allowance metadata, block execution unless allowance is sufficient.
+                // This prevents "swap before approve" failures.
+                if let Some(expected_token) = row.expected_token.as_deref() {
+                    // Skip if this is an approve() tx (handled separately above).
+                    let is_approve = tx
+                        .data_hex
+                        .as_deref()
+                        .and_then(|d| Some(d.strip_prefix("0x").unwrap_or(d)))
+                        .map(|h| h.len() >= 8 && h[..8].eq_ignore_ascii_case("095ea7b3"))
+                        .unwrap_or(false);
+
+                    if !is_approve {
+                        if let (Some(spender), Some(required_raw)) = (
+                            row.expected_spender.as_deref(),
+                            row.required_allowance_raw.as_deref(),
+                        ) {
+                            let required = ethers::types::U256::from_dec_str(required_raw)
+                                .unwrap_or_else(|_| ethers::types::U256::from(0));
+
+                            if required > ethers::types::U256::from(0) {
+                                let allowance_res = self
+                                    .evm_erc20_allowance(Parameters(EvmErc20AllowanceRequest {
+                                        token: expected_token.to_string(),
+                                        owner: tx.from.clone(),
+                                        spender: spender.to_string(),
+                                        chain_id: Some(chain_id),
+                                    }))
+                                    .await?;
+                                let allowance_json =
+                                    Self::extract_first_json(&allowance_res).unwrap_or(json!({}));
+                                let allowance_raw = allowance_json
+                                    .get("allowance_raw")
+                                    .and_then(Value::as_str)
+                                    .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
+                                    .unwrap_or_else(|| ethers::types::U256::from(0));
+
+                                if allowance_raw < required {
+                                    return Err(ErrorData {
+                                        code: ErrorCode(-32602),
+                                        message: Cow::from(format!(
+                                            "Allowance insufficient ({} < {}). Please confirm the approve tx first.",
+                                            allowance_raw, required
+                                        )),
+                                        data: Some(json!({
+                                            "status": "pending",
+                                            "reason": "allowance_insufficient",
+                                            "token": expected_token,
+                                            "spender": spender,
+                                            "allowance_raw": allowance_raw.to_string(),
+                                            "required_raw": required.to_string(),
+                                            "note": "Run/confirm approve, wait for it to mine, then confirm swap again"
+                                        })),
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Large-value double confirmation (requires token:...)

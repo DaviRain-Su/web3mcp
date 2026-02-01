@@ -22,6 +22,7 @@ pub struct PendingRow {
     // Optional metadata for approve safety checks
     pub expected_spender: Option<String>,
     pub required_allowance_raw: Option<String>,
+    pub expected_token: Option<String>,
 }
 
 pub fn now_ms() -> u128 {
@@ -93,6 +94,7 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirmed INTEGER",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_spender TEXT",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN required_allowance_raw TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_token TEXT",
     ] {
         let _ = conn.execute(stmt, []);
     }
@@ -169,7 +171,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         .prepare(
             "SELECT id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error,
                     raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed,
-                    expected_spender, required_allowance_raw
+                    expected_spender, required_allowance_raw, expected_token
              FROM evm_pending_confirmations
              WHERE id = ?1",
         )
@@ -196,6 +198,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         let second_confirmed: Option<i64> = row.get(13)?;
         let expected_spender: Option<String> = row.get(14)?;
         let required_allowance_raw: Option<String> = row.get(15)?;
+        let expected_token: Option<String> = row.get(16)?;
         Ok((
             id,
             chain_id,
@@ -213,6 +216,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
             second_confirmed.unwrap_or(0),
             expected_spender,
             required_allowance_raw,
+            expected_token,
         ))
     }) {
         Ok(v) => Some(v),
@@ -243,6 +247,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         second_confirmed,
         expected_spender,
         required_allowance_raw,
+        expected_token,
     )) = row
     else {
         return Ok(None);
@@ -271,6 +276,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         second_confirmed: second_confirmed == 1,
         expected_spender,
         required_allowance_raw,
+        expected_token,
     }))
 }
 
@@ -486,18 +492,20 @@ pub fn mark_skipped(conn: &rusqlite::Connection, id: &str, reason: &str) -> Resu
     Ok(())
 }
 
-pub fn set_expected_approve(
+pub fn set_expected_allowance(
     id: &str,
+    expected_token: &str,
     expected_spender: &str,
     required_allowance_raw: &str,
 ) -> Result<(), ErrorData> {
     let conn = connect()?;
     conn.execute(
         "UPDATE evm_pending_confirmations
-         SET expected_spender=?2, required_allowance_raw=?3, updated_at_ms=?4
+         SET expected_token=?2, expected_spender=?3, required_allowance_raw=?4, updated_at_ms=?5
          WHERE id=?1",
         rusqlite::params![
             id,
+            expected_token,
             expected_spender,
             required_allowance_raw,
             now_ms() as i64
@@ -505,7 +513,7 @@ pub fn set_expected_approve(
     )
     .map_err(|e| ErrorData {
         code: ErrorCode(-32603),
-        message: Cow::from(format!("Failed to set expected approve metadata: {}", e)),
+        message: Cow::from(format!("Failed to set expected allowance metadata: {}", e)),
         data: None,
     })?;
     Ok(())
