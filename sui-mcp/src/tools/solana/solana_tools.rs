@@ -1115,6 +1115,27 @@
                 .ok();
             }
 
+            if n.contains("memoprogram") || n.contains("memo_program") || n == "memo" {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+                )
+                .ok();
+            }
+
+            if n.contains("computebudget") || n.contains("compute_budget") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "ComputeBudget111111111111111111111111111111",
+                )
+                .ok();
+            }
+
+            if n.contains("addresslookuptable") || n.contains("address_lookup_table") || n == "alt_program" {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "AddressLookupTab1e1111111111111111111111111",
+                )
+                .ok();
+            }
+
             // Sysvars (note: these are accounts, not programs, but the hint is still useful)
             if n == "rent" || n.contains("sysvarrent") {
                 return solana_sdk::pubkey::Pubkey::from_str(
@@ -1149,6 +1170,12 @@
             if n.contains("associatedtokenaccount") || n == "ata" || n.ends_with("_ata") {
                 return Some(
                     "looks like an ATA (Associated Token Account). You typically derive it from (owner,mint[,token_program])."
+                        .to_string(),
+                );
+            }
+            if n.contains("addresslookuptable") || n.contains("address_lookup_table") || n == "alt" {
+                return Some(
+                    "looks related to Address Lookup Tables (ALT). Note: the ALT *program id* is fixed, but each lookup table itself is an account with its own pubkey."
                         .to_string(),
                 );
             }
