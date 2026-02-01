@@ -3419,6 +3419,198 @@
                             "note": "This transaction assigns an account to a new program owner (high risk)."
                         }));
                     }
+                    Some(3) => {
+                        // CreateAccountWithSeed { base: Pubkey, seed: String, lamports: u64, space: u64, owner: Pubkey }
+                        // Layout: u32 discr (already), base(32), seed_len(u64), seed_bytes, lamports(u64), space(u64), owner(32)
+                        let mut off = 4;
+                        let base = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        off += 32;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let lamports = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let space = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let payer = key_at(&ci.accounts, 0);
+                        let created = key_at(&ci.accounts, 1);
+                        summary_lines.push(format!(
+                            "Create account (with seed): {} (payer: {})",
+                            created, payer
+                        ));
+                        detail["kind"] = json!("system_create_account_with_seed");
+                        detail["payer"] = json!(payer);
+                        detail["created"] = json!(created);
+                        detail["base"] = json!(base);
+                        detail["seed"] = json!(seed);
+                        if let Some(l) = lamports {
+                            detail["lamports"] = json!(l.to_string());
+                        }
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                    }
+                    Some(8) => {
+                        // Allocate { space: u64 }
+                        let space = sys
+                            .get(4..12)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Allocate account space: {} (space: {:?})",
+                            acct, space
+                        ));
+                        detail["kind"] = json!("system_allocate");
+                        detail["account"] = json!(acct);
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                    }
+                    Some(9) => {
+                        // AllocateWithSeed { base: Pubkey, seed: String, space: u64, owner: Pubkey }
+                        let mut off = 4;
+                        let base = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        off += 32;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let space = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Allocate with seed: {} (space: {:?})",
+                            acct, space
+                        ));
+                        detail["kind"] = json!("system_allocate_with_seed");
+                        detail["account"] = json!(acct);
+                        detail["base"] = json!(base);
+                        detail["seed"] = json!(seed);
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                    }
+                    Some(10) => {
+                        // AssignWithSeed { base: Pubkey, seed: String, owner: Pubkey }
+                        let mut off = 4;
+                        let base = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        off += 32;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Assign with seed: {} -> {:?}",
+                            acct, owner
+                        ));
+                        detail["kind"] = json!("system_assign_with_seed");
+                        detail["account"] = json!(acct);
+                        detail["base"] = json!(base);
+                        detail["seed"] = json!(seed);
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                        warnings.push(json!({
+                            "kind": "system_assign",
+                            "severity": "high",
+                            "note": "This transaction assigns an account to a new program owner (high risk)."
+                        }));
+                    }
+                    Some(11) => {
+                        // TransferWithSeed { lamports: u64, from_seed: String, from_owner: Pubkey }
+                        let mut off = 4;
+                        let lamports = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let from_seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let from_owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let from = key_at(&ci.accounts, 0);
+                        let base = key_at(&ci.accounts, 1);
+                        let to = key_at(&ci.accounts, 2);
+                        summary_lines.push(format!(
+                            "SOL transfer (with seed): {} -> {} (lamports: {:?})",
+                            from, to, lamports
+                        ));
+                        detail["kind"] = json!("system_transfer_with_seed");
+                        detail["from"] = json!(from);
+                        detail["to"] = json!(to);
+                        detail["base"] = json!(base);
+                        detail["from_seed"] = json!(from_seed);
+                        detail["from_owner"] = json!(from_owner);
+                        if let Some(l) = lamports {
+                            detail["lamports"] = json!(l.to_string());
+                        }
+                    }
                     _ => {
                         summary_lines.push("System Program instruction".to_string());
                         detail["kind"] = json!("system_program");
