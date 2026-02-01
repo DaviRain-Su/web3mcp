@@ -3250,12 +3250,51 @@
 
                 // Anchor programs typically prefix instruction data with an 8-byte discriminator.
                 if ci.data.len() >= 8 {
-                    let disc8 = &ci.data[0..8];
-                    let disc_u64 = u64::from_le_bytes(disc8.try_into().unwrap());
+                    let disc8: [u8; 8] = ci.data[0..8].try_into().unwrap();
+                    let disc_u64 = u64::from_le_bytes(disc8);
                     detail["anchor_discriminator_u64_le"] = json!(disc_u64.to_string());
                     detail["anchor_discriminator_hex"] = json!(disc8.iter().map(|b| format!("{:02x}", b)).collect::<String>());
                     detail["anchor_discriminator_base64"] = json!(base64::engine::general_purpose::STANDARD.encode(disc8));
                     detail["anchor_args_len"] = json!(ci.data.len().saturating_sub(8));
+
+                    // Try to map discriminator -> known Jupiter V6 instruction name.
+                    // Anchor discriminator = first 8 bytes of sha256("global:<ix_name>").
+                    let jup_candidates: [&str; 10] = [
+                        "shared_accounts_route",
+                        "shared_accounts_exact_out_route",
+                        "shared_accounts_route_with_token_ledger",
+                        "shared_accounts_exact_out_route_with_token_ledger",
+                        "route",
+                        "exact_out_route",
+                        "route_with_token_ledger",
+                        "exact_out_route_with_token_ledger",
+                        "claim",
+                        "set_token_ledger",
+                    ];
+
+                    let mut matched: Option<&str> = None;
+                    for name in jup_candidates {
+                        let preimage = format!("global:{name}");
+                        let h = solana_sdk::hash::hash(preimage.as_bytes());
+                        let cand: [u8; 8] = h.to_bytes()[0..8].try_into().unwrap();
+                        if cand == disc8 {
+                            matched = Some(name);
+                            break;
+                        }
+                    }
+
+                    if let Some(name) = matched {
+                        detail["anchor_instruction"] = json!(name);
+                        detail["anchor_instruction_display"] =
+                            json!(name.split('_').map(|w| {
+                                let mut c = w.chars();
+                                match c.next() {
+                                    None => "".to_string(),
+                                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                }
+                            }).collect::<Vec<String>>().join(""));
+                        summary_lines.push(format!("Jupiter: instruction={name}"));
+                    }
                 }
 
                 // Keep a short prefix for debugging/mapping
