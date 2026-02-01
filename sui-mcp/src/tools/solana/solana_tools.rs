@@ -3089,14 +3089,98 @@
                 detail["owner"] = json!(owner);
                 detail["mint"] = json!(mint);
             } else if pid == system_pid {
-                // We don't fully decode SystemInstruction yet; flag generally.
-                summary_lines.push("System Program instruction".to_string());
-                detail["kind"] = json!("system_program");
-                warnings.push(json!({
-                    "kind": "system_program",
-                    "severity": "medium",
-                    "note": "This transaction calls the System Program (may transfer SOL or create accounts)."
-                }));
+                // Decode a subset of SystemProgram instructions (transfer/create/assign).
+                let sys = ci.data.as_slice();
+                let discr = sys
+                    .get(0..4)
+                    .and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?)));
+
+                match discr {
+                    Some(2) => {
+                        // Transfer { lamports: u64 }
+                        let lamports = sys
+                            .get(4..12)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        let from = key_at(&ci.accounts, 0);
+                        let to = key_at(&ci.accounts, 1);
+                        if let Some(lamports) = lamports {
+                            summary_lines.push(format!(
+                                "SOL transfer: {} -> {} (lamports: {})",
+                                from, to, lamports
+                            ));
+                            detail["kind"] = json!("system_transfer");
+                            detail["from"] = json!(from);
+                            detail["to"] = json!(to);
+                            detail["lamports"] = json!(lamports.to_string());
+                        } else {
+                            summary_lines.push("SOL transfer (unable to decode amount)".to_string());
+                            detail["kind"] = json!("system_transfer");
+                        }
+                    }
+                    Some(0) => {
+                        // CreateAccount { lamports: u64, space: u64, owner: Pubkey }
+                        let lamports = sys
+                            .get(4..12)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        let space = sys
+                            .get(12..20)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        let owner = sys.get(20..52).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        let payer = key_at(&ci.accounts, 0);
+                        let new_account = key_at(&ci.accounts, 1);
+
+                        summary_lines.push(format!(
+                            "Create account: {} (payer: {})",
+                            new_account, payer
+                        ));
+                        detail["kind"] = json!("system_create_account");
+                        detail["payer"] = json!(payer);
+                        detail["new_account"] = json!(new_account);
+                        if let Some(l) = lamports {
+                            detail["lamports"] = json!(l.to_string());
+                        }
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                    }
+                    Some(1) => {
+                        // Assign { owner: Pubkey }
+                        let owner = sys.get(4..36).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Assign account owner: {} -> {:?}",
+                            acct, owner
+                        ));
+                        detail["kind"] = json!("system_assign");
+                        detail["account"] = json!(acct);
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                        warnings.push(json!({
+                            "kind": "system_assign",
+                            "severity": "high",
+                            "note": "This transaction assigns an account to a new program owner (high risk)."
+                        }));
+                    }
+                    _ => {
+                        summary_lines.push("System Program instruction".to_string());
+                        detail["kind"] = json!("system_program");
+                        warnings.push(json!({
+                            "kind": "system_program",
+                            "severity": "medium",
+                            "note": "This transaction calls the System Program (may transfer SOL or create accounts)."
+                        }));
+                    }
+                }
             }
 
             details_instructions.push(detail);
