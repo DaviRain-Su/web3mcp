@@ -1427,13 +1427,17 @@
         // Mark as consumed before signing/broadcast (best-effort).
         crate::utils::sui_confirm_store::mark_consumed(&conn, &row.id)?;
 
+        let preflight_enabled = request.preflight.unwrap_or(true);
+
+        let tx_data_for_send = tx_data.clone();
+
         let sent = self
             .sign_and_execute_tx_data(
                 &keystore,
                 signer,
-                tx_data,
+                tx_data_for_send,
                 request.allow_sender_mismatch,
-                Some(request.preflight.unwrap_or(true)),
+                Some(preflight_enabled),
                 request.allow_preflight_failure,
                 "sui_confirm_execution",
             )
@@ -1441,6 +1445,16 @@
 
         match sent {
             Ok((result, preflight)) => {
+                if let Some(ref dr) = preflight {
+                    let err = dr.execution_error_source.as_deref();
+                    let _ = crate::utils::sui_confirm_store::set_last_dry_run(
+                        &conn,
+                        &row.id,
+                        &json!({"dry_run": dr}),
+                        err,
+                    );
+                }
+
                 let digest = result.digest.to_string();
                 let _ = crate::utils::sui_confirm_store::mark_sent(&conn, &row.id, &digest);
 
@@ -1466,6 +1480,19 @@
                 Ok(CallToolResult::success(vec![Content::text(response)]))
             }
             Err(e) => {
+                // If confirm-time preflight was enabled, try a best-effort dry-run to capture details.
+                if preflight_enabled {
+                    if let Ok(dr) = self.preflight_tx_data(&tx_data).await {
+                        let err = dr.execution_error_source.as_deref();
+                        let _ = crate::utils::sui_confirm_store::set_last_dry_run(
+                            &conn,
+                            &row.id,
+                            &json!({"dry_run": dr}),
+                            err,
+                        );
+                    }
+                }
+
                 let _ = crate::utils::sui_confirm_store::mark_failed(&conn, &row.id, &e.message);
                 self.write_audit_log(
                     "sui_confirm_execution",
@@ -1475,7 +1502,20 @@
                         "error": e.message,
                     }),
                 );
-                Err(e)
+
+                Err(ErrorData {
+                    code: e.code,
+                    message: e.message,
+                    data: Some(json!({
+                        "confirmation_id": row.id,
+                        "tool_context": row.tool_context,
+                        "summary": row
+                            .summary_json
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str::<Value>(s).ok()),
+                        "note": "Confirm-time execution failed. Check last_dry_run_* fields in DB or re-run with preflight=true for more context."
+                    })),
+                })
             }
         }
     }

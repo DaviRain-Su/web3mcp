@@ -97,7 +97,7 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         }
     }
 
-    let migrations: [(&str, &str); 6] = [
+    let migrations: [(&str, &str); 8] = [
         (
             "updated_at_ms",
             "ALTER TABLE sui_pending_confirmations ADD COLUMN updated_at_ms INTEGER",
@@ -121,6 +121,14 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         (
             "summary_json",
             "ALTER TABLE sui_pending_confirmations ADD COLUMN summary_json TEXT",
+        ),
+        (
+            "last_dry_run_json",
+            "ALTER TABLE sui_pending_confirmations ADD COLUMN last_dry_run_json TEXT",
+        ),
+        (
+            "last_dry_run_error",
+            "ALTER TABLE sui_pending_confirmations ADD COLUMN last_dry_run_error TEXT",
         ),
     ];
     for (col, stmt) in migrations {
@@ -322,6 +330,27 @@ pub fn mark_failed(conn: &rusqlite::Connection, id: &str, err: &str) -> Result<(
     .map_err(|e| ErrorData {
         code: ErrorCode(-32603),
         message: Cow::from(format!("Failed to mark failed: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn set_last_dry_run(
+    conn: &rusqlite::Connection,
+    id: &str,
+    dry_run: &Value,
+    err: Option<&str>,
+) -> Result<(), ErrorData> {
+    let dry_run_json = serde_json::to_string(dry_run).unwrap_or_else(|_| "{}".to_string());
+    conn.execute(
+        "UPDATE sui_pending_confirmations
+         SET last_dry_run_json=?2, last_dry_run_error=?3, updated_at_ms=?4
+         WHERE id=?1",
+        rusqlite::params![id, dry_run_json, err, now_ms() as i64],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to set last dry-run: {}", e)),
         data: None,
     })?;
     Ok(())
