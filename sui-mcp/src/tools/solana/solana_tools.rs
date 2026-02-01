@@ -471,6 +471,9 @@
         let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
         let client = Self::solana_rpc(network)?;
 
+        // For spl_token::state::Mint::unpack
+        use solana_program_pack::Pack as _;
+
         let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
         let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
         let recipient = Self::solana_parse_pubkey(request.recipient.trim(), "recipient")?;
@@ -565,19 +568,70 @@
             }
         }
 
-        let transfer_ix = spl_token::instruction::transfer(
-            &token_program_id,
-            &source_token_account,
-            &destination_token_account,
-            &owner,
-            &[],
-            amount,
-        )
-        .map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to build token transfer instruction: {}", e)),
-            data: None,
-        })?;
+        // Source ATA should already exist; do not auto-create by default.
+        if client.get_account(&source_token_account).await.is_err() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("source_token_account does not exist"),
+                data: Some(json!({
+                    "source_token_account": source_token_account.to_string(),
+                    "owner": owner.to_string(),
+                    "mint": mint.to_string(),
+                    "hint": "Provide source_token_account explicitly, or create/fund the owner's ATA first."
+                })),
+            });
+        }
+
+        let use_checked = request.use_transfer_checked.unwrap_or(true);
+        let (transfer_ix, decimals_used): (solana_sdk::instruction::Instruction, Option<u8>) = if use_checked {
+            // Fetch mint decimals and use transfer_checked for safety.
+            let mint_acc = client
+                .get_account(&mint)
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_transfer", e))?;
+            let mint_state = spl_token::state::Mint::unpack(&mint_acc.data).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode mint account: {}", e)),
+                data: Some(json!({"mint": mint.to_string()})),
+            })?;
+            let dec = mint_state.decimals;
+            (
+                spl_token::instruction::transfer_checked(
+                    &token_program_id,
+                    &source_token_account,
+                    &mint,
+                    &destination_token_account,
+                    &owner,
+                    &[],
+                    amount,
+                    dec,
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to build token transfer_checked instruction: {}", e)),
+                    data: None,
+                })?,
+                Some(dec),
+            )
+        } else {
+            (
+                spl_token::instruction::transfer(
+                    &token_program_id,
+                    &source_token_account,
+                    &destination_token_account,
+                    &owner,
+                    &[],
+                    amount,
+                )
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to build token transfer instruction: {}", e)),
+                    data: None,
+                })?,
+                None,
+            )
+        };
+
         ixs.push(transfer_ix);
 
         let message = solana_sdk::message::Message::new(&ixs, Some(&fee_payer));
@@ -614,6 +668,8 @@
                 "owner": owner.to_string(),
                 "recipient": recipient.to_string(),
                 "amount_raw": amount.to_string(),
+                "use_transfer_checked": use_checked,
+                "mint_decimals": decimals_used,
                 "source_token_account": source_token_account.to_string(),
                 "destination_token_account": destination_token_account.to_string(),
                 "create_ata_if_missing": create_ata_if_missing,
@@ -714,6 +770,128 @@
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana SPL: one-step token transfer using UI amount (decimal string) (safe default: creates pending confirmation unless confirm=true)")]
+    async fn solana_spl_transfer_ui_amount(
+        &self,
+        Parameters(request): Parameters<SolanaSplTransferUiAmountRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // For spl_token::state::Mint::unpack
+        use solana_program_pack::Pack as _;
+
+        let network = request.network.as_deref();
+        let client = Self::solana_rpc(network)?;
+        let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
+
+        let mint_acc = client
+            .get_account(&mint)
+            .await
+            .map_err(|e| Self::sdk_error("solana_spl_transfer_ui_amount", e))?;
+        let mint_state = spl_token::state::Mint::unpack(&mint_acc.data).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode mint account: {}", e)),
+            data: Some(json!({"mint": mint.to_string()})),
+        })?;
+        let decimals = mint_state.decimals;
+
+        fn ui_to_raw(amount: &str, decimals: u8) -> Result<u64, ErrorData> {
+            let s = amount.trim();
+            if s.is_empty() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("amount is required"),
+                    data: None,
+                });
+            }
+            if s.starts_with('-') {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("amount must be non-negative"),
+                    data: Some(json!({"provided": s})),
+                });
+            }
+            let parts: Vec<&str> = s.split('.').collect();
+            if parts.len() > 2 {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("amount must be a decimal string"),
+                    data: Some(json!({"provided": s})),
+                });
+            }
+            let whole = parts[0];
+            let frac = if parts.len() == 2 { parts[1] } else { "" };
+
+            if !whole.chars().all(|c| c.is_ascii_digit()) || !frac.chars().all(|c| c.is_ascii_digit()) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("amount must contain only digits and at most one '.'"),
+                    data: Some(json!({"provided": s})),
+                });
+            }
+
+            if frac.len() > decimals as usize {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("too many decimal places for token"),
+                    data: Some(json!({"provided": s, "decimals": decimals})),
+                });
+            }
+
+            let mut frac_padded = frac.to_string();
+            while frac_padded.len() < decimals as usize {
+                frac_padded.push('0');
+            }
+
+            let whole_u128: u128 = if whole.is_empty() { 0 } else { whole.parse().unwrap_or(0) };
+            let frac_u128: u128 = if decimals == 0 || frac_padded.is_empty() {
+                0
+            } else {
+                frac_padded.parse().unwrap_or(0)
+            };
+
+            let scale: u128 = 10u128.pow(decimals as u32);
+            let raw = whole_u128
+                .checked_mul(scale)
+                .and_then(|x| x.checked_add(frac_u128))
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("amount overflows"),
+                    data: Some(json!({"provided": s})),
+                })?;
+
+            u64::try_from(raw).map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("amount overflows u64"),
+                data: Some(json!({"provided": s})),
+            })
+        }
+
+        let amount_raw = ui_to_raw(&request.amount, decimals)?;
+
+        // Reuse solana_spl_transfer implementation.
+        let req2 = SolanaSplTransferRequest {
+            network: request.network.clone(),
+            mint: request.mint,
+            owner: request.owner,
+            recipient: request.recipient,
+            amount_raw: amount_raw.to_string(),
+            use_transfer_checked: Some(true),
+            source_token_account: request.source_token_account,
+            destination_token_account: request.destination_token_account,
+            create_ata_if_missing: request.create_ata_if_missing,
+            fee_payer: request.fee_payer,
+            recent_blockhash: request.recent_blockhash,
+            compute_unit_limit: request.compute_unit_limit,
+            compute_unit_price_micro_lamports: request.compute_unit_price_micro_lamports,
+            sign: request.sign,
+            confirm: request.confirm,
+            commitment: request.commitment,
+            skip_preflight: request.skip_preflight,
+            timeout_ms: request.timeout_ms,
+        };
+
+        self.solana_spl_transfer(Parameters(req2)).await
     }
 
     #[tool(description = "Solana SPL: one-step token approve (build tx; safe default: creates pending confirmation unless confirm=true)")]

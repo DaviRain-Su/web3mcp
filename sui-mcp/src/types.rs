@@ -554,6 +554,11 @@ pub struct SolanaSplTransferRequest {
     pub amount_raw: String,
 
     #[schemars(
+        description = "If true (default), use transfer_checked by fetching mint decimals from chain. Set false to use plain transfer."
+    )]
+    pub use_transfer_checked: Option<bool>,
+
+    #[schemars(
         description = "Optional: override source token account. If omitted, uses owner's ATA for mint"
     )]
     pub source_token_account: Option<String>,
@@ -601,7 +606,69 @@ pub struct SolanaSplTransferRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SolanaSplApproveRequest {
+pub struct SolanaSplTransferUiAmountRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Mint address (base58) for SPL token (e.g. USDC mint)")]
+    pub mint: String,
+    #[schemars(description = "Token owner (sender) pubkey (base58)")]
+    pub owner: String,
+    #[schemars(description = "Recipient owner pubkey (base58)")]
+    pub recipient: String,
+
+    #[schemars(description = "Token amount in UI units (decimal string, e.g. '1.23')")]
+    pub amount: String,
+
+    #[schemars(
+        description = "Optional: override source token account. If omitted, uses owner's ATA for mint"
+    )]
+    pub source_token_account: Option<String>,
+    #[schemars(
+        description = "Optional: override destination token account. If omitted, uses recipient's ATA for mint"
+    )]
+    pub destination_token_account: Option<String>,
+
+    #[schemars(
+        description = "If true, create destination ATA if missing (default false)."
+    )]
+    pub create_ata_if_missing: Option<bool>,
+
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+
+    #[schemars(
+        description = "If true, broadcast immediately; if false (default), create a pending confirmation"
+    )]
+    pub confirm: Option<bool>,
+    #[schemars(
+        description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
+    )]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSplApproveRequest { 
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
 
@@ -614,6 +681,11 @@ pub struct SolanaSplApproveRequest {
 
     #[schemars(description = "Raw token amount (integer string, in base units)")]
     pub amount_raw: String,
+
+    #[schemars(
+        description = "If true (default), validate mint decimals by fetching mint and use approve_checked when available. Currently approve uses approve (non-checked)."
+    )]
+    pub validate_mint_decimals: Option<bool>,
 
     #[schemars(
         description = "Optional: override owner token account. If omitted, uses owner's ATA for mint"
