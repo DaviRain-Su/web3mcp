@@ -264,6 +264,52 @@ pub struct EvmBuildTransferNativeRequest {
     pub large_transfer_threshold_wei: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlRegisterRequest {
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key (directory name). If omitted, will attempt to infer from IDL metadata.name, else 'default'.")]
+    pub name: Option<String>,
+    #[schemars(description = "IDL JSON content")]
+    pub idl_json: String,
+    #[schemars(description = "Overwrite if existing")]
+    pub overwrite: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlRegisterFileRequest {
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key (directory name). If omitted, will attempt to infer from file content metadata.name, else file stem.")]
+    pub name: Option<String>,
+    #[schemars(description = "Local file path to an IDL JSON")]
+    pub path: String,
+    #[schemars(description = "Overwrite if existing")]
+    pub overwrite: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlListRequest {
+    #[schemars(description = "Optional program id to filter")]
+    pub program_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlGetRequest {
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlSearchRequest {
+    #[schemars(description = "Substring query over program_id/name")]
+    pub query: String,
+    #[schemars(description = "Max results (default 50)")]
+    pub limit: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvmTxRequest {
     #[schemars(description = "Chain id")]
