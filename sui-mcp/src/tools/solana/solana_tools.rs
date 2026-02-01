@@ -656,7 +656,11 @@
         &self,
         Parameters(request): Parameters<SolanaSimulateTransactionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let network = request.network.as_deref();
+        let cfg = request.simulate_config.clone();
+        let network = cfg
+            .as_ref()
+            .and_then(|c| c.network.as_deref())
+            .or(request.network.as_deref());
         let rpc_url = Self::solana_rpc_url_for_network(network)?;
         let client = Self::solana_rpc(network)?;
 
@@ -675,7 +679,11 @@
                 data: None,
             })?;
 
-        let replace = request.replace_recent_blockhash.unwrap_or(true);
+        let replace = cfg
+            .as_ref()
+            .and_then(|c| c.replace_recent_blockhash)
+            .or(request.replace_recent_blockhash)
+            .unwrap_or(true);
         if replace {
             let bh = client
                 .get_latest_blockhash()
@@ -684,7 +692,11 @@
             tx.message.recent_blockhash = bh;
         }
 
-        let sig_verify = request.sig_verify.unwrap_or(false);
+        let sig_verify = cfg
+            .as_ref()
+            .and_then(|c| c.sig_verify)
+            .or(request.sig_verify)
+            .unwrap_or(false);
         if sig_verify {
             // Best-effort sign if signatures are missing and a keypair is available.
             let kp = Self::solana_keypair_path()
@@ -693,7 +705,11 @@
             Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
         }
 
-        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let commitment = cfg
+            .as_ref()
+            .and_then(|c| c.commitment.clone())
+            .or(request.commitment.clone())
+            .unwrap_or("confirmed".to_string());
 
         let sim = client
             .simulate_transaction_with_config(
@@ -713,10 +729,136 @@
 
         let response = Self::pretty_json(&json!({
             "rpc_url": rpc_url,
-            "network": request.network.unwrap_or("mainnet".to_string()),
+            "network": network.unwrap_or("mainnet"),
             "sig_verify": sig_verify,
             "replace_recent_blockhash": replace,
             "commitment": commitment,
+            "context": sim.context,
+            "value": sim.value
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: simulate a single instruction by internally building a tx (no broadcast)")]
+    async fn solana_simulate_instruction(
+        &self,
+        Parameters(request): Parameters<SolanaSimulateInstructionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let cfg = request.simulate_config.clone();
+        let network = cfg
+            .as_ref()
+            .and_then(|c| c.network.as_deref())
+            .or(request.network.as_deref());
+        let rpc_url = Self::solana_rpc_url_for_network(network)?;
+        let client = Self::solana_rpc(network)?;
+
+        // Fee payer is required (no dummy defaults).
+        let fee_payer = Self::solana_parse_pubkey(request.fee_payer.trim(), "fee_payer")?;
+
+        let replace = cfg
+            .as_ref()
+            .and_then(|c| c.replace_recent_blockhash)
+            .or(request.replace_recent_blockhash)
+            .unwrap_or(true);
+
+        let recent_blockhash = if replace {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_simulate_instruction", e))?
+        } else if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            // Still fetch if not provided, so the tx is always well-formed.
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_simulate_instruction", e))?
+        };
+
+        let ix_in = &request.instruction;
+        let program_id = Self::solana_parse_program_id(ix_in.program_id.trim())?;
+        let data = base64::engine::general_purpose::STANDARD
+            .decode(ix_in.data_base64.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid instruction.data_base64: {}", e)),
+                data: None,
+            })?;
+
+        let mut metas: Vec<solana_sdk::instruction::AccountMeta> = Vec::new();
+        for m in &ix_in.accounts {
+            let pk = Self::solana_parse_pubkey(m.pubkey.trim(), "account pubkey")?;
+            metas.push(if m.is_writable {
+                solana_sdk::instruction::AccountMeta::new(pk, m.is_signer)
+            } else {
+                solana_sdk::instruction::AccountMeta::new_readonly(pk, m.is_signer)
+            });
+        }
+
+        let ix = solana_sdk::instruction::Instruction {
+            program_id,
+            accounts: metas,
+            data,
+        };
+
+        let message = solana_sdk::message::Message::new(&[ix], Some(&fee_payer));
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+        tx.message.recent_blockhash = recent_blockhash;
+
+        let sig_verify = cfg
+            .as_ref()
+            .and_then(|c| c.sig_verify)
+            .or(request.sig_verify)
+            .unwrap_or(false);
+        if sig_verify {
+            // Best-effort sign if signatures are missing and a keypair is available.
+            let kp = Self::solana_keypair_path()
+                .ok()
+                .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+            Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
+        }
+
+        let commitment = cfg
+            .as_ref()
+            .and_then(|c| c.commitment.clone())
+            .or(request.commitment.clone())
+            .unwrap_or("confirmed".to_string());
+
+        let sim = client
+            .simulate_transaction_with_config(
+                &tx,
+                solana_client::rpc_config::RpcSimulateTransactionConfig {
+                    sig_verify,
+                    replace_recent_blockhash: replace,
+                    commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
+                    encoding: None,
+                    accounts: None,
+                    min_context_slot: None,
+                    inner_instructions: false,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_simulate_instruction", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": network.unwrap_or("mainnet"),
+            "fee_payer": request.fee_payer,
+            "recent_blockhash": recent_blockhash.to_string(),
+            "sig_verify": sig_verify,
+            "replace_recent_blockhash": replace,
+            "commitment": commitment,
+            "instruction": {
+                "program_id": ix_in.program_id,
+                "accounts_count": ix_in.accounts.len(),
+                "data_base64_len": ix_in.data_base64.len()
+            },
             "context": sim.context,
             "value": sim.value
         }))?;

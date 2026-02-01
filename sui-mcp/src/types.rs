@@ -568,8 +568,28 @@ pub struct SolanaConfirmTransactionRequest {
     pub timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSimulateConfig {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "If true, RPC verifies signatures during simulation (default false)")]
+    pub sig_verify: Option<bool>,
+    #[schemars(
+        description = "If true, replace recent blockhash with latest before simulation (default true)"
+    )]
+    pub replace_recent_blockhash: Option<bool>,
+    #[schemars(description = "Commitment used for simulation context (default confirmed)")]
+    pub commitment: Option<String>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaSimulateTransactionRequest {
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+    )]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    // Back-compat fields
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
     #[schemars(
@@ -588,14 +608,22 @@ pub struct SolanaSimulateTransactionRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaSimulateInstructionRequest {
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+    )]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    // Back-compat fields
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
+
     #[schemars(description = "Fee payer pubkey (base58)")]
     pub fee_payer: String,
     #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
     pub recent_blockhash: Option<String>,
     #[schemars(description = "Instruction to simulate")]
     pub instruction: SolanaInstructionInput,
+
     #[schemars(
         description = "If true, replace recent blockhash with latest before simulation (default true)"
     )]
