@@ -616,12 +616,21 @@
                         &new_hash,
                     )?;
 
+                    let summary = crate::utils::evm_confirm_store::tx_summary_for_response(&tx);
                     let response = Self::pretty_json(&json!({
                         "resolved_network": resolved_network,
                         "status": "pending",
                         "confirmation_id": id,
-                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                         "tx_summary_hash": new_hash,
+                        "summary": summary,
+                        "tx_summary": summary,
+                        "tool_context": json!({
+                            "expected_spender": row.expected_spender,
+                            "required_allowance_raw": row.required_allowance_raw,
+                            "expected_token": row.expected_token,
+                            "approve_confirmation_id": row.approve_confirmation_id,
+                            "swap_confirmation_id": row.swap_confirmation_id,
+                        }),
                         "note": "Tx changed during confirm-time preflight (likely nonce/fees). Re-confirm with new hash." 
                     }))?;
                     return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -680,6 +689,15 @@
                                         "allowance_raw": allowance_raw.to_string(),
                                         "required_raw": required.to_string(),
                                         "approve_confirmation_id": row.approve_confirmation_id,
+                                        "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                                        "tool_context": json!({
+                                            "expected_spender": row.expected_spender,
+                                            "required_allowance_raw": row.required_allowance_raw,
+                                            "expected_token": row.expected_token,
+                                            "approve_confirmation_id": row.approve_confirmation_id,
+                                            "swap_confirmation_id": row.swap_confirmation_id,
+                                        }),
                                     });
 
                                     // If we know the approve confirmation, add its status/tx_hash to improve UX.
@@ -766,12 +784,21 @@
                     &text,
                     &tx,
                 )? {
+                    let summary = crate::utils::evm_confirm_store::tx_summary_for_response(&tx);
                     let response = Self::pretty_json(&json!({
                         "resolved_network": resolved_network,
                         "status": "pending",
                         "confirmation_id": id,
-                        "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                         "tx_summary_hash": provided_hash,
+                        "summary": summary,
+                        "tx_summary": summary,
+                        "tool_context": json!({
+                            "expected_spender": row.expected_spender,
+                            "required_allowance_raw": row.required_allowance_raw,
+                            "expected_token": row.expected_token,
+                            "approve_confirmation_id": row.approve_confirmation_id,
+                            "swap_confirmation_id": row.swap_confirmation_id,
+                        }),
                         "note": "Second confirmation required for large-value tx",
                         "next": { "how_to_confirm": msg }
                     }))?;
