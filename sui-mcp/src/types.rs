@@ -365,6 +365,16 @@ pub struct SolanaIdlExecuteRequest {
     pub fee_payer: Option<String>,
     #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
     pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
     #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
     pub sign: Option<bool>,
 
@@ -562,6 +572,16 @@ pub struct SolanaTxBuildRequest {
     pub fee_payer: Option<String>,
     #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
     pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
     #[schemars(description = "One or more instructions")]
     pub instructions: Vec<SolanaInstructionInput>,
     #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]

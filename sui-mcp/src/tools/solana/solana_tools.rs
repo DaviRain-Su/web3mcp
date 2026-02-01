@@ -608,6 +608,30 @@
         let mut ixs: Vec<solana_sdk::instruction::Instruction> = Vec::new();
         let mut ix_summaries: Vec<Value> = Vec::new();
 
+        // Optional ComputeBudget instructions (prepend, as required by runtime conventions)
+        if let Some(limit) = request.compute_unit_limit {
+            ixs.push(solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_limit(
+                limit,
+            ));
+            ix_summaries.push(json!({
+                "index": "compute_budget_0",
+                "program_id": "ComputeBudget111111111111111111111111111111",
+                "kind": "set_compute_unit_limit",
+                "compute_unit_limit": limit
+            }));
+        }
+        if let Some(price) = request.compute_unit_price_micro_lamports {
+            ixs.push(solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_price(
+                price,
+            ));
+            ix_summaries.push(json!({
+                "index": "compute_budget_1",
+                "program_id": "ComputeBudget111111111111111111111111111111",
+                "kind": "set_compute_unit_price",
+                "compute_unit_price_micro_lamports": price
+            }));
+        }
+
         for (idx, ix) in request.instructions.iter().enumerate() {
             let program_id = Self::solana_parse_program_id(ix.program_id.trim())?;
             let data = base64::engine::general_purpose::STANDARD
