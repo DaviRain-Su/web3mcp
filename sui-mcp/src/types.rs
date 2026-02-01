@@ -383,6 +383,46 @@ pub struct SolanaIdlExecuteRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlSimulateInstructionRequest {
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment."
+    )]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    // Back-compat fields
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Args object (name->value)")]
+    pub args: serde_json::Value,
+    #[schemars(description = "Accounts object (name->pubkey)")]
+    pub accounts: serde_json::Value,
+
+    #[schemars(description = "Fee payer pubkey (base58)")]
+    pub fee_payer: String,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "If true, replace recent blockhash with latest before simulation (default true)"
+    )]
+    pub replace_recent_blockhash: Option<bool>,
+    #[schemars(description = "If true, RPC verifies signatures during simulation (default false)")]
+    pub sig_verify: Option<bool>,
+    #[schemars(description = "Commitment used for simulation context (default confirmed)")]
+    pub commitment: Option<String>,
+
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaIdlSearchRequest {
     #[schemars(description = "Substring query over program_id/name")]
     pub query: String,
