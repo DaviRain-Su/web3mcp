@@ -2111,6 +2111,28 @@
         Ok(enc)
     }
 
+    fn solana_suggest_compute_unit_limit(units_consumed: Option<u64>) -> Option<u32> {
+        // Best-effort heuristic: 20% headroom + fixed 10k buffer.
+        // Clamp to a reasonable range.
+        let u = units_consumed?;
+        let mut suggested = (u as f64 * 1.2).ceil() as u64;
+        suggested = suggested.saturating_add(10_000);
+        let min = 50_000u64;
+        let max = 1_400_000u64;
+        suggested = suggested.clamp(min, max);
+        Some(suggested as u32)
+    }
+
+    fn solana_percentile_u64(mut xs: Vec<u64>, p: f64) -> Option<u64> {
+        if xs.is_empty() {
+            return None;
+        }
+        xs.sort_unstable();
+        let p = p.clamp(0.0, 1.0);
+        let idx = ((xs.len() - 1) as f64 * p).round() as usize;
+        xs.get(idx).copied()
+    }
+
     #[tool(description = "Solana: build a (optionally signed) transaction from one or more instructions")]
     async fn solana_tx_build(
         &self,
@@ -2372,6 +2394,28 @@
             .await
             .map_err(|e| Self::sdk_error("solana_simulate_transaction", e))?;
 
+        let suggested_cu_limit = Self::solana_suggest_compute_unit_limit(sim.value.units_consumed);
+
+        let suggest_price = cfg
+            .as_ref()
+            .and_then(|c| c.suggest_compute_unit_price)
+            .unwrap_or(false);
+        let mut suggested_cu_price: Option<u64> = None;
+        let mut price_sample: Option<Value> = None;
+        if suggest_price {
+            // Best-effort: use recent prioritization fees for empty address set.
+            if let Ok(fees) = client.get_recent_prioritization_fees(&[]).await {
+                let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
+                suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
+                price_sample = Some(json!({
+                    "count": fees.len(),
+                    "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
+                    "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
+                    "p90": Self::solana_percentile_u64(vals, 0.90)
+                }));
+            }
+        }
+
         let response = Self::pretty_json(&json!({
             "rpc_url": rpc_url,
             "network": network.unwrap_or("mainnet"),
@@ -2379,7 +2423,12 @@
             "replace_recent_blockhash": replace,
             "commitment": commitment,
             "context": sim.context,
-            "value": sim.value
+            "value": sim.value,
+            "suggestions": {
+                "compute_unit_limit": suggested_cu_limit,
+                "compute_unit_price_micro_lamports": suggested_cu_price,
+                "recent_prioritization_fees": price_sample
+            }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
@@ -2530,6 +2579,27 @@
             .await
             .map_err(|e| Self::sdk_error("solana_simulate_instruction", e))?;
 
+        let suggested_cu_limit = Self::solana_suggest_compute_unit_limit(sim.value.units_consumed);
+
+        let suggest_price = cfg
+            .as_ref()
+            .and_then(|c| c.suggest_compute_unit_price)
+            .unwrap_or(false);
+        let mut suggested_cu_price: Option<u64> = None;
+        let mut price_sample: Option<Value> = None;
+        if suggest_price {
+            if let Ok(fees) = client.get_recent_prioritization_fees(&[]).await {
+                let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
+                suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
+                price_sample = Some(json!({
+                    "count": fees.len(),
+                    "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
+                    "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
+                    "p90": Self::solana_percentile_u64(vals, 0.90)
+                }));
+            }
+        }
+
         let response = Self::pretty_json(&json!({
             "rpc_url": rpc_url,
             "network": network.unwrap_or("mainnet"),
@@ -2544,7 +2614,12 @@
                 "data_base64_len": ix_in.data_base64.len()
             },
             "context": sim.context,
-            "value": sim.value
+            "value": sim.value,
+            "suggestions": {
+                "compute_unit_limit": suggested_cu_limit,
+                "compute_unit_price_micro_lamports": suggested_cu_price,
+                "recent_prioritization_fees": price_sample
+            }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
@@ -3581,6 +3656,27 @@
             .await
             .map_err(|e| Self::sdk_error("solana_idl_simulate_instruction", e))?;
 
+        let suggested_cu_limit = Self::solana_suggest_compute_unit_limit(sim.value.units_consumed);
+
+        let suggest_price = cfg
+            .as_ref()
+            .and_then(|c| c.suggest_compute_unit_price)
+            .unwrap_or(false);
+        let mut suggested_cu_price: Option<u64> = None;
+        let mut price_sample: Option<Value> = None;
+        if suggest_price {
+            if let Ok(fees) = client.get_recent_prioritization_fees(&[]).await {
+                let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
+                suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
+                price_sample = Some(json!({
+                    "count": fees.len(),
+                    "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
+                    "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
+                    "p90": Self::solana_percentile_u64(vals, 0.90)
+                }));
+            }
+        }
+
         let response = Self::pretty_json(&json!({
             "rpc_url": rpc_url,
             "network": network_str,
@@ -3600,7 +3696,12 @@
                 "onchain": onchain
             },
             "context": sim.context,
-            "value": sim.value
+            "value": sim.value,
+            "suggestions": {
+                "compute_unit_limit": suggested_cu_limit,
+                "compute_unit_price_micro_lamports": suggested_cu_price,
+                "recent_prioritization_fees": price_sample
+            }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))

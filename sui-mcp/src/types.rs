@@ -1057,6 +1057,11 @@ pub struct SolanaSimulateConfig {
         description = "Encoding for simulate_accounts results: base64|base64+zstd|jsonParsed (default base64)."
     )]
     pub accounts_encoding: Option<String>,
+
+    #[schemars(
+        description = "If true, try to suggest a compute unit price (micro-lamports) based on recentPrioritizationFees RPC (default false)."
+    )]
+    pub suggest_compute_unit_price: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
