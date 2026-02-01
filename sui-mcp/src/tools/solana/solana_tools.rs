@@ -25,6 +25,11 @@
             "3ZZuTbwC6aJbvteyVxXUS7gtFYdf7AuXeitx6VyvjvUp" => Some("Jupiter Prediction Market"),
             "save8RQVPMWNTzU18t3GBvBkN9hT7jsGjiCQ28FpD9H" => Some("Bankineco"),
 
+            // Known but may not have IDL in this repo (still useful for preview labels)
+            "KLend2g3cP87ber41qQDzWpAFuqP2tCxDqC8S3k7L1U" => Some("Kamino Lending"),
+            "FEESngU3neckdwib9X3KWqdL7Mjmqk1XNp3uh5JbP4KP" => Some("Meteora M3M3"),
+            "5ocnV1qiCgaQR8Jb8xWnVbApfaygJ8tNoZfgPwsgx9kx" => Some("Sanctum S Controller"),
+
             // Common swap mints (not programs, but helpful when showing account lists)
             "So11111111111111111111111111111111111111112" => Some("Wrapped SOL mint"),
             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" => Some("USDC mint"),
