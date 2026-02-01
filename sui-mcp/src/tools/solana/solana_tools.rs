@@ -651,6 +651,79 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Solana: simulate a transaction (no broadcast)")]
+    async fn solana_simulate_transaction(
+        &self,
+        Parameters(request): Parameters<SolanaSimulateTransactionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref();
+        let rpc_url = Self::solana_rpc_url_for_network(network)?;
+        let client = Self::solana_rpc(network)?;
+
+        let tx_bytes = base64::engine::general_purpose::STANDARD
+            .decode(request.transaction_base64.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction_base64: {}", e)),
+                data: None,
+            })?;
+
+        let mut tx: solana_sdk::transaction::Transaction =
+            bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction bytes: {}", e)),
+                data: None,
+            })?;
+
+        let replace = request.replace_recent_blockhash.unwrap_or(true);
+        if replace {
+            let bh = client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_simulate_transaction", e))?;
+            tx.message.recent_blockhash = bh;
+        }
+
+        let sig_verify = request.sig_verify.unwrap_or(false);
+        if sig_verify {
+            // Best-effort sign if signatures are missing and a keypair is available.
+            let kp = Self::solana_keypair_path()
+                .ok()
+                .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+            Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
+        }
+
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+
+        let sim = client
+            .simulate_transaction_with_config(
+                &tx,
+                solana_client::rpc_config::RpcSimulateTransactionConfig {
+                    sig_verify,
+                    replace_recent_blockhash: replace,
+                    commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
+                    encoding: None,
+                    accounts: None,
+                    min_context_slot: None,
+                    inner_instructions: false,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_simulate_transaction", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "sig_verify": sig_verify,
+            "replace_recent_blockhash": replace,
+            "commitment": commitment,
+            "context": sim.context,
+            "value": sim.value
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Solana: send a transaction (safe default: creates pending confirmation unless confirm=true)")]
     async fn solana_send_transaction(
         &self,
