@@ -2674,6 +2674,7 @@
                 price_sample = Some(json!({
                     "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
                     "addresses_count": addrs.len(),
+                    "addresses": addrs.iter().take(16).map(|p| p.to_string()).collect::<Vec<String>>(),
                     "count": fees.len(),
                     "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
                     "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
@@ -3776,6 +3777,7 @@
                 price_sample = Some(json!({
                     "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
                     "addresses_count": addrs.len(),
+                    "addresses": addrs.iter().take(16).map(|p| p.to_string()).collect::<Vec<String>>(),
                     "count": fees.len(),
                     "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
                     "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
