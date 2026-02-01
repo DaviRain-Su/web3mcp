@@ -3282,6 +3282,34 @@
                                 "note": "This transaction changes token authority (high risk)."
                             }));
                         }
+                        // Friendly handling for common Token-2022 extension prefixes / advanced instructions
+                        spl_token_2022::instruction::TokenInstruction::TransferFeeExtension => {
+                            summary_lines.push("SPL Token-2022: TransferFee extension instruction".to_string());
+                            detail["kind"] = json!("spl_token_2022_transfer_fee_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_transfer_fee",
+                                "severity": "medium",
+                                "note": "Token-2022 TransferFee extension may charge transfer fees."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::TransferHookExtension => {
+                            summary_lines.push("SPL Token-2022: TransferHook extension instruction".to_string());
+                            detail["kind"] = json!("spl_token_2022_transfer_hook_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_transfer_hook",
+                                "severity": "high",
+                                "note": "Token-2022 TransferHook can trigger extra program calls (hook). Review carefully."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::Reallocate { .. } => {
+                            summary_lines.push("SPL Token-2022: Reallocate token account".to_string());
+                            detail["kind"] = json!("spl_token_2022_reallocate");
+                            warnings.push(json!({
+                                "kind": "token2022_reallocate",
+                                "severity": "medium",
+                                "note": "Token-2022 account reallocation changes account data size; may increase rent/lamports."
+                            }));
+                        }
                         _ => {
                             // Many Token-2022 extensions exist; keep a generic line.
                             summary_lines.push("SPL Token-2022 instruction".to_string());
