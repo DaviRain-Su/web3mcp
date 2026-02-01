@@ -328,6 +328,11 @@
                                         &sell_amount_wei.to_string(),
                                     );
 
+                                    let _ = crate::utils::evm_confirm_store::set_approve_link(
+                                        &confirmation_id,
+                                        &approve_confirmation_id,
+                                    );
+
                                     approve_flow = Some(json!({
                                         "needed": true,
                                         "allowance_raw": allowance_raw.to_string(),
@@ -668,7 +673,8 @@
                                             "spender": spender,
                                             "allowance_raw": allowance_raw.to_string(),
                                             "required_raw": required.to_string(),
-                                            "note": "Run/confirm approve, wait for it to mine, then confirm swap again"
+                                            "note": "Run/confirm approve, wait for it to mine, then confirm swap again",
+                                        "approve_confirmation_id": row.approve_confirmation_id
                                         })),
                                     });
                                 }
@@ -731,6 +737,37 @@
                                         )),
                                         data: None,
                                     });
+                                }
+                            }
+
+                            // If the approve amount is smaller than what the flow requires, block (prevents stale/incorrect approve).
+                            if let Some(required_raw) = row.required_allowance_raw.as_deref() {
+                                if let Ok(required_u256) = ethers::types::U256::from_dec_str(required_raw) {
+                                    if required_u256 > ethers::types::U256::from(0)
+                                        && amount_u256 < required_u256
+                                    {
+                                        let _ = crate::utils::evm_confirm_store::mark_failed(
+                                            &conn,
+                                            &id,
+                                            &format!(
+                                                "approve amount too small: tx={} required={}",
+                                                amount_u256, required_u256
+                                            ),
+                                        );
+                                        return Err(ErrorData {
+                                            code: ErrorCode(-32602),
+                                            message: Cow::from(format!(
+                                                "Approve amount too small ({} < {}). Please rebuild approve.",
+                                                amount_u256, required_u256
+                                            )),
+                                            data: Some(json!({
+                                                "status": "failed",
+                                                "reason": "approve_amount_too_small",
+                                                "approve_amount_raw": amount_u256.to_string(),
+                                                "required_raw": required_u256.to_string(),
+                                            })),
+                                        });
+                                    }
                                 }
                             }
 
