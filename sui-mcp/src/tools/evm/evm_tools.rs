@@ -3991,11 +3991,13 @@ fn abi_entry_json(
             }),
         );
 
+        let summary = crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final);
         let response = Self::pretty_json(&json!({
             "status": "pending",
             "original_tx_hash": original_tx_hash,
             "confirmation_id": confirmation_id,
-            "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final),
+            "summary": summary,
+            "tx_summary": summary,
             "tx_summary_hash": hash,
             "expires_in_ms": ttl,
             "web3mcp": {
@@ -4117,11 +4119,13 @@ fn abi_entry_json(
             }),
         );
 
+        let summary = crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final);
         let response = Self::pretty_json(&json!({
             "status": "pending",
             "original_tx_hash": original_tx_hash,
             "confirmation_id": confirmation_id,
-            "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final),
+            "summary": summary,
+            "tx_summary": summary,
             "tx_summary_hash": hash,
             "expires_in_ms": ttl,
             "web3mcp": {
