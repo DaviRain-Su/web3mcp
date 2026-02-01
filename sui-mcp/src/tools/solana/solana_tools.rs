@@ -13,6 +13,18 @@
             "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc" => Some("Orca Whirlpool"),
             "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8" => Some("Raydium AMM v4"),
             "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD" => Some("Marinade"),
+
+            // More programs from omniweb3-mcp idl_registry/programs.json
+            "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo" => Some("Meteora DLMM"),
+            "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG" => Some("Meteora DAMM v2"),
+            "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB" => Some("Meteora DAMM v1"),
+            "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN" => Some("Meteora DBC"),
+            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P" => Some("Pump.fun"),
+            "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf" => Some("Squads V4"),
+            "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK" => Some("Raydium CLMM"),
+            "3ZZuTbwC6aJbvteyVxXUS7gtFYdf7AuXeitx6VyvjvUp" => Some("Jupiter Prediction Market"),
+            "save8RQVPMWNTzU18t3GBvBkN9hT7jsGjiCQ28FpD9H" => Some("Bankineco"),
+
             // Common swap mints (not programs, but helpful when showing account lists)
             "So11111111111111111111111111111111111111112" => Some("Wrapped SOL mint"),
             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" => Some("USDC mint"),
