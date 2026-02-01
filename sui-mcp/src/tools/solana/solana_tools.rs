@@ -3296,66 +3296,419 @@
                         summary_lines.push(format!("Jupiter: instruction={name}"));
                     }
 
-                    // Best-effort: decode SharedAccountsRoute (most common Jupiter v6 swap instruction)
-                    // using carbon-jupiter-swap-decoder's generated Borsh types.
-                    if matched == Some("shared_accounts_route") {
-                        // Note: instruction data = [8-byte anchor discriminator] + [borsh-encoded args]
-                        if ci.data.len() > 8 {
-                            if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_route::SharedAccountsRoute as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
-                                detail["jupiter_shared_accounts_route"] = json!({
-                                    "id": ix.id,
-                                    "in_amount": ix.in_amount.to_string(),
-                                    "quoted_out_amount": ix.quoted_out_amount.to_string(),
-                                    "slippage_bps": ix.slippage_bps,
-                                    "platform_fee_bps": ix.platform_fee_bps,
-                                    "route_plan_len": ix.route_plan.len(),
-                                    "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
-                                        json!({
-                                            "i": i,
-                                            "swap": format!("{:?}", s.swap),
-                                            "percent": s.percent,
-                                            "input_index": s.input_index,
-                                            "output_index": s.output_index
-                                        })
-                                    }).collect::<Vec<Value>>()
-                                });
-
-                                // Accounts layout (first 13 accounts) from carbon decoder docs
-                                let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
-                                if accs.len() >= 13 {
-                                    detail["jupiter_accounts"] = json!({
-                                        "token_program": accs[0],
-                                        "program_authority": accs[1],
-                                        "user_transfer_authority": accs[2],
-                                        "source_token_account": accs[3],
-                                        "program_source_token_account": accs[4],
-                                        "program_destination_token_account": accs[5],
-                                        "destination_token_account": accs[6],
-                                        "source_mint": accs[7],
-                                        "destination_mint": accs[8],
-                                        "platform_fee_account": accs[9],
-                                        "token_2022_program": accs[10],
-                                        "event_authority": accs[11],
-                                        "program": accs[12]
+                    // Best-effort: decode Jupiter instructions using carbon-jupiter-swap-decoder Borsh types.
+                    // We key off the 8-byte Anchor discriminator (LE u64) observed on-chain.
+                    if ci.data.len() > 8 {
+                        match disc_u64 {
+                            // SharedAccountsRoute
+                            0xc1209b3341d69c81 => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_route::SharedAccountsRoute as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("shared_accounts_route");
+                                    detail["jupiter_shared_accounts_route"] = json!({
+                                        "id": ix.id,
+                                        "in_amount": ix.in_amount.to_string(),
+                                        "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "percent": s.percent,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
                                     });
 
-                                    summary_lines.push(format!(
-                                        "Jupiter swap: {} -> {} (in={}, quote_out={}, slippage_bps={})",
-                                        accs[7],
-                                        accs[8],
-                                        ix.in_amount,
-                                        ix.quoted_out_amount,
-                                        ix.slippage_bps
-                                    ));
-                                } else {
-                                    summary_lines.push(format!(
-                                        "Jupiter swap: in={}, quote_out={}, slippage_bps={} (accounts too short to label mints)",
-                                        ix.in_amount,
-                                        ix.quoted_out_amount,
-                                        ix.slippage_bps
-                                    ));
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 13 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "token_program": accs[0],
+                                            "program_authority": accs[1],
+                                            "user_transfer_authority": accs[2],
+                                            "source_token_account": accs[3],
+                                            "program_source_token_account": accs[4],
+                                            "program_destination_token_account": accs[5],
+                                            "destination_token_account": accs[6],
+                                            "source_mint": accs[7],
+                                            "destination_mint": accs[8],
+                                            "platform_fee_account": accs[9],
+                                            "token_2022_program": accs[10],
+                                            "event_authority": accs[11],
+                                            "program": accs[12]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter swap (ExactIn): {} -> {} (in={}, quote_out={}, slippage_bps={})",
+                                            accs[7],
+                                            accs[8],
+                                            ix.in_amount,
+                                            ix.quoted_out_amount,
+                                            ix.slippage_bps
+                                        ));
+                                    }
                                 }
                             }
+
+                            // SharedAccountsExactOutRoute
+                            0xb0d169a89a7d453e => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_exact_out_route::SharedAccountsExactOutRoute as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("shared_accounts_exact_out_route");
+                                    detail["jupiter_shared_accounts_exact_out_route"] = json!({
+                                        "id": ix.id,
+                                        "out_amount": ix.out_amount.to_string(),
+                                        "quoted_in_amount": ix.quoted_in_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "percent": s.percent,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 13 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "token_program": accs[0],
+                                            "program_authority": accs[1],
+                                            "user_transfer_authority": accs[2],
+                                            "source_token_account": accs[3],
+                                            "program_source_token_account": accs[4],
+                                            "program_destination_token_account": accs[5],
+                                            "destination_token_account": accs[6],
+                                            "source_mint": accs[7],
+                                            "destination_mint": accs[8],
+                                            "platform_fee_account": accs[9],
+                                            "token_2022_program": accs[10],
+                                            "event_authority": accs[11],
+                                            "program": accs[12]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter swap (ExactOut): {} -> {} (out={}, quote_in={}, slippage_bps={})",
+                                            accs[7],
+                                            accs[8],
+                                            ix.out_amount,
+                                            ix.quoted_in_amount,
+                                            ix.slippage_bps
+                                        ));
+                                    }
+                                }
+                            }
+
+                            // Route
+                            0xe517cb977ae3ad2a => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::route::Route as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("route");
+                                    detail["jupiter_route"] = json!({
+                                        "in_amount": ix.in_amount.to_string(),
+                                        "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "percent": s.percent,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 9 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "token_program": accs[0],
+                                            "user_transfer_authority": accs[1],
+                                            "user_source_token_account": accs[2],
+                                            "user_destination_token_account": accs[3],
+                                            "destination_token_account": accs[4],
+                                            "destination_mint": accs[5],
+                                            "platform_fee_account": accs[6],
+                                            "event_authority": accs[7],
+                                            "program": accs[8]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter route (ExactIn): in={}, quote_out={}, slippage_bps={} (dest_mint={})",
+                                            ix.in_amount,
+                                            ix.quoted_out_amount,
+                                            ix.slippage_bps,
+                                            accs[5]
+                                        ));
+                                    }
+                                }
+                            }
+
+                            // ExactOutRoute
+                            0xd033ef977b2bed5c => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::exact_out_route::ExactOutRoute as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("exact_out_route");
+                                    detail["jupiter_exact_out_route"] = json!({
+                                        "out_amount": ix.out_amount.to_string(),
+                                        "quoted_in_amount": ix.quoted_in_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "percent": s.percent,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 11 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "token_program": accs[0],
+                                            "user_transfer_authority": accs[1],
+                                            "user_source_token_account": accs[2],
+                                            "user_destination_token_account": accs[3],
+                                            "destination_token_account": accs[4],
+                                            "source_mint": accs[5],
+                                            "destination_mint": accs[6],
+                                            "platform_fee_account": accs[7],
+                                            "token_2022_program": accs[8],
+                                            "event_authority": accs[9],
+                                            "program": accs[10]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter route (ExactOut): {} -> {} (out={}, quote_in={}, slippage_bps={})",
+                                            accs[5],
+                                            accs[6],
+                                            ix.out_amount,
+                                            ix.quoted_in_amount,
+                                            ix.slippage_bps
+                                        ));
+                                    }
+                                }
+                            }
+
+                            // RouteWithTokenLedger
+                            0x96564774a75d0e68 => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::route_with_token_ledger::RouteWithTokenLedger as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("route_with_token_ledger");
+                                    detail["jupiter_route_with_token_ledger"] = json!({
+                                        "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "percent": s.percent,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 10 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "token_program": accs[0],
+                                            "user_transfer_authority": accs[1],
+                                            "user_source_token_account": accs[2],
+                                            "user_destination_token_account": accs[3],
+                                            "destination_token_account": accs[4],
+                                            "destination_mint": accs[5],
+                                            "platform_fee_account": accs[6],
+                                            "token_ledger": accs[7],
+                                            "event_authority": accs[8],
+                                            "program": accs[9]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter route (TokenLedger): quote_out={}, slippage_bps={} (dest_mint={})",
+                                            ix.quoted_out_amount,
+                                            ix.slippage_bps,
+                                            accs[5]
+                                        ));
+                                    }
+                                }
+                            }
+
+                            // SharedAccountsRouteWithTokenLedger
+                            0xe6798f50779f6aaa => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_route_with_token_ledger::SharedAccountsRouteWithTokenLedger as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("shared_accounts_route_with_token_ledger");
+                                    detail["jupiter_shared_accounts_route_with_token_ledger"] = json!({
+                                        "id": ix.id,
+                                        "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "percent": s.percent,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 14 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "token_program": accs[0],
+                                            "program_authority": accs[1],
+                                            "user_transfer_authority": accs[2],
+                                            "source_token_account": accs[3],
+                                            "program_source_token_account": accs[4],
+                                            "program_destination_token_account": accs[5],
+                                            "destination_token_account": accs[6],
+                                            "source_mint": accs[7],
+                                            "destination_mint": accs[8],
+                                            "platform_fee_account": accs[9],
+                                            "token_2022_program": accs[10],
+                                            "token_ledger": accs[11],
+                                            "event_authority": accs[12],
+                                            "program": accs[13]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter swap (TokenLedger): {} -> {} (quote_out={}, slippage_bps={})",
+                                            accs[7],
+                                            accs[8],
+                                            ix.quoted_out_amount,
+                                            ix.slippage_bps
+                                        ));
+                                    }
+                                }
+                            }
+
+                            // V2 variants
+                            0xbb64facc31c4af14 => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::route_v2::RouteV2 as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("route_v2");
+                                    detail["jupiter_route_v2"] = json!({
+                                        "in_amount": ix.in_amount.to_string(),
+                                        "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "positive_slippage_bps": ix.positive_slippage_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "bps": s.bps,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+
+                                    let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                    if accs.len() >= 10 {
+                                        detail["jupiter_accounts"] = json!({
+                                            "user_transfer_authority": accs[0],
+                                            "user_source_token_account": accs[1],
+                                            "user_destination_token_account": accs[2],
+                                            "source_mint": accs[3],
+                                            "destination_mint": accs[4],
+                                            "source_token_program": accs[5],
+                                            "destination_token_program": accs[6],
+                                            "destination_token_account": accs[7],
+                                            "event_authority": accs[8],
+                                            "program": accs[9]
+                                        });
+                                        summary_lines.push(format!(
+                                            "Jupiter swap v2 (ExactIn): {} -> {} (in={}, quote_out={}, slippage_bps={})",
+                                            accs[3],
+                                            accs[4],
+                                            ix.in_amount,
+                                            ix.quoted_out_amount,
+                                            ix.slippage_bps
+                                        ));
+                                    }
+                                }
+                            }
+
+                            0x9d8ab85215f4f324 => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::exact_out_route_v2::ExactOutRouteV2 as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("exact_out_route_v2");
+                                    detail["jupiter_exact_out_route_v2"] = json!({
+                                        "out_amount": ix.out_amount.to_string(),
+                                        "quoted_in_amount": ix.quoted_in_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "positive_slippage_bps": ix.positive_slippage_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "bps": s.bps,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+                                }
+                            }
+
+                            0xd19853937cfed8e9 => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_route_v2::SharedAccountsRouteV2 as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("shared_accounts_route_v2");
+                                    detail["jupiter_shared_accounts_route_v2"] = json!({
+                                        "id": ix.id,
+                                        "in_amount": ix.in_amount.to_string(),
+                                        "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "positive_slippage_bps": ix.positive_slippage_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "bps": s.bps,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+                                }
+                            }
+
+                            0x3560e5cad8bbfa18 => {
+                                if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_exact_out_route_v2::SharedAccountsExactOutRouteV2 as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                    detail["jupiter_decoded_kind"] = json!("shared_accounts_exact_out_route_v2");
+                                    detail["jupiter_shared_accounts_exact_out_route_v2"] = json!({
+                                        "id": ix.id,
+                                        "out_amount": ix.out_amount.to_string(),
+                                        "quoted_in_amount": ix.quoted_in_amount.to_string(),
+                                        "slippage_bps": ix.slippage_bps,
+                                        "platform_fee_bps": ix.platform_fee_bps,
+                                        "positive_slippage_bps": ix.positive_slippage_bps,
+                                        "route_plan_len": ix.route_plan.len(),
+                                        "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                            json!({
+                                                "i": i,
+                                                "swap": format!("{:?}", s.swap),
+                                                "bps": s.bps,
+                                                "input_index": s.input_index,
+                                                "output_index": s.output_index
+                                            })
+                                        }).collect::<Vec<Value>>()
+                                    });
+                                }
+                            }
+
+                            _ => {}
                         }
                     }
                 }
