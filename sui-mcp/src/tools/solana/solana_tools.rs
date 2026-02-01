@@ -3375,6 +3375,63 @@
                                 "note": "Token-2022 account reallocation changes account data size; may increase rent/lamports. Review extension types in details."
                             }));
                         }
+                        // More Token-2022 extension prefixes (friendly summaries)
+                        spl_token_2022::instruction::TokenInstruction::MemoTransferExtension => {
+                            summary_lines.push("SPL Token-2022: MemoTransfer extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_memo_transfer_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_memo_transfer",
+                                "severity": "low",
+                                "note": "Token-2022 MemoTransfer may require memos on inbound transfers."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::CpiGuardExtension => {
+                            summary_lines.push("SPL Token-2022: CpiGuard extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_cpi_guard_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_cpi_guard",
+                                "severity": "medium",
+                                "note": "Token-2022 CpiGuard restricts privileged ops via CPI; transfers may fail depending on context."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::MetadataPointerExtension => {
+                            summary_lines.push("SPL Token-2022: MetadataPointer extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_metadata_pointer_extension");
+                        }
+                        spl_token_2022::instruction::TokenInstruction::GroupPointerExtension => {
+                            summary_lines.push("SPL Token-2022: GroupPointer extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_group_pointer_extension");
+                        }
+                        spl_token_2022::instruction::TokenInstruction::GroupMemberPointerExtension => {
+                            summary_lines.push("SPL Token-2022: GroupMemberPointer extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_group_member_pointer_extension");
+                        }
+                        spl_token_2022::instruction::TokenInstruction::DefaultAccountStateExtension => {
+                            summary_lines.push("SPL Token-2022: DefaultAccountState extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_default_account_state_extension");
+                        }
+                        spl_token_2022::instruction::TokenInstruction::InterestBearingMintExtension => {
+                            summary_lines.push("SPL Token-2022: InterestBearing extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_interest_bearing_extension");
+                        }
+                        spl_token_2022::instruction::TokenInstruction::PausableExtension => {
+                            summary_lines.push("SPL Token-2022: Pausable extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_pausable_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_pausable",
+                                "severity": "medium",
+                                "note": "Token-2022 Pausable mint can pause transfers/minting; transfers may fail if paused."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::ConfidentialTransferExtension => {
+                            summary_lines.push("SPL Token-2022: ConfidentialTransfer extension".to_string());
+                            detail["kind"] = json!("spl_token_2022_confidential_transfer_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_confidential_transfer",
+                                "severity": "medium",
+                                "note": "Token-2022 ConfidentialTransfer involves encrypted balances; preview may be incomplete."
+                            }));
+                        }
                         _ => {
                             // Many Token-2022 extensions exist; keep a generic line.
                             summary_lines.push("SPL Token-2022 instruction".to_string());
