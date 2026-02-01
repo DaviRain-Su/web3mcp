@@ -3996,6 +3996,10 @@ fn abi_entry_json(
             "status": "pending",
             "original_tx_hash": original_tx_hash,
             "confirmation_id": confirmation_id,
+            "tool_context": json!({
+                "tool": "evm_speed_up_tx",
+                "strict": strict
+            }),
             "summary": summary,
             "tx_summary": summary,
             "tx_summary_hash": hash,
@@ -4124,6 +4128,10 @@ fn abi_entry_json(
             "status": "pending",
             "original_tx_hash": original_tx_hash,
             "confirmation_id": confirmation_id,
+            "tool_context": json!({
+                "tool": "evm_cancel_tx",
+                "strict": strict
+            }),
             "summary": summary,
             "tx_summary": summary,
             "tx_summary_hash": hash,
