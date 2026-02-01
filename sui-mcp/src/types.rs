@@ -339,6 +339,40 @@ pub struct SolanaIdlBuildInstructionRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaIdlExecuteRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Solana program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "IDL name/version key")]
+    pub name: String,
+    #[schemars(description = "Instruction name")]
+    pub instruction: String,
+    #[schemars(description = "Args object (name->value)")]
+    pub args: serde_json::Value,
+    #[schemars(description = "Accounts object (name->pubkey)")]
+    pub accounts: serde_json::Value,
+    #[schemars(description = "Optional: validate on-chain using RPC (default false)")]
+    pub validate_on_chain: Option<bool>,
+
+    #[schemars(description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey")]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+
+    #[schemars(description = "If true, broadcast immediately; if false (default), create a pending confirmation")]
+    pub confirm: Option<bool>,
+    #[schemars(description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)")]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaIdlSearchRequest {
     #[schemars(description = "Substring query over program_id/name")]
     pub query: String,

@@ -1146,6 +1146,37 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn solana_json_metas_to_account_metas(
+        metas: &[Value],
+    ) -> Result<Vec<solana_sdk::instruction::AccountMeta>, ErrorData> {
+        let mut out: Vec<solana_sdk::instruction::AccountMeta> = Vec::new();
+        for m in metas {
+            let pk_str = m
+                .get("pubkey")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("account meta missing pubkey"),
+                    data: Some(json!({"meta": m})),
+                })?;
+            let is_signer = m
+                .get("is_signer")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let is_writable = m
+                .get("is_writable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let pk = Self::solana_parse_pubkey(pk_str, "account pubkey")?;
+            out.push(if is_writable {
+                solana_sdk::instruction::AccountMeta::new(pk, is_signer)
+            } else {
+                solana_sdk::instruction::AccountMeta::new_readonly(pk, is_signer)
+            });
+        }
+        Ok(out)
+    }
+
     #[tool(description = "Solana IDL: build an instruction (program_id + accounts metas + data_base64) from registered IDL")]
     async fn solana_idl_build_instruction(
         &self,
@@ -1260,6 +1291,272 @@
                 "args_count": ix.args.len(),
                 "data_len": data.len()
             })
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: build tx and (optionally) send it. Safe default: creates pending confirmation unless confirm=true")]
+    async fn solana_idl_execute(
+        &self,
+        Parameters(request): Parameters<SolanaIdlExecuteRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network_str = request.network.clone().unwrap_or("mainnet".to_string());
+        let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
+
+        let program_id_pk = Self::solana_parse_program_id(request.program_id.trim())?;
+        let program_id = program_id_pk.to_string();
+        let idl_name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
+        let instruction_name = request.instruction.trim().to_string();
+
+        // 1) Build instruction (IDL)
+        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &idl_name)?;
+        let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction_name)?;
+
+        // args in order
+        let mut args_pairs: Vec<(crate::utils::solana_idl::IdlArg, Value)> = Vec::new();
+        let mut missing_args: Vec<String> = Vec::new();
+        for a in &ix.args {
+            let v = request.args.get(&a.name).cloned();
+            if v.is_none() {
+                missing_args.push(a.name.clone());
+                continue;
+            }
+            args_pairs.push((a.clone(), v.unwrap()));
+        }
+        if !missing_args.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Missing required args"),
+                data: Some(json!({"missing_args": missing_args})),
+            });
+        }
+
+        let mut metas_json: Vec<Value> = Vec::new();
+        let mut missing_accounts: Vec<String> = Vec::new();
+        for a in &ix.accounts {
+            let pk = request
+                .accounts
+                .get(&a.name)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            if pk.is_none() {
+                missing_accounts.push(a.name.clone());
+                continue;
+            }
+            let _ = Self::solana_parse_pubkey(pk.as_ref().unwrap(), &format!("account:{}", a.name))?;
+            metas_json.push(json!({
+                "name": a.name,
+                "pubkey": pk,
+                "is_signer": a.is_signer,
+                "is_writable": a.is_mut
+            }));
+        }
+        if !missing_accounts.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Missing required accounts"),
+                data: Some(json!({"missing_accounts": missing_accounts})),
+            });
+        }
+
+        let data = crate::utils::solana_idl::encode_anchor_ix_data(&ix.name, &args_pairs)?;
+        let data_b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+
+        // Optional on-chain checks
+        let validate = request.validate_on_chain.unwrap_or(false);
+        let mut onchain: Option<Value> = None;
+        if validate {
+            let client = Self::solana_rpc(Some(&network_str))?;
+            let mut checks: Vec<Value> = Vec::new();
+            for m in &metas_json {
+                let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let pk_str = m.get("pubkey").and_then(|v| v.as_str()).unwrap_or("");
+                let pk = Self::solana_parse_pubkey(pk_str, &format!("account:{}", name))?;
+                let acc = client.get_account(&pk).await.ok();
+                checks.push(json!({
+                    "name": name,
+                    "pubkey": pk.to_string(),
+                    "exists": acc.is_some(),
+                    "owner": acc.as_ref().map(|x| x.owner.to_string()),
+                    "lamports": acc.as_ref().map(|x| x.lamports),
+                    "data_len": acc.as_ref().map(|x| x.data.len()),
+                    "executable": acc.as_ref().map(|x| x.executable),
+                }));
+            }
+            onchain = Some(json!({"checks": checks}));
+        }
+
+        // 2) Build transaction
+        let client = Self::solana_rpc(Some(&network_str))?;
+
+        let sign = request.sign.unwrap_or(false);
+        let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
+        let kp = if sign {
+            Some(Self::solana_read_keypair_from_json_file(kp_path.as_ref().unwrap())?)
+        } else {
+            None
+        };
+
+        let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+            Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+        } else if let Some(ref k) = kp {
+            solana_sdk::signature::Signer::pubkey(k)
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("fee_payer is required unless sign=true and SOLANA_KEYPAIR_PATH is set"),
+                data: None,
+            });
+        };
+
+        let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_idl_execute", e))?
+        };
+
+        let account_metas = Self::solana_json_metas_to_account_metas(&metas_json)?;
+        let ixn = solana_sdk::instruction::Instruction {
+            program_id: program_id_pk,
+            accounts: account_metas,
+            data: data.clone(),
+        };
+
+        let message = solana_sdk::message::Message::new(&[ixn], Some(&fee_payer));
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+        tx.message.recent_blockhash = recent_blockhash;
+        if sign {
+            let k = kp.as_ref().unwrap();
+            tx.sign(&[k], recent_blockhash);
+        }
+
+        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize transaction: {}", e)),
+            data: None,
+        })?;
+        let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+
+        // 3) Send (or create pending)
+        let confirm = request.confirm.unwrap_or(false);
+        if !confirm {
+            let created = crate::utils::solana_confirm_store::now_ms();
+            let ttl = crate::utils::solana_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let id_seed = format!("{}:{}", created, hash);
+            let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+            let confirmation_id = format!("solana_confirm_{}", &id_suffix[..16]);
+
+            let summary = json!({
+                "network": network_str,
+                "rpc_url": rpc_url,
+                "program_id": program_id,
+                "idl_name": idl_name,
+                "instruction": instruction_name,
+                "fee_payer": fee_payer.to_string(),
+                "recent_blockhash": recent_blockhash.to_string(),
+                "signed": sign
+            });
+
+            crate::utils::solana_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_base64,
+                created,
+                expires,
+                &hash,
+                "solana_idl_execute",
+                Some(summary.clone()),
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "rpc_url": rpc_url,
+                "network": summary.get("network").unwrap(),
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "instruction": {
+                    "program_id": program_id,
+                    "accounts": metas_json,
+                    "data_base64": data_b64,
+                    "validate_on_chain": validate,
+                    "onchain": onchain
+                },
+                "transaction": {
+                    "fee_payer": fee_payer.to_string(),
+                    "recent_blockhash": recent_blockhash.to_string(),
+                    "signed": sign,
+                    "keypair_path": kp_path,
+                    "transaction_base64": tx_base64,
+                    "transaction_bytes_len": tx_bytes.len()
+                },
+                "expires_in_ms": ttl,
+                "next": {
+                    "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        // confirm=true: broadcast now
+        let skip_preflight = request.skip_preflight.unwrap_or(false);
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let timeout_ms = request.timeout_ms.unwrap_or(60_000);
+
+        // If tx isn't signed, attempt to sign if SOLANA_KEYPAIR_PATH exists.
+        let mut tx2 = tx;
+        Self::solana_try_sign_if_needed(&mut tx2, kp.as_ref());
+
+        let sig = client
+            .send_transaction_with_config(
+                &tx2,
+                solana_client::rpc_config::RpcSendTransactionConfig {
+                    skip_preflight,
+                    preflight_commitment: Some(
+                        Self::solana_commitment_from_str(Some(&commitment))?.commitment,
+                    ),
+                    encoding: None,
+                    max_retries: None,
+                    min_context_slot: None,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_idl_execute", e))?;
+
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+
+        let response = Self::pretty_json(&json!({
+            "status": "sent",
+            "rpc_url": rpc_url,
+            "network": network_str,
+            "signature": sig.to_string(),
+            "commitment": commitment,
+            "wait": waited,
+            "instruction": {
+                "program_id": program_id,
+                "accounts": metas_json,
+                "data_base64": data_b64,
+                "validate_on_chain": validate,
+                "onchain": onchain
+            },
+            "transaction": {
+                "fee_payer": fee_payer.to_string(),
+                "recent_blockhash": recent_blockhash.to_string(),
+                "signed": true,
+                "keypair_path": kp_path,
+                "transaction_base64": tx_base64,
+                "transaction_bytes_len": tx_bytes.len()
+            }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
