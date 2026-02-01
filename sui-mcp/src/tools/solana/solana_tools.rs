@@ -2919,6 +2919,7 @@
         let mut details_instructions: Vec<Value> = Vec::new();
 
         let token_pid = spl_token::id().to_string();
+        let token_2022_pid = spl_token_2022::id().to_string();
         let ata_pid = spl_associated_token_account::id().to_string();
         let compute_budget_pid = solana_compute_budget_interface::id().to_string();
         let system_pid = "11111111111111111111111111111111";
@@ -3025,6 +3026,8 @@
                     }
                 }
             } else if pid == token_pid {
+                // Legacy SPL Token Program
+
                 if let Ok(tok_ix) = spl_token::instruction::TokenInstruction::unpack(&ci.data) {
                     match tok_ix {
                         spl_token::instruction::TokenInstruction::Transfer { amount } => {
@@ -3168,6 +3171,181 @@
                         _ => {}
                     }
                 }
+            } else if pid == token_2022_pid {
+                // SPL Token-2022 Program
+                if let Ok(tok_ix) = spl_token_2022::instruction::TokenInstruction::unpack(&ci.data) {
+                    match tok_ix {
+                        #[allow(deprecated)]
+                        spl_token_2022::instruction::TokenInstruction::Transfer { amount } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let destination = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            summary_lines.push(format!(
+                                "SPL Token-2022 transfer: {} -> {} (amount: {})",
+                                source, destination, amount
+                            ));
+                            detail["kind"] = json!("spl_token_2022_transfer");
+                            detail["source"] = json!(source);
+                            detail["destination"] = json!(destination);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                        }
+                        spl_token_2022::instruction::TokenInstruction::TransferChecked { amount, decimals } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let destination = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            summary_lines.push(format!(
+                                "SPL Token-2022 transfer_checked: {} -> {} (mint: {}, amount: {}, decimals: {})",
+                                source, destination, mint, amount, decimals
+                            ));
+                            detail["kind"] = json!("spl_token_2022_transfer_checked");
+                            detail["source"] = json!(source);
+                            detail["destination"] = json!(destination);
+                            detail["mint"] = json!(mint);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["decimals"] = json!(decimals);
+                        }
+                        spl_token_2022::instruction::TokenInstruction::Approve { amount } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let delegate = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            let is_infinite = amount == u64::MAX;
+                            summary_lines.push(format!(
+                                "SPL Token-2022 approve{}: delegate {} on {} (amount: {})",
+                                if is_infinite { " (infinite)" } else { "" },
+                                delegate,
+                                source,
+                                amount
+                            ));
+                            detail["kind"] = json!("spl_token_2022_approve");
+                            detail["source"] = json!(source);
+                            detail["delegate"] = json!(delegate);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["infinite"] = json!(is_infinite);
+
+                            warnings.push(json!({
+                                "kind": "token_approve",
+                                "severity": if is_infinite { "high" } else { "medium" },
+                                "infinite": is_infinite,
+                                "amount": amount.to_string(),
+                                "delegate": delegate,
+                                "source": source,
+                                "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::ApproveChecked { amount, decimals } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let delegate = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            let is_infinite = amount == u64::MAX;
+                            summary_lines.push(format!(
+                                "SPL Token-2022 approve_checked{}: delegate {} on {} (mint: {}, amount: {}, decimals: {})",
+                                if is_infinite { " (infinite)" } else { "" },
+                                delegate,
+                                source,
+                                mint,
+                                amount,
+                                decimals
+                            ));
+                            detail["kind"] = json!("spl_token_2022_approve_checked");
+                            detail["source"] = json!(source);
+                            detail["mint"] = json!(mint);
+                            detail["delegate"] = json!(delegate);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["decimals"] = json!(decimals);
+                            detail["infinite"] = json!(is_infinite);
+
+                            warnings.push(json!({
+                                "kind": "token_approve",
+                                "severity": if is_infinite { "high" } else { "medium" },
+                                "infinite": is_infinite,
+                                "amount": amount.to_string(),
+                                "delegate": delegate,
+                                "source": source,
+                                "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::Revoke => {
+                            let source = key_at(&ci.accounts, 0);
+                            let authority = key_at(&ci.accounts, 1);
+                            summary_lines.push(format!("SPL Token-2022 revoke: {}", source));
+                            detail["kind"] = json!("spl_token_2022_revoke");
+                            detail["source"] = json!(source);
+                            detail["authority"] = json!(authority);
+                        }
+                        spl_token_2022::instruction::TokenInstruction::CloseAccount => {
+                            let account = key_at(&ci.accounts, 0);
+                            let destination = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            summary_lines.push(format!(
+                                "SPL Token-2022 close_account: {} -> {}",
+                                account, destination
+                            ));
+                            detail["kind"] = json!("spl_token_2022_close_account");
+                            detail["account"] = json!(account);
+                            detail["destination"] = json!(destination);
+                            detail["authority"] = json!(authority);
+
+                            warnings.push(json!({
+                                "kind": "close_token_account",
+                                "severity": "medium",
+                                "account": account,
+                                "destination": destination,
+                                "note": "This transaction closes a token account."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::SetAuthority { .. } => {
+                            summary_lines.push("SPL Token-2022 set_authority".to_string());
+                            detail["kind"] = json!("spl_token_2022_set_authority");
+                            warnings.push(json!({
+                                "kind": "set_authority",
+                                "severity": "high",
+                                "note": "This transaction changes token authority (high risk)."
+                            }));
+                        }
+                        // Friendly handling for common Token-2022 extension prefixes / advanced instructions
+                        spl_token_2022::instruction::TokenInstruction::TransferFeeExtension => {
+                            summary_lines.push("SPL Token-2022: TransferFee extension instruction".to_string());
+                            detail["kind"] = json!("spl_token_2022_transfer_fee_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_transfer_fee",
+                                "severity": "medium",
+                                "note": "Token-2022 TransferFee extension may charge transfer fees."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::TransferHookExtension => {
+                            summary_lines.push("SPL Token-2022: TransferHook extension instruction".to_string());
+                            detail["kind"] = json!("spl_token_2022_transfer_hook_extension");
+                            warnings.push(json!({
+                                "kind": "token2022_transfer_hook",
+                                "severity": "high",
+                                "note": "Token-2022 TransferHook can trigger extra program calls (hook). Review carefully."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::Reallocate { .. } => {
+                            summary_lines.push("SPL Token-2022: Reallocate token account".to_string());
+                            detail["kind"] = json!("spl_token_2022_reallocate");
+                            warnings.push(json!({
+                                "kind": "token2022_reallocate",
+                                "severity": "medium",
+                                "note": "Token-2022 account reallocation changes account data size; may increase rent/lamports."
+                            }));
+                        }
+                        _ => {
+                            // Many Token-2022 extensions exist; keep a generic line.
+                            summary_lines.push("SPL Token-2022 instruction".to_string());
+                            detail["kind"] = json!("spl_token_2022");
+                        }
+                    }
+                } else {
+                    summary_lines.push("SPL Token-2022 instruction (unable to decode)".to_string());
+                    detail["kind"] = json!("spl_token_2022");
+                }
             } else if pid == ata_pid {
                 // Typically: create associated token account
                 // accounts: [payer, ata, owner, mint, system, token, rent] (+ remaining)
@@ -3266,6 +3444,198 @@
                             "severity": "high",
                             "note": "This transaction assigns an account to a new program owner (high risk)."
                         }));
+                    }
+                    Some(3) => {
+                        // CreateAccountWithSeed { base: Pubkey, seed: String, lamports: u64, space: u64, owner: Pubkey }
+                        // Layout: u32 discr (already), base(32), seed_len(u64), seed_bytes, lamports(u64), space(u64), owner(32)
+                        let mut off = 4;
+                        let base = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        off += 32;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let lamports = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let space = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let payer = key_at(&ci.accounts, 0);
+                        let created = key_at(&ci.accounts, 1);
+                        summary_lines.push(format!(
+                            "Create account (with seed): {} (payer: {})",
+                            created, payer
+                        ));
+                        detail["kind"] = json!("system_create_account_with_seed");
+                        detail["payer"] = json!(payer);
+                        detail["created"] = json!(created);
+                        detail["base"] = json!(base);
+                        detail["seed"] = json!(seed);
+                        if let Some(l) = lamports {
+                            detail["lamports"] = json!(l.to_string());
+                        }
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                    }
+                    Some(8) => {
+                        // Allocate { space: u64 }
+                        let space = sys
+                            .get(4..12)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Allocate account space: {} (space: {:?})",
+                            acct, space
+                        ));
+                        detail["kind"] = json!("system_allocate");
+                        detail["account"] = json!(acct);
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                    }
+                    Some(9) => {
+                        // AllocateWithSeed { base: Pubkey, seed: String, space: u64, owner: Pubkey }
+                        let mut off = 4;
+                        let base = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        off += 32;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let space = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Allocate with seed: {} (space: {:?})",
+                            acct, space
+                        ));
+                        detail["kind"] = json!("system_allocate_with_seed");
+                        detail["account"] = json!(acct);
+                        detail["base"] = json!(base);
+                        detail["seed"] = json!(seed);
+                        if let Some(s) = space {
+                            detail["space"] = json!(s.to_string());
+                        }
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                    }
+                    Some(10) => {
+                        // AssignWithSeed { base: Pubkey, seed: String, owner: Pubkey }
+                        let mut off = 4;
+                        let base = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+                        off += 32;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let acct = key_at(&ci.accounts, 0);
+                        summary_lines.push(format!(
+                            "Assign with seed: {} -> {:?}",
+                            acct, owner
+                        ));
+                        detail["kind"] = json!("system_assign_with_seed");
+                        detail["account"] = json!(acct);
+                        detail["base"] = json!(base);
+                        detail["seed"] = json!(seed);
+                        if let Some(o) = owner {
+                            detail["owner"] = json!(o);
+                        }
+                        warnings.push(json!({
+                            "kind": "system_assign",
+                            "severity": "high",
+                            "note": "This transaction assigns an account to a new program owner (high risk)."
+                        }));
+                    }
+                    Some(11) => {
+                        // TransferWithSeed { lamports: u64, from_seed: String, from_owner: Pubkey }
+                        let mut off = 4;
+                        let lamports = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        off += 8;
+                        let seed_len = sys
+                            .get(off..off + 8)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)))
+                            .unwrap_or(0) as usize;
+                        off += 8;
+                        let from_seed = sys
+                            .get(off..off + seed_len)
+                            .and_then(|b| std::str::from_utf8(b).ok())
+                            .map(|s| s.to_string());
+                        off += seed_len;
+                        let from_owner = sys.get(off..off + 32).and_then(|b| {
+                            let arr: [u8; 32] = b.try_into().ok()?;
+                            Some(solana_sdk::pubkey::Pubkey::new_from_array(arr).to_string())
+                        });
+
+                        let from = key_at(&ci.accounts, 0);
+                        let base = key_at(&ci.accounts, 1);
+                        let to = key_at(&ci.accounts, 2);
+                        summary_lines.push(format!(
+                            "SOL transfer (with seed): {} -> {} (lamports: {:?})",
+                            from, to, lamports
+                        ));
+                        detail["kind"] = json!("system_transfer_with_seed");
+                        detail["from"] = json!(from);
+                        detail["to"] = json!(to);
+                        detail["base"] = json!(base);
+                        detail["from_seed"] = json!(from_seed);
+                        detail["from_owner"] = json!(from_owner);
+                        if let Some(l) = lamports {
+                            detail["lamports"] = json!(l.to_string());
+                        }
                     }
                     _ => {
                         summary_lines.push("System Program instruction".to_string());
