@@ -246,6 +246,11 @@
                 None
             };
 
+            let calldata = tx
+                .as_ref()
+                .and_then(|t| t.data_hex.as_deref())
+                .and_then(crate::utils::evm_selector::classify_calldata);
+
             items.push(json!({
                 "id": r.0,
                 "chain_id": r.1,
@@ -261,7 +266,8 @@
                 "second_confirm_token": r.12,
                 "second_confirmed": r.13.map(|v| v == 1).unwrap_or(false),
                 "tx_summary_hash": r.5,
-                "tx_summary": tx.as_ref().map(crate::utils::evm_confirm_store::tx_summary_for_response)
+                "tx_summary": tx.as_ref().map(crate::utils::evm_confirm_store::tx_summary_for_response),
+                "calldata": calldata
             }));
         }
 
