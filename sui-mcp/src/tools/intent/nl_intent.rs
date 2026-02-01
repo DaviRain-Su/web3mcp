@@ -634,7 +634,7 @@
                     let is_approve = tx
                         .data_hex
                         .as_deref()
-                        .and_then(|d| Some(d.strip_prefix("0x").unwrap_or(d)))
+                        .map(|d| d.strip_prefix("0x").unwrap_or(d))
                         .map(|h| h.len() >= 8 && h[..8].eq_ignore_ascii_case("095ea7b3"))
                         .unwrap_or(false);
 
@@ -751,139 +751,127 @@
 
                 // Strong approve safety checks: prevent approving wrong spender; skip if allowance already sufficient.
                 if let Some(data_hex) = tx.data_hex.as_deref() {
-                    let hexs = data_hex.strip_prefix("0x").unwrap_or(data_hex);
-                    if hexs.len() >= 8 && hexs[..8].eq_ignore_ascii_case("095ea7b3") {
-                        // approve(address,uint256)
+                    if let Some((spender, amount_u256)) =
+                        crate::utils::evm_calldata::decode_erc20_approve(data_hex)
+                    {
                         let token_addr = tx.to.clone();
 
-                        // decode spender + amount
-                        if hexs.len() >= 8 + 64 + 64 {
-                            let spender_hex = &hexs[8 + 24..8 + 64];
-                            let spender = format!("0x{}", spender_hex);
-                            let amount_hex = &hexs[8 + 64..8 + 64 + 64];
-                            let amount_u256 = ethers::types::U256::from_str_radix(amount_hex, 16)
-                                .unwrap_or_else(|_| ethers::types::U256::from(0));
+                        // If we have expected spender metadata, enforce it.
+                        if let Some(expected) = row.expected_spender.as_deref() {
+                            if !expected.eq_ignore_ascii_case(&spender) {
+                                let _ = crate::utils::evm_confirm_store::mark_failed(
+                                    &conn,
+                                    &id,
+                                    &format!(
+                                        "approve spender mismatch: expected={} got={}",
+                                        expected, spender
+                                    ),
+                                );
+                                return Err(ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from(format!(
+                                        "Approve spender mismatch: expected {} but tx approves {}",
+                                        expected, spender
+                                    )),
+                                    data: None,
+                                });
+                            }
+                        }
 
-                            // If we have expected spender metadata, enforce it.
-                            if let Some(expected) = row.expected_spender.as_deref() {
-                                if !expected.eq_ignore_ascii_case(&spender) {
+                        // If the approve amount is smaller than what the flow requires, block (prevents stale/incorrect approve).
+                        if let Some(required_raw) = row.required_allowance_raw.as_deref() {
+                            if let Ok(required_u256) = ethers::types::U256::from_dec_str(required_raw) {
+                                if required_u256 > ethers::types::U256::from(0) && amount_u256 < required_u256 {
                                     let _ = crate::utils::evm_confirm_store::mark_failed(
                                         &conn,
                                         &id,
                                         &format!(
-                                            "approve spender mismatch: expected={} got={}",
-                                            expected, spender
+                                            "approve amount too small: tx={} required={}",
+                                            amount_u256, required_u256
                                         ),
                                     );
                                     return Err(ErrorData {
                                         code: ErrorCode(-32602),
                                         message: Cow::from(format!(
-                                            "Approve spender mismatch: expected {} but tx approves {}",
-                                            expected, spender
+                                            "Approve amount too small ({} < {}). Please rebuild approve.",
+                                            amount_u256, required_u256
                                         )),
-                                        data: None,
+                                        data: Some(json!({
+                                            "status": "failed",
+                                            "reason": "approve_amount_too_small",
+                                            "approve_amount_raw": amount_u256.to_string(),
+                                            "required_raw": required_u256.to_string(),
+                                        })),
                                     });
                                 }
                             }
+                        }
 
-                            // If the approve amount is smaller than what the flow requires, block (prevents stale/incorrect approve).
-                            if let Some(required_raw) = row.required_allowance_raw.as_deref() {
-                                if let Ok(required_u256) = ethers::types::U256::from_dec_str(required_raw) {
-                                    if required_u256 > ethers::types::U256::from(0)
-                                        && amount_u256 < required_u256
-                                    {
-                                        let _ = crate::utils::evm_confirm_store::mark_failed(
-                                            &conn,
-                                            &id,
-                                            &format!(
-                                                "approve amount too small: tx={} required={}",
-                                                amount_u256, required_u256
-                                            ),
+                        // If allowance already >= required, skip this approve.
+                        let required = row
+                            .required_allowance_raw
+                            .as_deref()
+                            .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
+                            .unwrap_or(amount_u256);
+
+                        let allowance_res = self
+                            .evm_erc20_allowance(Parameters(EvmErc20AllowanceRequest {
+                                token: token_addr.clone(),
+                                owner: tx.from.clone(),
+                                spender: spender.clone(),
+                                chain_id: Some(chain_id),
+                            }))
+                            .await?;
+                        let allowance_json = Self::extract_first_json(&allowance_res).unwrap_or(json!({}));
+                        let allowance_raw = allowance_json
+                            .get("allowance_raw")
+                            .and_then(Value::as_str)
+                            .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
+                            .unwrap_or_else(|| ethers::types::U256::from(0));
+
+                        if allowance_raw >= required {
+                            let reason = format!(
+                                "approve skipped: allowance {} >= required {}",
+                                allowance_raw, required
+                            );
+                            let _ = crate::utils::evm_confirm_store::mark_skipped(&conn, &id, &reason);
+
+                            let mut resp = json!({
+                                "resolved_network": resolved_network,
+                                "status": "skipped",
+                                "confirmation_id": id,
+                                "note": "Allowance already sufficient; approve not needed",
+                                "allowance_raw": allowance_raw.to_string(),
+                                "required_raw": required.to_string(),
+                                "spender": spender,
+                                "token": token_addr
+                            });
+
+                            // If this approve is linked to a swap, provide the next confirm command.
+                            if let Some(swap_id) = row.swap_confirmation_id.as_deref() {
+                                if let Ok(Some(swap_row)) =
+                                    crate::utils::evm_confirm_store::get_row(&conn, swap_id)
+                                {
+                                    if let Value::Object(ref mut m) = resp {
+                                        m.insert(
+                                            "swap_confirmation_id".to_string(),
+                                            Value::String(swap_id.to_string()),
                                         );
-                                        return Err(ErrorData {
-                                            code: ErrorCode(-32602),
-                                            message: Cow::from(format!(
-                                                "Approve amount too small ({} < {}). Please rebuild approve.",
-                                                amount_u256, required_u256
-                                            )),
-                                            data: Some(json!({
-                                                "status": "failed",
-                                                "reason": "approve_amount_too_small",
-                                                "approve_amount_raw": amount_u256.to_string(),
-                                                "required_raw": required_u256.to_string(),
-                                            })),
-                                        });
+                                        m.insert(
+                                            "next".to_string(),
+                                            json!({
+                                                "how_to_confirm_swap": format!(
+                                                    "confirm {} hash:{} (swap)",
+                                                    swap_id, swap_row.tx_summary_hash
+                                                )
+                                            }),
+                                        );
                                     }
                                 }
                             }
 
-                            // If allowance already >= required, skip this approve.
-                            let required = row
-                                .required_allowance_raw
-                                .as_deref()
-                                .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
-                                .unwrap_or(amount_u256);
-
-                            let allowance_res = self
-                                .evm_erc20_allowance(Parameters(EvmErc20AllowanceRequest {
-                                    token: token_addr.clone(),
-                                    owner: tx.from.clone(),
-                                    spender: spender.clone(),
-                                    chain_id: Some(chain_id),
-                                }))
-                                .await?;
-                            let allowance_json =
-                                Self::extract_first_json(&allowance_res).unwrap_or(json!({}));
-                            let allowance_raw = allowance_json
-                                .get("allowance_raw")
-                                .and_then(Value::as_str)
-                                .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
-                                .unwrap_or_else(|| ethers::types::U256::from(0));
-
-                            if allowance_raw >= required {
-                                let reason = format!(
-                                    "approve skipped: allowance {} >= required {}",
-                                    allowance_raw, required
-                                );
-                                let _ = crate::utils::evm_confirm_store::mark_skipped(&conn, &id, &reason);
-
-                                let mut resp = json!({
-                                    "resolved_network": resolved_network,
-                                    "status": "skipped",
-                                    "confirmation_id": id,
-                                    "note": "Allowance already sufficient; approve not needed",
-                                    "allowance_raw": allowance_raw.to_string(),
-                                    "required_raw": required.to_string(),
-                                    "spender": spender,
-                                    "token": token_addr
-                                });
-
-                                // If this approve is linked to a swap, provide the next confirm command.
-                                if let Some(swap_id) = row.swap_confirmation_id.as_deref() {
-                                    if let Ok(Some(swap_row)) =
-                                        crate::utils::evm_confirm_store::get_row(&conn, swap_id)
-                                    {
-                                        if let Value::Object(ref mut m) = resp {
-                                            m.insert(
-                                                "swap_confirmation_id".to_string(),
-                                                Value::String(swap_id.to_string()),
-                                            );
-                                            m.insert(
-                                                "next".to_string(),
-                                                json!({
-                                                    "how_to_confirm_swap": format!(
-                                                        "confirm {} hash:{} (swap)",
-                                                        swap_id, swap_row.tx_summary_hash
-                                                    )
-                                                }),
-                                            );
-                                        }
-                                    }
-                                }
-
-                                let response = Self::pretty_json(&resp)?;
-                                return Ok(CallToolResult::success(vec![Content::text(response)]));
-                            }
+                            let response = Self::pretty_json(&resp)?;
+                            return Ok(CallToolResult::success(vec![Content::text(response)]));
                         }
                     }
                 }
