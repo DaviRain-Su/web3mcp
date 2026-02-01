@@ -2528,13 +2528,7 @@
 
             if addrs.is_empty() {
                 // Auto-sample from tx message keys (max 16)
-                addrs = tx
-                    .message
-                    .account_keys
-                    .iter()
-                    .take(16)
-                    .cloned()
-                    .collect();
+                addrs = tx.message.account_keys.iter().take(16).cloned().collect();
             }
 
             let fees_res = if !addrs.is_empty() {
@@ -2817,12 +2811,86 @@
                 data: None,
             })?;
 
-        let mut tx: solana_sdk::transaction::Transaction =
-            bincode::deserialize(&tx_bytes_in).map_err(|e| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Invalid transaction bytes: {}", e)),
-                data: None,
-            })?;
+        // Decode transaction: try VersionedTransaction (supports v0+LUT), then fallback to legacy Transaction
+        let mut vtx: Option<solana_transaction::versioned::VersionedTransaction> =
+            bincode::deserialize(&tx_bytes_in).ok();
+        let mut tx: Option<solana_sdk::transaction::Transaction> = None;
+
+        if vtx.is_none() {
+            tx = Some(
+                bincode::deserialize(&tx_bytes_in).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid transaction bytes: {}", e)),
+                    data: None,
+                })?,
+            );
+        }
+
+        let mut tx_version: String = "legacy".to_string();
+        let mut message_account_keys: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+        let mut message_instructions: Vec<solana_message::compiled_instruction::CompiledInstruction> =
+            Vec::new();
+        let mut address_table_lookups: Vec<Value> = Vec::new();
+
+        if let Some(ref mut legacy_tx) = tx {
+            tx_version = "legacy".to_string();
+            message_account_keys = legacy_tx.message.account_keys.clone();
+            message_instructions = legacy_tx.message.instructions.clone();
+        }
+
+        if let Some(ref mut vt) = vtx {
+            match &vt.message {
+                solana_message::VersionedMessage::Legacy(msg) => {
+                    tx_version = "legacy".to_string();
+                    message_account_keys = msg.account_keys.clone();
+                    message_instructions = msg.instructions.clone();
+                }
+                solana_message::VersionedMessage::V0(msg) => {
+                    tx_version = "v0".to_string();
+
+                    // Load LUT addresses (best-effort) and build combined account keys
+                    let mut loaded_writable: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                    let mut loaded_readonly: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+
+                    for l in &msg.address_table_lookups {
+                        let lut_addr = l.account_key;
+                        let acc = client.get_account(&lut_addr).await.ok();
+                        let mut lut_addresses: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                        if let Some(ref a) = acc {
+                            if let Ok(alt) = solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&a.data) {
+                                lut_addresses = alt.addresses.to_vec();
+                            }
+                        }
+
+                        let w: Vec<solana_sdk::pubkey::Pubkey> = l
+                            .writable_indexes
+                            .iter()
+                            .filter_map(|i| lut_addresses.get(*i as usize).cloned())
+                            .collect();
+                        let r: Vec<solana_sdk::pubkey::Pubkey> = l
+                            .readonly_indexes
+                            .iter()
+                            .filter_map(|i| lut_addresses.get(*i as usize).cloned())
+                            .collect();
+                        loaded_writable.extend(w.iter().cloned());
+                        loaded_readonly.extend(r.iter().cloned());
+
+                        address_table_lookups.push(json!({
+                            "address": lut_addr.to_string(),
+                            "writable_indexes_len": l.writable_indexes.len(),
+                            "readonly_indexes_len": l.readonly_indexes.len(),
+                            "resolved_writable_len": w.len(),
+                            "resolved_readonly_len": r.len()
+                        }));
+                    }
+
+                    message_account_keys = msg.account_keys.clone();
+                    message_account_keys.extend(loaded_writable);
+                    message_account_keys.extend(loaded_readonly);
+                    message_instructions = msg.instructions.clone();
+                }
+            }
+        }
 
         // Default-safe: keep sig_verify=false unless explicitly requested.
         let sig_verify = cfg.as_ref().and_then(|c| c.sig_verify).unwrap_or(false);
@@ -2841,33 +2909,51 @@
                 .get_latest_blockhash()
                 .await
                 .map_err(|e| Self::sdk_error("solana_tx_preview", e))?;
-            tx.message.recent_blockhash = bh;
+            if let Some(ref mut legacy_tx) = tx {
+                legacy_tx.message.recent_blockhash = bh;
+            }
+            if let Some(ref mut vt) = vtx {
+                vt.message.set_recent_blockhash(bh);
+            }
         }
 
         if sig_verify {
-            // If strict, require a local keypair when signatures are missing.
-            let need_sign = tx.signatures.is_empty()
-                || tx
-                    .signatures
-                    .iter()
-                    .all(|s| *s == solana_sdk::signature::Signature::default());
+            // For v0 txs, strict signature verification requires external signing (we don't sign v0 locally yet).
+            if tx_version == "v0" {
+                if strict_sig_verify {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "sig_verify=true for v0 transactions is not supported without external signatures. Provide a signed v0 transaction_base64 or set simulate_config.strict_sig_verify=false",
+                        ),
+                        data: None,
+                    });
+                }
+            } else if let Some(ref mut legacy_tx) = tx {
+                // If strict, require a local keypair when signatures are missing.
+                let need_sign = legacy_tx.signatures.is_empty()
+                    || legacy_tx
+                        .signatures
+                        .iter()
+                        .all(|s| *s == solana_sdk::signature::Signature::default());
 
-            let kp = Self::solana_keypair_path()
-                .ok()
-                .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+                let kp = Self::solana_keypair_path()
+                    .ok()
+                    .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
 
-            if strict_sig_verify && need_sign && kp.is_none() {
-                return Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from(
-                        "sig_verify=true requires signatures but no local keypair is available. Set SOLANA_KEYPAIR_PATH or set simulate_config.strict_sig_verify=false",
-                    ),
-                    data: None,
-                });
+                if strict_sig_verify && need_sign && kp.is_none() {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "sig_verify=true requires signatures but no local keypair is available. Set SOLANA_KEYPAIR_PATH or set simulate_config.strict_sig_verify=false",
+                        ),
+                        data: None,
+                    });
+                }
+
+                // Best-effort sign if signatures are missing and a keypair is available.
+                Self::solana_try_sign_if_needed(legacy_tx, kp.as_ref());
             }
-
-            // Best-effort sign if signatures are missing and a keypair is available.
-            Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
         }
 
         let commitment = cfg
@@ -2894,24 +2980,56 @@
             None
         };
 
-        let sim = client
-            .simulate_transaction_with_config(
-                &tx,
-                solana_client::rpc_config::RpcSimulateTransactionConfig {
-                    sig_verify,
-                    replace_recent_blockhash: replace,
-                    commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
-                    encoding: None,
-                    accounts: accounts_cfg,
-                    min_context_slot: None,
-                    inner_instructions: false,
-                },
-            )
-            .await
-            .map_err(|e| Self::sdk_error("solana_tx_preview", e))?;
+        let sim = if let Some(ref legacy_tx) = tx {
+            client
+                .simulate_transaction_with_config(
+                    legacy_tx,
+                    solana_client::rpc_config::RpcSimulateTransactionConfig {
+                        sig_verify,
+                        replace_recent_blockhash: replace,
+                        commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
+                        encoding: None,
+                        accounts: accounts_cfg,
+                        min_context_slot: None,
+                        inner_instructions: false,
+                    },
+                )
+                .await
+                .map_err(|e| Self::sdk_error("solana_tx_preview", e))?
+        } else if let Some(ref vt) = vtx {
+            client
+                .simulate_transaction_with_config(
+                    vt,
+                    solana_client::rpc_config::RpcSimulateTransactionConfig {
+                        sig_verify,
+                        replace_recent_blockhash: replace,
+                        commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
+                        encoding: None,
+                        accounts: accounts_cfg,
+                        min_context_slot: None,
+                        inner_instructions: false,
+                    },
+                )
+                .await
+                .map_err(|e| Self::sdk_error("solana_tx_preview", e))?
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Failed to decode transaction"),
+                data: None,
+            });
+        };
 
         // Re-serialize (may differ from input if blockhash/signatures updated)
-        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+        let tx_bytes = (if let Some(ref legacy_tx) = tx {
+            bincode::serialize(legacy_tx)
+        } else if let Some(ref vt) = vtx {
+            bincode::serialize(vt)
+        } else {
+            // should be impossible
+            bincode::serialize(&())
+        })
+        .map_err(|e| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from(format!("Failed to serialize tx: {}", e)),
             data: None,
@@ -2940,13 +3058,7 @@
                 .collect();
 
             if addrs.is_empty() {
-                addrs = tx
-                    .message
-                    .account_keys
-                    .iter()
-                    .take(16)
-                    .cloned()
-                    .collect();
+                addrs = message_account_keys.iter().take(16).cloned().collect();
             }
 
             let fees_res = if !addrs.is_empty() {
@@ -2985,8 +3097,7 @@
         let system_pid = "11111111111111111111111111111111";
 
         let key_of = |i: u8| -> String {
-            tx.message
-                .account_keys
+            message_account_keys
                 .get(i as usize)
                 .map(|p| p.to_string())
                 .unwrap_or_default()
@@ -2996,10 +3107,8 @@
             v.get(idx).copied().map(key_of).unwrap_or_default()
         };
 
-        for (ix_index, ci) in tx.message.instructions.iter().enumerate() {
-            let pid = tx
-                .message
-                .account_keys
+        for (ix_index, ci) in message_instructions.iter().enumerate() {
+            let pid = message_account_keys
                 .get(ci.program_id_index as usize)
                 .map(|p| p.to_string())
                 .unwrap_or_default();
@@ -3964,6 +4073,8 @@
             "sig_verify": sig_verify,
             "replace_recent_blockhash": replace,
             "tx_bytes_len": tx_bytes.len(),
+            "tx_version": tx_version,
+            "address_table_lookups": address_table_lookups,
             "program_ids": program_ids,
             "programs_labeled": program_ids.iter().map(|p| json!({
                 "pubkey": p,
@@ -3996,6 +4107,8 @@
             "status": "preview",
             "rpc_url": rpc_url,
             "network": network_str,
+            "tx_version": tx_version,
+            "address_table_lookups": address_table_lookups,
             "confirmation_id": confirmation_id,
             "tx_summary_hash": hash,
             "expires_in_ms": ttl,
