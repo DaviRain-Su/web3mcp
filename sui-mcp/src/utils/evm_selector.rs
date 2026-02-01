@@ -78,12 +78,52 @@ pub fn classify_calldata(data_hex: &str) -> Option<Value> {
             }
         }
 
-        // Permit (EIP-2612): permit(address,address,uint256,uint256,uint8,bytes32,bytes32)
-        "d505accf" => Some(json!({"label":"erc20_permit_eip2612","selector":sel})),
+        // Permit (EIP-2612): permit(address owner,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)
+        "d505accf" => {
+            if hexs.len() < 8 + 64 * 7 {
+                Some(json!({"label":"erc20_permit_eip2612","selector":sel}))
+            } else {
+                let owner = format!("0x{}", hexs[8 + 24..8 + 64].to_lowercase());
+                let spender = format!("0x{}", hexs[8 + 64 + 24..8 + 64 + 64].to_lowercase());
+                let value_hex = format!("0x{}", &hexs[8 + 64 * 2..8 + 64 * 3]);
+                let deadline_hex = format!("0x{}", &hexs[8 + 64 * 3..8 + 64 * 4]);
+                let v_hex = format!("0x{}", &hexs[8 + 64 * 4..8 + 64 * 5]);
+                let r = format!("0x{}", &hexs[8 + 64 * 5..8 + 64 * 6]);
+                let s = format!("0x{}", &hexs[8 + 64 * 6..8 + 64 * 7]);
+                Some(json!({
+                    "label": "erc20_permit_eip2612",
+                    "selector": sel,
+                    "owner": owner,
+                    "spender": spender,
+                    "value_hex": value_hex,
+                    "deadline_hex": deadline_hex,
+                    "v_hex": v_hex,
+                    "r": r,
+                    "s": s,
+                }))
+            }
+        }
 
-        // Permit2 allowance transferFrom: transferFrom(address,address,uint160,address)
-        // (common selector; Permit2 has several. We'll start with the most common call.)
-        "36c78516" => Some(json!({"label":"permit2_transfer_from","selector":sel})),
+        // Permit2 transferFrom(address from,address to,uint160 amount,address token)
+        // Selector: 0x36c78516 (Permit2)
+        "36c78516" => {
+            if hexs.len() < 8 + 64 * 4 {
+                Some(json!({"label":"permit2_transfer_from","selector":sel}))
+            } else {
+                let from = format!("0x{}", hexs[8 + 24..8 + 64].to_lowercase());
+                let to = format!("0x{}", hexs[8 + 64 + 24..8 + 64 + 64].to_lowercase());
+                let amount_hex = format!("0x{}", &hexs[8 + 64 * 2..8 + 64 * 3]);
+                let token = format!("0x{}", hexs[8 + 64 * 3 + 24..8 + 64 * 4].to_lowercase());
+                Some(json!({
+                    "label": "permit2_transfer_from",
+                    "selector": sel,
+                    "from": from,
+                    "to": to,
+                    "amount_hex": amount_hex,
+                    "token": token,
+                }))
+            }
+        }
 
         _ => Some(json!({"label":"unknown","selector":sel})),
     }
@@ -108,5 +148,20 @@ mod tests {
         let v = classify_calldata(&data).unwrap();
         assert_eq!(v["label"], "erc20_approve");
         assert_eq!(v["spender"], format!("0x{}", spender));
+    }
+
+    #[test]
+    fn classify_permit2_transfer_from() {
+        // transferFrom(from=0x11.., to=0x22.., amount=1, token=0x33..)
+        let from = "1111111111111111111111111111111111111111";
+        let to = "2222222222222222222222222222222222222222";
+        let token = "3333333333333333333333333333333333333333";
+        let amount = "0000000000000000000000000000000000000000000000000000000000000001";
+        let data = format!("0x36c78516{:0>64}{:0>64}{}{:0>64}", from, to, amount, token);
+        let v = classify_calldata(&data).unwrap();
+        assert_eq!(v["label"], "permit2_transfer_from");
+        assert_eq!(v["from"], format!("0x{}", from));
+        assert_eq!(v["to"], format!("0x{}", to));
+        assert_eq!(v["token"], format!("0x{}", token));
     }
 }
