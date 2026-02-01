@@ -312,6 +312,13 @@
                                         &approve_hash,
                                     )?;
 
+                                    // Store safety metadata for confirm-time checks.
+                                    let _ = crate::utils::evm_confirm_store::set_expected_approve(
+                                        &approve_confirmation_id,
+                                        &spender,
+                                        &sell_amount_wei.to_string(),
+                                    );
+
                                     approve_flow = Some(json!({
                                         "needed": true,
                                         "allowance_raw": allowance_raw.to_string(),
@@ -622,17 +629,50 @@
                     return Ok(CallToolResult::success(vec![Content::text(response)]));
                 }
 
-                // If this looks like an ERC20 approve tx, sanity-check allowance before proceeding.
-                // This helps prevent approving the wrong spender or a stale tx.
+                // Strong approve safety checks: prevent approving wrong spender; skip if allowance already sufficient.
                 if let Some(data_hex) = tx.data_hex.as_deref() {
                     let hexs = data_hex.strip_prefix("0x").unwrap_or(data_hex);
-                    if hexs.len() >= 8 && &hexs[..8].to_lowercase() == "095ea7b3" {
+                    if hexs.len() >= 8 && hexs[..8].eq_ignore_ascii_case("095ea7b3") {
                         // approve(address,uint256)
                         let token_addr = tx.to.clone();
-                        // decode spender from calldata
-                        if hexs.len() >= 8 + 64 {
+
+                        // decode spender + amount
+                        if hexs.len() >= 8 + 64 + 64 {
                             let spender_hex = &hexs[8 + 24..8 + 64];
                             let spender = format!("0x{}", spender_hex);
+                            let amount_hex = &hexs[8 + 64..8 + 64 + 64];
+                            let amount_u256 = ethers::types::U256::from_str_radix(amount_hex, 16)
+                                .unwrap_or_else(|_| ethers::types::U256::from(0));
+
+                            // If we have expected spender metadata, enforce it.
+                            if let Some(expected) = row.expected_spender.as_deref() {
+                                if !expected.eq_ignore_ascii_case(&spender) {
+                                    let _ = crate::utils::evm_confirm_store::mark_failed(
+                                        &conn,
+                                        &id,
+                                        &format!(
+                                            "approve spender mismatch: expected={} got={}",
+                                            expected, spender
+                                        ),
+                                    );
+                                    return Err(ErrorData {
+                                        code: ErrorCode(-32602),
+                                        message: Cow::from(format!(
+                                            "Approve spender mismatch: expected {} but tx approves {}",
+                                            expected, spender
+                                        )),
+                                        data: None,
+                                    });
+                                }
+                            }
+
+                            // If allowance already >= required, skip this approve.
+                            let required = row
+                                .required_allowance_raw
+                                .as_deref()
+                                .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
+                                .unwrap_or(amount_u256);
+
                             let allowance_res = self
                                 .evm_erc20_allowance(Parameters(EvmErc20AllowanceRequest {
                                     token: token_addr.clone(),
@@ -640,14 +680,33 @@
                                     spender: spender.clone(),
                                     chain_id: Some(chain_id),
                                 }))
-                                .await;
-                            if let Ok(res) = allowance_res {
-                                if let Some(j) = Self::extract_first_json(&res) {
-                                    if let Some(cur) = j.get("allowance_raw").and_then(Value::as_str) {
-                                        // attach in response only if we end up failing elsewhere
-                                        let _ = cur;
-                                    }
-                                }
+                                .await?;
+                            let allowance_json =
+                                Self::extract_first_json(&allowance_res).unwrap_or(json!({}));
+                            let allowance_raw = allowance_json
+                                .get("allowance_raw")
+                                .and_then(Value::as_str)
+                                .and_then(|s| ethers::types::U256::from_dec_str(s).ok())
+                                .unwrap_or_else(|| ethers::types::U256::from(0));
+
+                            if allowance_raw >= required {
+                                let reason = format!(
+                                    "approve skipped: allowance {} >= required {}",
+                                    allowance_raw, required
+                                );
+                                let _ = crate::utils::evm_confirm_store::mark_skipped(&conn, &id, &reason);
+
+                                let response = Self::pretty_json(&json!({
+                                    "resolved_network": resolved_network,
+                                    "status": "skipped",
+                                    "confirmation_id": id,
+                                    "note": "Allowance already sufficient; approve not needed",
+                                    "allowance_raw": allowance_raw.to_string(),
+                                    "required_raw": required.to_string(),
+                                    "spender": spender,
+                                    "token": token_addr
+                                }))?;
+                                return Ok(CallToolResult::success(vec![Content::text(response)]));
                             }
                         }
                     }

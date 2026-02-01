@@ -19,6 +19,9 @@ pub struct PendingRow {
     pub signed_at_ms: Option<u128>,
     pub second_confirm_token: Option<String>,
     pub second_confirmed: bool,
+    // Optional metadata for approve safety checks
+    pub expected_spender: Option<String>,
+    pub required_allowance_raw: Option<String>,
 }
 
 pub fn now_ms() -> u128 {
@@ -88,6 +91,8 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         "ALTER TABLE evm_pending_confirmations ADD COLUMN signed_at_ms INTEGER",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirm_token TEXT",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirmed INTEGER",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_spender TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN required_allowance_raw TEXT",
     ] {
         let _ = conn.execute(stmt, []);
     }
@@ -163,7 +168,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
     let mut stmt = conn
         .prepare(
             "SELECT id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error,
-                    raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed
+                    raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed,
+                    expected_spender, required_allowance_raw
              FROM evm_pending_confirmations
              WHERE id = ?1",
         )
@@ -188,6 +194,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         let signed_at_ms: Option<i64> = row.get(11)?;
         let second_confirm_token: Option<String> = row.get(12)?;
         let second_confirmed: Option<i64> = row.get(13)?;
+        let expected_spender: Option<String> = row.get(14)?;
+        let required_allowance_raw: Option<String> = row.get(15)?;
         Ok((
             id,
             chain_id,
@@ -203,6 +211,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
             signed_at_ms,
             second_confirm_token,
             second_confirmed.unwrap_or(0),
+            expected_spender,
+            required_allowance_raw,
         ))
     }) {
         Ok(v) => Some(v),
@@ -231,6 +241,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         signed_at_ms,
         second_confirm_token,
         second_confirmed,
+        expected_spender,
+        required_allowance_raw,
     )) = row
     else {
         return Ok(None);
@@ -257,6 +269,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         signed_at_ms: signed_at_ms.map(|v| v.max(0) as u128),
         second_confirm_token,
         second_confirmed: second_confirmed == 1,
+        expected_spender,
+        required_allowance_raw,
     }))
 }
 
@@ -453,6 +467,45 @@ pub fn mark_failed(conn: &rusqlite::Connection, id: &str, err: &str) -> Result<(
     .map_err(|e| ErrorData {
         code: ErrorCode(-32603),
         message: Cow::from(format!("Failed to mark failed: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn mark_skipped(conn: &rusqlite::Connection, id: &str, reason: &str) -> Result<(), ErrorData> {
+    let updated_at_ms = now_ms() as i64;
+    conn.execute(
+        "UPDATE evm_pending_confirmations SET status='skipped', last_error=?2, updated_at_ms=?3 WHERE id=?1",
+        rusqlite::params![id, reason, updated_at_ms],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to mark skipped: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn set_expected_approve(
+    id: &str,
+    expected_spender: &str,
+    required_allowance_raw: &str,
+) -> Result<(), ErrorData> {
+    let conn = connect()?;
+    conn.execute(
+        "UPDATE evm_pending_confirmations
+         SET expected_spender=?2, required_allowance_raw=?3, updated_at_ms=?4
+         WHERE id=?1",
+        rusqlite::params![
+            id,
+            expected_spender,
+            required_allowance_raw,
+            now_ms() as i64
+        ],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to set expected approve metadata: {}", e)),
         data: None,
     })?;
     Ok(())

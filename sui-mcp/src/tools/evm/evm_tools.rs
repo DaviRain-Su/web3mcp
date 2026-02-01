@@ -161,11 +161,11 @@
 
         let status = request.status.as_deref().map(|s| s.trim().to_lowercase());
         if let Some(st) = status.as_deref() {
-            let allowed = ["pending", "consumed", "sent", "failed"];
+            let allowed = ["pending", "consumed", "sent", "failed", "skipped"];
             if !allowed.contains(&st) {
                 return Err(ErrorData {
                     code: ErrorCode(-32602),
-                    message: Cow::from("status must be one of: pending|consumed|sent|failed"),
+                    message: Cow::from("status must be one of: pending|consumed|sent|failed|skipped"),
                     data: None,
                 });
             }
