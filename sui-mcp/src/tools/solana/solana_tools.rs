@@ -5269,11 +5269,33 @@
         &self,
         Parameters(request): Parameters<SolanaIdlUnloadRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let removed = self.solana_idl_cache.remove(request.idl_id.trim());
+        let idl_id = request.idl_id.trim();
+        let removed = self.solana_idl_cache.remove(idl_id);
         let response = Self::pretty_json(&json!({
             "status": "ok",
-            "idl_id": request.idl_id,
+            "idl_id": idl_id,
             "removed": removed
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: list currently loaded in-memory IDL handles")]
+    async fn solana_idl_cache_list(&self) -> Result<CallToolResult, ErrorData> {
+        let items = self.solana_idl_cache.list();
+        let response = Self::pretty_json(&json!({
+            "status": "ok",
+            "count": items.len(),
+            "idl_ids": items
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: clear all in-memory loaded IDLs")]
+    async fn solana_idl_cache_clear(&self) -> Result<CallToolResult, ErrorData> {
+        self.solana_idl_cache.clear();
+        let response = Self::pretty_json(&json!({
+            "status": "ok",
+            "cleared": true
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -5283,13 +5305,14 @@
         &self,
         Parameters(request): Parameters<SolanaIdlListInstructionsRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        let idl_id = request.idl_id.trim();
         let idl = self
             .solana_idl_cache
-            .get(request.idl_id.trim())
+            .get(idl_id)
             .ok_or_else(|| ErrorData {
                 code: ErrorCode(-32602),
-                message: Cow::from("Unknown idl_id (not loaded)") ,
-                data: Some(json!({"idl_id": request.idl_id})),
+                message: Cow::from("Unknown idl_id (not loaded)"),
+                data: Some(json!({"idl_id": idl_id})),
             })?;
 
         let instructions = idl
@@ -5322,7 +5345,7 @@
 
         let response = Self::pretty_json(&json!({
             "status": "ok",
-            "idl_id": request.idl_id,
+            "idl_id": idl_id,
             "count": out.len(),
             "instructions": out
         }))?;
