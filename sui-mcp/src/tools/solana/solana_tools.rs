@@ -2852,15 +2852,30 @@
                     let mut loaded_writable: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
                     let mut loaded_readonly: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
 
+                    let mut lut_cache: std::collections::HashMap<solana_sdk::pubkey::Pubkey, Result<Vec<solana_sdk::pubkey::Pubkey>, String>> =
+                        std::collections::HashMap::new();
+
                     for l in &msg.address_table_lookups {
                         let lut_addr = l.account_key;
-                        let acc = client.get_account(&lut_addr).await.ok();
-                        let mut lut_addresses: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
-                        if let Some(ref a) = acc {
-                            if let Ok(alt) = solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&a.data) {
-                                lut_addresses = alt.addresses.to_vec();
-                            }
-                        }
+
+                        let entry = if let Some(e) = lut_cache.get(&lut_addr) {
+                            e.clone()
+                        } else {
+                            let res = match client.get_account(&lut_addr).await {
+                                Ok(a) => solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&a.data)
+                                    .map(|alt| alt.addresses.to_vec())
+                                    .map_err(|e| format!("ALT deserialize failed: {e}")),
+                                Err(e) => Err(format!("ALT account fetch failed: {e}")),
+                            };
+                            lut_cache.insert(lut_addr, res.clone());
+                            res
+                        };
+
+                        let (lut_addresses, lut_error): (Vec<solana_sdk::pubkey::Pubkey>, Option<String>) =
+                            match entry {
+                                Ok(v) => (v, None),
+                                Err(e) => (Vec::new(), Some(e)),
+                            };
 
                         let w: Vec<solana_sdk::pubkey::Pubkey> = l
                             .writable_indexes
@@ -2880,7 +2895,8 @@
                             "writable_indexes_len": l.writable_indexes.len(),
                             "readonly_indexes_len": l.readonly_indexes.len(),
                             "resolved_writable_len": w.len(),
-                            "resolved_readonly_len": r.len()
+                            "resolved_readonly_len": r.len(),
+                            "error": lut_error
                         }));
                     }
 
@@ -2980,7 +2996,10 @@
             None
         };
 
-        let sim = if let Some(ref legacy_tx) = tx {
+        let mut retry_used = false;
+        let mut retry_error: Option<String> = None;
+
+        let mut sim = if let Some(ref legacy_tx) = tx {
             client
                 .simulate_transaction_with_config(
                     legacy_tx,
@@ -2989,7 +3008,7 @@
                         replace_recent_blockhash: replace,
                         commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
                         encoding: None,
-                        accounts: accounts_cfg,
+                        accounts: accounts_cfg.clone(),
                         min_context_slot: None,
                         inner_instructions: false,
                     },
@@ -3005,7 +3024,7 @@
                         replace_recent_blockhash: replace,
                         commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
                         encoding: None,
-                        accounts: accounts_cfg,
+                        accounts: accounts_cfg.clone(),
                         min_context_slot: None,
                         inner_instructions: false,
                     },
@@ -3019,6 +3038,79 @@
                 data: None,
             });
         };
+
+        // If caller disabled replace_recent_blockhash and we hit BlockhashNotFound,
+        // retry once with a fresh blockhash (wallet-like behavior).
+        if !replace {
+            let err_str = sim.value.err.as_ref().map(|e| format!("{:?}", e));
+            if err_str
+                .as_deref()
+                .map(|s| s.contains("BlockhashNotFound"))
+                .unwrap_or(false)
+            {
+                let bh = client
+                    .get_latest_blockhash()
+                    .await
+                    .map_err(|e| Self::sdk_error("solana_tx_preview", e))?;
+
+                if let Some(ref mut legacy_tx) = tx {
+                    legacy_tx.message.recent_blockhash = bh;
+                }
+                if let Some(ref mut vt) = vtx {
+                    vt.message.set_recent_blockhash(bh);
+                }
+
+                let retry = if let Some(ref legacy_tx) = tx {
+                    client
+                        .simulate_transaction_with_config(
+                            legacy_tx,
+                            solana_client::rpc_config::RpcSimulateTransactionConfig {
+                                sig_verify,
+                                replace_recent_blockhash: true,
+                                commitment: Some(
+                                    Self::solana_commitment_from_str(Some(&commitment))?,
+                                ),
+                                encoding: None,
+                                accounts: accounts_cfg.clone(),
+                                min_context_slot: None,
+                                inner_instructions: false,
+                            },
+                        )
+                        .await
+                } else if let Some(ref vt) = vtx {
+                    client
+                        .simulate_transaction_with_config(
+                            vt,
+                            solana_client::rpc_config::RpcSimulateTransactionConfig {
+                                sig_verify,
+                                replace_recent_blockhash: true,
+                                commitment: Some(
+                                    Self::solana_commitment_from_str(Some(&commitment))?,
+                                ),
+                                encoding: None,
+                                accounts: accounts_cfg.clone(),
+                                min_context_slot: None,
+                                inner_instructions: false,
+                            },
+                        )
+                        .await
+                } else {
+                    unreachable!();
+                };
+
+                match retry {
+                    Ok(s) => {
+                        retry_used = true;
+                        retry_error = None;
+                        sim = s;
+                    }
+                    Err(e) => {
+                        retry_used = true;
+                        retry_error = Some(e.to_string());
+                    }
+                }
+            }
+        }
 
         // Re-serialize (may differ from input if blockhash/signatures updated)
         let tx_bytes = (if let Some(ref legacy_tx) = tx {
@@ -3095,6 +3187,8 @@
         let ata_pid = spl_associated_token_account::id().to_string();
         let compute_budget_pid = solana_compute_budget_interface::id().to_string();
         let system_pid = "11111111111111111111111111111111";
+        let jupiter_v6_pid = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        let mut jupiter_warned = false;
 
         let key_of = |i: u8| -> String {
             message_account_keys
@@ -3146,7 +3240,34 @@
                 "kind": "unknown"
             });
 
-            if pid == compute_budget_pid {
+            if pid == jupiter_v6_pid {
+                // Jupiter is an important, widely-used router program.
+                // Full decoding requires Jupiter-specific instruction layouts (often Anchor-encoded).
+                // For now, provide wallet-like clarity without guessing amounts.
+                detail["kind"] = json!("jupiter_v6");
+                detail["note"] = json!("Jupiter router instruction (swap/route). Full decoding not implemented.");
+                detail["accounts_len"] = json!(ci.accounts.len());
+                detail["data_prefix_base64"] = json!(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(ci.data.iter().take(16).copied().collect::<Vec<u8>>())
+                );
+
+                summary_lines.push(format!(
+                    "Jupiter: route/swap (accounts={}, data_len={})",
+                    ci.accounts.len(),
+                    ci.data.len()
+                ));
+
+                if !jupiter_warned {
+                    warnings.push(json!({
+                        "kind": "jupiter_router",
+                        "severity": "low",
+                        "program": jupiter_v6_pid,
+                        "note": "Jupiter router program invoked. Verify input/output amounts in wallet UI before signing."
+                    }));
+                    jupiter_warned = true;
+                }
+            } else if pid == compute_budget_pid {
                 // ComputeBudget program has a 1-byte discriminator followed by LE bytes.
                 let disc = ci.data.first().copied();
                 match disc {
@@ -4072,6 +4193,10 @@
             "commitment": commitment,
             "sig_verify": sig_verify,
             "replace_recent_blockhash": replace,
+            "simulate_retry": {
+                "used": retry_used,
+                "error": retry_error
+            },
             "tx_bytes_len": tx_bytes.len(),
             "tx_version": tx_version,
             "address_table_lookups": address_table_lookups,
@@ -4118,6 +4243,10 @@
             },
             "transaction_base64": tx_base64,
             "context": sim.context,
+            "retry": {
+                "used": retry_used,
+                "error": retry_error
+            },
             "value": sim.value,
             "preview": {
                 "summary_lines": summary.get("summary_lines"),
