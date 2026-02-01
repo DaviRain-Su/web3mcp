@@ -635,7 +635,11 @@
     ) -> Result<u8, ErrorData> {
         let provider = self.evm_provider(chain_id).await?;
         // decimals() selector = 0x313ce567
-        let data = ethers::types::Bytes::from(hex::decode("313ce567").unwrap());
+        let data = ethers::types::Bytes::from(hex::decode("313ce567").map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to build decimals() calldata: {}", e)),
+            data: None,
+        })?);
         let call = ethers::types::TransactionRequest {
             to: Some(ethers::types::NameOrAddress::Address(token)),
             data: Some(data),
@@ -743,8 +747,12 @@
         } else if token_address.is_none() {
             18
         } else {
-            self.evm_read_erc20_decimals(request.chain_id, token_address.unwrap())
-                .await?
+            let addr = token_address.ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Missing token_address after resolution"),
+                data: None,
+            })?;
+            self.evm_read_erc20_decimals(request.chain_id, addr).await?
         };
 
         let wei = Self::parse_decimal_to_u256(&amount_str, decimals)?;
