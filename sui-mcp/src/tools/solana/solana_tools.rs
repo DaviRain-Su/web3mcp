@@ -690,9 +690,38 @@
         let validate = request.validate_on_chain.unwrap_or(false);
         let mut onchain: Option<Value> = None;
         if validate {
-            // Phase 2: on-chain validations (existence/owner/program) can be added here.
+            let client = Self::solana_rpc(Some(network))?;
+            let mut checks: Vec<Value> = Vec::new();
+
+            // Validate any provided accounts (do not error if missing; just report missing).
+            for a in &ix.accounts {
+                if let Some(pk_str) = accounts_obj.get(&a.name).and_then(|v| v.as_str()) {
+                    let pk = Self::solana_parse_pubkey(pk_str, &format!("account:{}", a.name))?;
+                    let acc = client
+                        .get_account(&pk)
+                        .await
+                        .ok();
+                    checks.push(json!({
+                        "name": a.name,
+                        "pubkey": pk.to_string(),
+                        "exists": acc.is_some(),
+                        "owner": acc.as_ref().map(|x| x.owner.to_string()),
+                        "lamports": acc.as_ref().map(|x| x.lamports),
+                        "data_len": acc.as_ref().map(|x| x.data.len()),
+                        "executable": acc.as_ref().map(|x| x.executable),
+                    }));
+                } else {
+                    checks.push(json!({
+                        "name": a.name,
+                        "pubkey": null,
+                        "exists": null,
+                        "note": "not provided"
+                    }));
+                }
+            }
+
             onchain = Some(json!({
-                "note": "validate_on_chain is not implemented yet (offline-only plan)."
+                "checks": checks
             }));
         }
 
@@ -793,9 +822,28 @@
         let validate = request.validate_on_chain.unwrap_or(false);
         let mut onchain: Option<Value> = None;
         if validate {
-            // Phase 2: on-chain validations can be added here.
+            let client = Self::solana_rpc(Some(network))?;
+            let mut checks: Vec<Value> = Vec::new();
+
+            for m in &metas {
+                let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let pk_str = m.get("pubkey").and_then(|v| v.as_str()).unwrap_or("");
+                let pk = Self::solana_parse_pubkey(pk_str, &format!("account:{}", name))?;
+
+                let acc = client.get_account(&pk).await.ok();
+                checks.push(json!({
+                    "name": name,
+                    "pubkey": pk.to_string(),
+                    "exists": acc.is_some(),
+                    "owner": acc.as_ref().map(|x| x.owner.to_string()),
+                    "lamports": acc.as_ref().map(|x| x.lamports),
+                    "data_len": acc.as_ref().map(|x| x.data.len()),
+                    "executable": acc.as_ref().map(|x| x.executable),
+                }));
+            }
+
             onchain = Some(json!({
-                "note": "validate_on_chain is not implemented yet (offline-only build)."
+                "checks": checks
             }));
         }
 
