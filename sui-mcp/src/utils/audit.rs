@@ -35,7 +35,7 @@ impl SuiMcpServer {
             .append(true)
             .open(path)
         {
-            let _ = writeln!(file, "{}", record.to_string());
+            let _ = writeln!(file, "{}", record);
         }
     }
 }

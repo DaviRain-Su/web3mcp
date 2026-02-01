@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub trait ChainAdapter {
     fn name(&self) -> &'static str;
     fn supports(&self, action: &str) -> bool;

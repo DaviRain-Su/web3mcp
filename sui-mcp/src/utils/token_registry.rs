@@ -18,7 +18,7 @@ impl SuiMcpServer {
                 .or_else(|| Some(Self::builtin_sui_usdc_coin_type())),
             "usdt" => std::env::var("SUI_USDT_COIN_TYPE")
                 .ok()
-                .or_else(|| Self::builtin_sui_usdt_coin_type()),
+                .or_else(Self::builtin_sui_usdt_coin_type),
             _ => None,
         }
     }
@@ -139,11 +139,11 @@ impl SuiMcpServer {
     pub fn infer_evm_token_address_from_text(lower: &str, addresses: &[String]) -> Option<String> {
         // Common pattern: "balance 0xTOKEN on ..." / "token 0xTOKEN" / "contract 0xTOKEN"
         if lower.contains("token") || lower.contains("contract") {
-            return addresses.get(0).cloned();
+            return addresses.first().cloned();
         }
         // If they explicitly ask for erc20/usdc/usdt, the address is likely the token.
         if lower.contains("erc20") || lower.contains("usdc") || lower.contains("usdt") {
-            return addresses.get(0).cloned();
+            return addresses.first().cloned();
         }
         None
     }

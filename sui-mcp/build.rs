@@ -45,6 +45,7 @@ fn main() {
     let mut content = String::new();
 
     // 1) Plain impl block for helper methods (not tools)
+    content.push_str("#[allow(clippy::empty_line_after_outer_attr, clippy::manual_find, clippy::bool_comparison, clippy::get_first, clippy::too_many_arguments, clippy::unnecessary_to_owned, clippy::type_complexity, clippy::redundant_locals, clippy::bind_instead_of_map, clippy::unwrap_or_default)]\n");
     content.push_str("impl SuiMcpServer {\n");
     for section in helper_sections {
         let data = fs::read_to_string(section)
@@ -55,6 +56,7 @@ fn main() {
     content.push_str("}\n\n");
 
     // 2) Tool router impl block (tools only)
+    content.push_str("#[allow(clippy::empty_line_after_outer_attr, clippy::manual_find, clippy::bool_comparison, clippy::get_first, clippy::too_many_arguments, clippy::unnecessary_to_owned, clippy::type_complexity, clippy::redundant_locals, clippy::bind_instead_of_map, clippy::unwrap_or_default)]\n");
     content.push_str("#[tool_router]\nimpl SuiMcpServer {\n");
     for section in sections {
         let data = fs::read_to_string(section)
