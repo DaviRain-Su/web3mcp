@@ -310,6 +310,46 @@ pub struct SolanaIdlSearchRequest {
     pub limit: Option<u32>,
 }
 
+// ---------------- Solana common RPC tools ----------------
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetBalanceRequest {
+    #[schemars(description = "Account address (base58)")]
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetAccountInfoRequest {
+    #[schemars(description = "Account address (base58)")]
+    pub address: String,
+    #[schemars(description = "Encoding: base64|base64+zstd|jsonParsed (default base64)")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetLatestBlockhashRequest {
+    #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetSignatureStatusRequest {
+    #[schemars(description = "Transaction signature (base58)")]
+    pub signature: String,
+    #[schemars(description = "Search history (default false)")]
+    pub search_transaction_history: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetTransactionRequest {
+    #[schemars(description = "Transaction signature (base58)")]
+    pub signature: String,
+    #[schemars(description = "Encoding: json|jsonParsed|base64 (default json)")]
+    pub encoding: Option<String>,
+    #[schemars(description = "Max supported transaction version (default 0)")]
+    pub max_supported_transaction_version: Option<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvmTxRequest {
     #[schemars(description = "Chain id")]

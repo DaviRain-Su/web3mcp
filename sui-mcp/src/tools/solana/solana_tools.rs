@@ -36,12 +36,39 @@
         })
     }
 
-    fn solana_parse_program_id(program_id: &str) -> Result<solana_sdk::pubkey::Pubkey, ErrorData> {
-        solana_sdk::pubkey::Pubkey::from_str(program_id).map_err(|e| ErrorData {
+    fn solana_parse_pubkey(value: &str, label: &str) -> Result<solana_sdk::pubkey::Pubkey, ErrorData> {
+        solana_sdk::pubkey::Pubkey::from_str(value).map_err(|e| ErrorData {
             code: ErrorCode(-32602),
-            message: Cow::from(format!("Invalid program_id: {}", e)),
+            message: Cow::from(format!("Invalid {}: {}", label, e)),
             data: None,
         })
+    }
+
+    fn solana_parse_program_id(program_id: &str) -> Result<solana_sdk::pubkey::Pubkey, ErrorData> {
+        Self::solana_parse_pubkey(program_id, "program_id")
+    }
+
+    fn solana_commitment_from_str(
+        s: Option<&str>,
+    ) -> Result<solana_commitment_config::CommitmentConfig, ErrorData> {
+        let v = s.unwrap_or("confirmed").trim().to_lowercase();
+        let c = match v.as_str() {
+            "processed" => solana_commitment_config::CommitmentConfig::processed(),
+            "confirmed" => solana_commitment_config::CommitmentConfig::confirmed(),
+            "finalized" => solana_commitment_config::CommitmentConfig::finalized(),
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("commitment must be one of: processed|confirmed|finalized"),
+                    data: Some(json!({ "provided": v })),
+                })
+            }
+        };
+        Ok(c)
+    }
+
+    fn solana_rpc() -> solana_client::nonblocking::rpc_client::RpcClient {
+        solana_client::nonblocking::rpc_client::RpcClient::new(Self::solana_rpc_url())
     }
 
     #[tool(description = "Solana: get wallet address from SOLANA_KEYPAIR_PATH JSON")]
@@ -56,6 +83,174 @@
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
+
+    // ---------------- Solana common RPC tools ----------------
+
+    #[tool(description = "Solana: get balance (lamports) for an address")]
+    async fn solana_get_balance(
+        &self,
+        Parameters(request): Parameters<SolanaGetBalanceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let addr = Self::solana_parse_pubkey(request.address.trim(), "address")?;
+        let client = Self::solana_rpc();
+        let lamports = client
+            .get_balance(&addr)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_balance", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url(),
+            "address": addr.to_string(),
+            "lamports": lamports
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get account info (optionally with encoding)")]
+    async fn solana_get_account_info(
+        &self,
+        Parameters(request): Parameters<SolanaGetAccountInfoRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let addr = Self::solana_parse_pubkey(request.address.trim(), "address")?;
+        let client = Self::solana_rpc();
+
+        let encoding = request.encoding.as_deref().unwrap_or("base64").to_lowercase();
+        let enc = match encoding.as_str() {
+            "base64" => solana_rpc_client_api::response::UiAccountEncoding::Base64,
+            "base64+zstd" | "base64zstd" => solana_rpc_client_api::response::UiAccountEncoding::Base64Zstd,
+            "jsonparsed" | "json_parsed" => solana_rpc_client_api::response::UiAccountEncoding::JsonParsed,
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("encoding must be one of: base64|base64+zstd|jsonParsed"),
+                    data: Some(json!({ "provided": encoding })),
+                })
+            }
+        };
+
+        let cfg = solana_client::rpc_config::RpcAccountInfoConfig {
+            encoding: Some(enc),
+            commitment: Some(solana_commitment_config::CommitmentConfig::confirmed()),
+            ..Default::default()
+        };
+
+        let res = client
+            .get_ui_account_with_config(&addr, cfg)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_account_info", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url(),
+            "address": addr.to_string(),
+            "context": res.context,
+            "value": res.value
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get latest blockhash")]
+    async fn solana_get_latest_blockhash(
+        &self,
+        Parameters(request): Parameters<SolanaGetLatestBlockhashRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc();
+        let commitment = Self::solana_commitment_from_str(request.commitment.as_deref())?;
+
+        let res = client
+            .get_latest_blockhash_with_commitment(commitment)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_latest_blockhash", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url(),
+            "commitment": request.commitment.unwrap_or("confirmed".to_string()),
+            "blockhash": res.0.to_string(),
+            "last_valid_block_height": res.1
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get signature status")]
+    async fn solana_get_signature_status(
+        &self,
+        Parameters(request): Parameters<SolanaGetSignatureStatusRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc();
+        let sig = solana_sdk::signature::Signature::from_str(request.signature.trim()).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid signature: {}", e)),
+            data: None,
+        })?;
+
+        let search_history = request.search_transaction_history.unwrap_or(false);
+        let res = if search_history {
+            client
+                .get_signature_statuses_with_history(&[sig])
+                .await
+                .map_err(|e| Self::sdk_error("solana_get_signature_status", e))?
+        } else {
+            client
+                .get_signature_statuses(&[sig])
+                .await
+                .map_err(|e| Self::sdk_error("solana_get_signature_status", e))?
+        };
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url(),
+            "signature": sig.to_string(),
+            "search_transaction_history": search_history,
+            "context": res.context,
+            "value": res.value.get(0).cloned().unwrap_or(None)
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get transaction by signature")]
+    async fn solana_get_transaction(
+        &self,
+        Parameters(request): Parameters<SolanaGetTransactionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc();
+        let sig = solana_sdk::signature::Signature::from_str(request.signature.trim()).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid signature: {}", e)),
+            data: None,
+        })?;
+
+        let encoding = request.encoding.as_deref().unwrap_or("json").to_lowercase();
+        let enc = match encoding.as_str() {
+            "json" => solana_transaction_status::UiTransactionEncoding::Json,
+            "jsonparsed" | "json_parsed" => solana_transaction_status::UiTransactionEncoding::JsonParsed,
+            "base64" => solana_transaction_status::UiTransactionEncoding::Base64,
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("encoding must be one of: json|jsonParsed|base64"),
+                    data: Some(json!({ "provided": encoding })),
+                })
+            }
+        };
+
+        let cfg = solana_client::rpc_config::RpcTransactionConfig {
+            encoding: Some(enc),
+            commitment: Some(solana_commitment_config::CommitmentConfig::confirmed()),
+            max_supported_transaction_version: Some(request.max_supported_transaction_version.unwrap_or(0)),
+        };
+
+        let tx = client
+            .get_transaction_with_config(&sig, cfg)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_transaction", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url(),
+            "signature": sig.to_string(),
+            "transaction": tx
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    // ---------------- Solana IDL Registry ----------------
 
     #[tool(description = "Solana IDL Registry: register an IDL JSON under abi_registry/solana/<program_id>/<name>.json")]
     async fn solana_idl_register(
@@ -79,7 +274,7 @@
             return Err(ErrorData {
                 code: ErrorCode(-32602),
                 message: Cow::from("IDL name is empty after sanitization"),
-                data: Some(json!({"provided": name_raw})),
+                data: Some(json!({ "provided": name_raw })),
             });
         }
 
@@ -105,12 +300,12 @@
         let data = std::fs::read_to_string(&request.path).map_err(|e| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from(format!("Failed to read file: {}", e)),
-            data: Some(json!({"path": request.path})),
+            data: Some(json!({ "path": request.path })),
         })?;
         let idl: Value = serde_json::from_str(&data).map_err(|e| ErrorData {
             code: ErrorCode(-32602),
             message: Cow::from(format!("Invalid IDL JSON: {}", e)),
-            data: Some(json!({"path": request.path})),
+            data: Some(json!({ "path": request.path })),
         })?;
 
         let inferred = crate::utils::solana_idl_registry::infer_name_from_idl_json(&idl).or_else(|| {
