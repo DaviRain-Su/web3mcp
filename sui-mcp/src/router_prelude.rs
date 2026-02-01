@@ -50,3 +50,5 @@ pub use sui_types::transaction::{
     CallArg, ObjectArg, Transaction, TransactionData, TransactionDataAPI,
 };
 pub use sui_types::zk_login_authenticator::ZkLoginAuthenticator;
+
+pub use ethers::signers::Signer as EthersSigner;

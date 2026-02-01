@@ -100,6 +100,17 @@
         Ok(solana_client::nonblocking::rpc_client::RpcClient::new(url))
     }
 
+    fn solana_keypair_path_with_default(path: Option<&str>) -> Result<String, ErrorData> {
+        if let Some(p) = path {
+            return Ok(p.to_string());
+        }
+        if let Ok(p) = std::env::var("SOLANA_KEYPAIR_PATH") {
+            return Ok(p);
+        }
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        Ok(format!("{}/.config/solana/id.json", home))
+    }
+
     #[tool(description = "Solana: get wallet address from SOLANA_KEYPAIR_PATH JSON")]
     async fn solana_get_wallet_address(&self) -> Result<CallToolResult, ErrorData> {
         let kp_path = Self::solana_keypair_path()?;
@@ -107,6 +118,21 @@
         let addr = solana_sdk::signature::Signer::pubkey(&kp).to_string();
         let response = Self::pretty_json(&json!({
             "rpc_url": Self::solana_rpc_url_default(),
+            "keypair_path": kp_path,
+            "address": addr
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get keypair info (address) from a custom path or default")]
+    async fn solana_keypair_info(
+        &self,
+        Parameters(request): Parameters<SolanaKeypairInfoRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let kp_path = Self::solana_keypair_path_with_default(request.keypair_path.as_deref())?;
+        let kp = Self::solana_read_keypair_from_json_file(&kp_path)?;
+        let addr = solana_sdk::signature::Signer::pubkey(&kp).to_string();
+        let response = Self::pretty_json(&json!({
             "keypair_path": kp_path,
             "address": addr
         }))?;

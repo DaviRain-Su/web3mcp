@@ -38,6 +38,32 @@ pub struct GetAllBalancesRequest {
 // ---- EVM / Base (experimental multi-chain) ----
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmKeystoreListRequest {
+    #[schemars(description = "Optional keystore directory (defaults to ~/.foundry/keystores)")]
+    pub keystore_dir: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmKeystoreSignRequest {
+    #[schemars(description = "Keystore account name (e.g. my_wallet)")]
+    pub account: String,
+    #[schemars(description = "Keystore password")]
+    pub password: String,
+    #[schemars(description = "Message to sign (hex 0x... or plain text)")]
+    pub message: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmKeystoreAddressRequest {
+    #[schemars(description = "Keystore account name (e.g. my_wallet)")]
+    pub account: String,
+    #[schemars(description = "Keystore password")]
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetBalanceRequest {
     #[schemars(description = "EVM address (0x...) to query")]
     pub address: String,
@@ -262,6 +288,14 @@ pub struct EvmBuildTransferNativeRequest {
     pub confirm_large_transfer: Option<bool>,
     #[schemars(description = "Large transfer threshold in wei (default 0.1 ETH)")]
     pub large_transfer_threshold_wei: Option<String>,
+}
+
+// ---- Solana Keystore ----
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaKeypairInfoRequest {
+    #[schemars(description = "Optional keypair path (defaults to SOLANA_KEYPAIR_PATH or ~/.config/solana/id.json)")]
+    pub keypair_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

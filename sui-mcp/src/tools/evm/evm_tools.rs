@@ -3,6 +3,53 @@
     /// NOTE: This server is currently named `sui-mcp`, but we're gradually expanding it into a
     /// multi-chain MCP server. These EVM tools are the first step.
 
+    fn evm_keystore_dir() -> String {
+        std::env::var("EVM_KEYSTORE_DIR")
+            .unwrap_or_else(|_| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                format!("{}/.foundry/keystores", home)
+            })
+    }
+
+    fn evm_list_keystore_accounts() -> Result<Vec<String>, ErrorData> {
+        let dir = Self::evm_keystore_dir();
+        let entries = std::fs::read_dir(&dir).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read keystore dir {}: {}", dir, e)),
+            data: None,
+        })?;
+        let mut accounts = Vec::new();
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if !name.starts_with('.') {
+                    accounts.push(name.to_string());
+                }
+            }
+        }
+        Ok(accounts)
+    }
+
+    fn evm_load_keystore_wallet(
+        name: &str,
+        password: &str,
+        chain_id: u64,
+    ) -> Result<ethers::signers::LocalWallet, ErrorData> {
+        let dir = Self::evm_keystore_dir();
+        let path = format!("{}/{}", dir, name);
+        let _keystore_json = std::fs::read_to_string(&path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read keystore {}: {}", path, e)),
+            data: None,
+        })?;
+        let wallet = ethers::signers::LocalWallet::decrypt_keystore(path.clone(), password)
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Failed to decrypt keystore: {}", e)),
+                data: None,
+            })?;
+        Ok(EthersSigner::with_chain_id(wallet, chain_id))
+    }
+
     fn evm_default_chain_id() -> Result<u64, ErrorData> {
         if let Ok(v) = std::env::var("EVM_DEFAULT_CHAIN_ID") {
             return v.parse::<u64>().map_err(|e| ErrorData {
@@ -142,6 +189,62 @@
         out.extend_from_slice(selector);
         out.extend_from_slice(&ethers::abi::encode(&args));
         ethers::types::Bytes::from(out)
+    }
+
+    #[tool(description = "EVM: list local Foundry keystore accounts")]
+    async fn evm_keystore_list(
+        &self,
+        Parameters(_request): Parameters<EvmKeystoreListRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let accounts = Self::evm_list_keystore_accounts()?;
+        let response = Self::pretty_json(&json!({
+            "keystore_dir": Self::evm_keystore_dir(),
+            "accounts": accounts
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: get address from a Foundry keystore account")]
+    async fn evm_keystore_address(
+        &self,
+        Parameters(request): Parameters<EvmKeystoreAddressRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let wallet = Self::evm_load_keystore_wallet(&request.account, &request.password, 1)?;
+        let address = format!("{:?}", EthersSigner::address(&wallet));
+        let response = Self::pretty_json(&json!({
+            "account": request.account,
+            "address": address
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: sign a message using a Foundry keystore account")]
+    async fn evm_keystore_sign(
+        &self,
+        Parameters(request): Parameters<EvmKeystoreSignRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(1);
+        let wallet = Self::evm_load_keystore_wallet(&request.account, &request.password, chain_id)?;
+        let message_bytes = if request.message.starts_with("0x") {
+            hex::decode(&request.message[2..]).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid hex message: {}", e)),
+                data: None,
+            })?
+        } else {
+            request.message.as_bytes().to_vec()
+        };
+        let signature = wallet.sign_message(&message_bytes).await.map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to sign message: {}", e)),
+            data: None,
+        })?;
+        let response = Self::pretty_json(&json!({
+            "account": request.account,
+            "address": format!("{:?}", EthersSigner::address(&wallet)),
+            "signature": format!("0x{}", signature)
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
     #[tool(description = "EVM: list pending intent confirmations (sqlite-backed)")]
