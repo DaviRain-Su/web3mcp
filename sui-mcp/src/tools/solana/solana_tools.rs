@@ -3353,13 +3353,26 @@
                                 "note": "Token-2022 TransferHook can trigger extra program calls (hook). Review carefully."
                             }));
                         }
-                        spl_token_2022::instruction::TokenInstruction::Reallocate { .. } => {
-                            summary_lines.push("SPL Token-2022: Reallocate token account".to_string());
+                        spl_token_2022::instruction::TokenInstruction::Reallocate { extension_types } => {
+                            let acct = key_at(&ci.accounts, 0);
+                            let payer = key_at(&ci.accounts, 1);
+                            let ext_names: Vec<String> = extension_types.iter().map(|e| format!("{:?}", e)).collect();
+                            summary_lines.push(format!(
+                                "SPL Token-2022: Reallocate account {} ({} extensions)",
+                                acct,
+                                ext_names.len()
+                            ));
                             detail["kind"] = json!("spl_token_2022_reallocate");
+                            detail["account"] = json!(acct);
+                            detail["payer"] = json!(payer);
+                            detail["extension_types"] = json!(ext_names);
+
                             warnings.push(json!({
                                 "kind": "token2022_reallocate",
                                 "severity": "medium",
-                                "note": "Token-2022 account reallocation changes account data size; may increase rent/lamports."
+                                "account": acct,
+                                "payer": payer,
+                                "note": "Token-2022 account reallocation changes account data size; may increase rent/lamports. Review extension types in details."
                             }));
                         }
                         _ => {
