@@ -46,6 +46,17 @@
         }
     }
 
+    fn solana_is_known_safe_address(addr: &str) -> bool {
+        // Addresses that are safe/expected to show up in txs and should not trigger unknown-program alarms.
+        // Note: we intentionally treat "known labels" (including mints) as safe here.
+        Self::solana_known_program_label(addr).is_some()
+            || addr == spl_token::id().to_string()
+            || addr == spl_token_2022::id().to_string()
+            || addr == spl_associated_token_account::id().to_string()
+            || addr == solana_compute_budget_interface::id().to_string()
+            || addr == "11111111111111111111111111111111"
+    }
+
     fn solana_rpc_url_for_network(network: Option<&str>) -> Result<String, ErrorData> {
         // Priority:
         // 1) SOLANA_RPC_URL (explicit override)
@@ -2997,12 +3008,14 @@
             }
 
             // Track unknown programs for wallet-like warnings
+            // We only flag truly unknown *program ids* here. Known program ids and known-safe addresses
+            // (including common mints) should not trigger the alarm.
             let known_program = pid == token_pid
                 || pid == token_2022_pid
                 || pid == ata_pid
                 || pid == compute_budget_pid
                 || pid == system_pid
-                || Self::solana_known_program_label(&pid).is_some();
+                || Self::solana_is_known_safe_address(&pid);
             if !pid.is_empty() && !known_program && !program_ids_unknown.contains(&pid) {
                 program_ids_unknown.push(pid.clone());
             }
