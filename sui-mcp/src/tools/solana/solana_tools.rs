@@ -1,9 +1,34 @@
-    fn solana_rpc_url() -> String {
+    fn solana_rpc_url_for_network(network: Option<&str>) -> Result<String, ErrorData> {
         // Priority:
-        // 1) SOLANA_RPC_URL
-        // 2) default to mainnet-beta public endpoint (safe, but rate-limited)
-        std::env::var("SOLANA_RPC_URL")
-            .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
+        // 1) SOLANA_RPC_URL (explicit override)
+        // 2) SOLANA_RPC_URL_MAINNET / _DEVNET / _TESTNET
+        // 3) well-known public endpoints
+        if let Ok(url) = std::env::var("SOLANA_RPC_URL") {
+            return Ok(url);
+        }
+
+        let net = network.unwrap_or("mainnet").trim().to_lowercase();
+        let (env_key, default_url) = match net.as_str() {
+            "mainnet" | "mainnet-beta" | "mainnet_beta" => (
+                "SOLANA_RPC_URL_MAINNET",
+                "https://api.mainnet-beta.solana.com",
+            ),
+            "devnet" => ("SOLANA_RPC_URL_DEVNET", "https://api.devnet.solana.com"),
+            "testnet" => ("SOLANA_RPC_URL_TESTNET", "https://api.testnet.solana.com"),
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("network must be one of: mainnet|devnet|testnet"),
+                    data: Some(json!({"provided": net})),
+                })
+            }
+        };
+
+        Ok(std::env::var(env_key).unwrap_or_else(|_| default_url.to_string()))
+    }
+
+    fn solana_rpc_url_default() -> String {
+        Self::solana_rpc_url_for_network(None).unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
     }
 
     fn solana_keypair_path() -> Result<String, ErrorData> {
@@ -67,8 +92,9 @@
         Ok(c)
     }
 
-    fn solana_rpc() -> solana_client::nonblocking::rpc_client::RpcClient {
-        solana_client::nonblocking::rpc_client::RpcClient::new(Self::solana_rpc_url())
+    fn solana_rpc(network: Option<&str>) -> Result<solana_client::nonblocking::rpc_client::RpcClient, ErrorData> {
+        let url = Self::solana_rpc_url_for_network(network)?;
+        Ok(solana_client::nonblocking::rpc_client::RpcClient::new(url))
     }
 
     #[tool(description = "Solana: get wallet address from SOLANA_KEYPAIR_PATH JSON")]
@@ -77,7 +103,7 @@
         let kp = Self::solana_read_keypair_from_json_file(&kp_path)?;
         let addr = solana_sdk::signature::Signer::pubkey(&kp).to_string();
         let response = Self::pretty_json(&json!({
-            "rpc_url": Self::solana_rpc_url(),
+            "rpc_url": Self::solana_rpc_url_default(),
             "keypair_path": kp_path,
             "address": addr
         }))?;
@@ -92,14 +118,15 @@
         Parameters(request): Parameters<SolanaGetBalanceRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let addr = Self::solana_parse_pubkey(request.address.trim(), "address")?;
-        let client = Self::solana_rpc();
+        let client = Self::solana_rpc(request.network.as_deref())?;
         let lamports = client
             .get_balance(&addr)
             .await
             .map_err(|e| Self::sdk_error("solana_get_balance", e))?;
 
         let response = Self::pretty_json(&json!({
-            "rpc_url": Self::solana_rpc_url(),
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
             "address": addr.to_string(),
             "lamports": lamports
         }))?;
@@ -112,7 +139,7 @@
         Parameters(request): Parameters<SolanaGetAccountInfoRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let addr = Self::solana_parse_pubkey(request.address.trim(), "address")?;
-        let client = Self::solana_rpc();
+        let client = Self::solana_rpc(request.network.as_deref())?;
 
         let encoding = request.encoding.as_deref().unwrap_or("base64").to_lowercase();
         let enc = match encoding.as_str() {
@@ -140,7 +167,8 @@
             .map_err(|e| Self::sdk_error("solana_get_account_info", e))?;
 
         let response = Self::pretty_json(&json!({
-            "rpc_url": Self::solana_rpc_url(),
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
             "address": addr.to_string(),
             "context": res.context,
             "value": res.value
@@ -153,7 +181,7 @@
         &self,
         Parameters(request): Parameters<SolanaGetLatestBlockhashRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let client = Self::solana_rpc();
+        let client = Self::solana_rpc(request.network.as_deref())?;
         let commitment = Self::solana_commitment_from_str(request.commitment.as_deref())?;
 
         let res = client
@@ -162,7 +190,8 @@
             .map_err(|e| Self::sdk_error("solana_get_latest_blockhash", e))?;
 
         let response = Self::pretty_json(&json!({
-            "rpc_url": Self::solana_rpc_url(),
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
             "commitment": request.commitment.unwrap_or("confirmed".to_string()),
             "blockhash": res.0.to_string(),
             "last_valid_block_height": res.1
@@ -175,7 +204,7 @@
         &self,
         Parameters(request): Parameters<SolanaGetSignatureStatusRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let client = Self::solana_rpc();
+        let client = Self::solana_rpc(request.network.as_deref())?;
         let sig = solana_sdk::signature::Signature::from_str(request.signature.trim()).map_err(|e| ErrorData {
             code: ErrorCode(-32602),
             message: Cow::from(format!("Invalid signature: {}", e)),
@@ -196,7 +225,8 @@
         };
 
         let response = Self::pretty_json(&json!({
-            "rpc_url": Self::solana_rpc_url(),
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
             "signature": sig.to_string(),
             "search_transaction_history": search_history,
             "context": res.context,
@@ -210,7 +240,7 @@
         &self,
         Parameters(request): Parameters<SolanaGetTransactionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let client = Self::solana_rpc();
+        let client = Self::solana_rpc(request.network.as_deref())?;
         let sig = solana_sdk::signature::Signature::from_str(request.signature.trim()).map_err(|e| ErrorData {
             code: ErrorCode(-32602),
             message: Cow::from(format!("Invalid signature: {}", e)),
@@ -243,7 +273,8 @@
             .map_err(|e| Self::sdk_error("solana_get_transaction", e))?;
 
         let response = Self::pretty_json(&json!({
-            "rpc_url": Self::solana_rpc_url(),
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
             "signature": sig.to_string(),
             "transaction": tx
         }))?;

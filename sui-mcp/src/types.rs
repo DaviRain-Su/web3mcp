@@ -314,12 +314,16 @@ pub struct SolanaIdlSearchRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetBalanceRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
     #[schemars(description = "Account address (base58)")]
     pub address: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetAccountInfoRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
     #[schemars(description = "Account address (base58)")]
     pub address: String,
     #[schemars(description = "Encoding: base64|base64+zstd|jsonParsed (default base64)")]
@@ -328,12 +332,16 @@ pub struct SolanaGetAccountInfoRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetLatestBlockhashRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
     #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
     pub commitment: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetSignatureStatusRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
     #[schemars(description = "Transaction signature (base58)")]
     pub signature: String,
     #[schemars(description = "Search history (default false)")]
@@ -342,6 +350,8 @@ pub struct SolanaGetSignatureStatusRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetTransactionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
     #[schemars(description = "Transaction signature (base58)")]
     pub signature: String,
     #[schemars(description = "Encoding: json|jsonParsed|base64 (default json)")]
