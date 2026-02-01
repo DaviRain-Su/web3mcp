@@ -3007,6 +3007,13 @@
                 "index": ix_index,
                 "program_id": pid,
                 "accounts": ci.accounts.iter().map(|a| key_of(*a)).collect::<Vec<String>>(),
+                "accounts_labeled": ci.accounts.iter().map(|a| {
+                    let pk = key_of(*a);
+                    json!({
+                        "pubkey": pk,
+                        "label": Self::solana_known_program_label(&pk)
+                    })
+                }).collect::<Vec<Value>>(),
                 "data_len": ci.data.len(),
                 "kind": "unknown"
             });
