@@ -2894,6 +2894,7 @@
 
         let token_pid = spl_token::id().to_string();
         let ata_pid = spl_associated_token_account::id().to_string();
+        let compute_budget_pid = solana_compute_budget_interface::id().to_string();
         let system_pid = "11111111111111111111111111111111";
 
         let key_of = |i: u8| -> String {
@@ -2928,7 +2929,76 @@
                 "kind": "unknown"
             });
 
-            if pid == token_pid {
+            if pid == compute_budget_pid {
+                // ComputeBudget program has a 1-byte discriminator followed by LE bytes.
+                let disc = ci.data.first().copied();
+                match disc {
+                    Some(2) => {
+                        // SetComputeUnitLimit(u32)
+                        let units = ci.data.get(1..5).and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?)));
+                        if let Some(units) = units {
+                            summary_lines.push(format!("ComputeBudget: CU limit = {}", units));
+                            detail["kind"] = json!("compute_budget_set_cu_limit");
+                            detail["units"] = json!(units);
+                        } else {
+                            summary_lines.push("ComputeBudget: CU limit (unable to decode)".to_string());
+                            detail["kind"] = json!("compute_budget_set_cu_limit");
+                        }
+                    }
+                    Some(3) => {
+                        // SetComputeUnitPrice(u64)
+                        let micro = ci
+                            .data
+                            .get(1..9)
+                            .and_then(|b| Some(u64::from_le_bytes(b.try_into().ok()?)));
+                        if let Some(micro) = micro {
+                            summary_lines.push(format!(
+                                "ComputeBudget: CU price = {} micro-lamports",
+                                micro
+                            ));
+                            detail["kind"] = json!("compute_budget_set_cu_price");
+                            detail["micro_lamports"] = json!(micro.to_string());
+                        } else {
+                            summary_lines.push(
+                                "ComputeBudget: CU price (unable to decode)".to_string(),
+                            );
+                            detail["kind"] = json!("compute_budget_set_cu_price");
+                        }
+                    }
+                    Some(1) => {
+                        let bytes = ci.data.get(1..5).and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?)));
+                        if let Some(bytes) = bytes {
+                            summary_lines.push(format!("ComputeBudget: heap frame = {} bytes", bytes));
+                            detail["kind"] = json!("compute_budget_request_heap_frame");
+                            detail["bytes"] = json!(bytes);
+                        } else {
+                            summary_lines.push("ComputeBudget: heap frame (unable to decode)".to_string());
+                            detail["kind"] = json!("compute_budget_request_heap_frame");
+                        }
+                    }
+                    Some(4) => {
+                        let bytes = ci.data.get(1..5).and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?)));
+                        if let Some(bytes) = bytes {
+                            summary_lines.push(format!(
+                                "ComputeBudget: loaded accounts data limit = {} bytes",
+                                bytes
+                            ));
+                            detail["kind"] = json!("compute_budget_set_loaded_accounts_data_size_limit");
+                            detail["bytes"] = json!(bytes);
+                        } else {
+                            summary_lines.push(
+                                "ComputeBudget: loaded accounts data limit (unable to decode)"
+                                    .to_string(),
+                            );
+                            detail["kind"] = json!("compute_budget_set_loaded_accounts_data_size_limit");
+                        }
+                    }
+                    _ => {
+                        summary_lines.push("ComputeBudget instruction".to_string());
+                        detail["kind"] = json!("compute_budget");
+                    }
+                }
+            } else if pid == token_pid {
                 if let Ok(tok_ix) = spl_token::instruction::TokenInstruction::unpack(&ci.data) {
                     match tok_ix {
                         spl_token::instruction::TokenInstruction::Transfer { amount } => {
