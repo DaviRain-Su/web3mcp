@@ -3881,10 +3881,29 @@
                 // show up to 5, rest in details
                 let shown: Vec<String> = program_ids_unknown.iter().take(5).cloned().collect();
                 let more = program_ids_unknown.len().saturating_sub(shown.len());
+
+                let shown_pretty: Vec<String> = shown
+                    .iter()
+                    .map(|p| {
+                        let label = Self::solana_known_program_label(p);
+                        if let Some(l) = label {
+                            // compact display like "Orca Whirlpool(whirL...)"
+                            let short = if p.len() > 8 {
+                                format!("{}...", &p[..5])
+                            } else {
+                                p.clone()
+                            };
+                            format!("{}({})", l, short)
+                        } else {
+                            p.clone()
+                        }
+                    })
+                    .collect();
+
                 let line = if more > 0 {
-                    format!("Unknown programs: {} (+{} more)", shown.join(", "), more)
+                    format!("Unknown programs: {} (+{} more)", shown_pretty.join(", "), more)
                 } else {
-                    format!("Unknown programs: {}", shown.join(", "))
+                    format!("Unknown programs: {}", shown_pretty.join(", "))
                 };
                 out.push(line);
 
