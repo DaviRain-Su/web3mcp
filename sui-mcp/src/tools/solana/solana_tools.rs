@@ -2886,10 +2886,29 @@
             }
         }
 
-        // Lightweight preview analysis
+        // Preview analysis: short summary + expandable details
         let mut program_ids: Vec<String> = Vec::new();
         let mut warnings: Vec<Value> = Vec::new();
-        for ci in &tx.message.instructions {
+        let mut summary_lines: Vec<String> = Vec::new();
+        let mut details_instructions: Vec<Value> = Vec::new();
+
+        let token_pid = spl_token::id().to_string();
+        let ata_pid = spl_associated_token_account::id().to_string();
+        let system_pid = "11111111111111111111111111111111";
+
+        let key_of = |i: u8| -> String {
+            tx.message
+                .account_keys
+                .get(i as usize)
+                .map(|p| p.to_string())
+                .unwrap_or_default()
+        };
+
+        let key_at = |v: &[u8], idx: usize| -> String {
+            v.get(idx).copied().map(key_of).unwrap_or_default()
+        };
+
+        for (ix_index, ci) in tx.message.instructions.iter().enumerate() {
             let pid = tx
                 .message
                 .account_keys
@@ -2900,51 +2919,187 @@
                 program_ids.push(pid.clone());
             }
 
-            if pid == spl_token::id().to_string() {
+            // Default detail record
+            let mut detail = json!({
+                "index": ix_index,
+                "program_id": pid,
+                "accounts": ci.accounts.iter().map(|a| key_of(*a)).collect::<Vec<String>>(),
+                "data_len": ci.data.len(),
+                "kind": "unknown"
+            });
+
+            if pid == token_pid {
                 if let Ok(tok_ix) = spl_token::instruction::TokenInstruction::unpack(&ci.data) {
                     match tok_ix {
-                        spl_token::instruction::TokenInstruction::Approve { amount }
-                        | spl_token::instruction::TokenInstruction::ApproveChecked { amount, .. } => {
+                        spl_token::instruction::TokenInstruction::Transfer { amount } => {
+                            // accounts: [source, destination, authority]
+                            let source = key_at(&ci.accounts, 0);
+                            let destination = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            summary_lines.push(format!(
+                                "SPL Token transfer: {} -> {} (amount: {})",
+                                source, destination, amount
+                            ));
+                            detail["kind"] = json!("spl_token_transfer");
+                            detail["source"] = json!(source);
+                            detail["destination"] = json!(destination);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                        }
+                        spl_token::instruction::TokenInstruction::TransferChecked { amount, decimals } => {
+                            // accounts: [source, mint, destination, authority]
+                            let source = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let destination = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            summary_lines.push(format!(
+                                "SPL Token transfer_checked: {} -> {} (mint: {}, amount: {}, decimals: {})",
+                                source, destination, mint, amount, decimals
+                            ));
+                            detail["kind"] = json!("spl_token_transfer_checked");
+                            detail["source"] = json!(source);
+                            detail["destination"] = json!(destination);
+                            detail["mint"] = json!(mint);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["decimals"] = json!(decimals);
+                        }
+                        spl_token::instruction::TokenInstruction::Approve { amount } => {
+                            // accounts: [source, delegate, authority]
+                            let source = key_at(&ci.accounts, 0);
+                            let delegate = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
                             let is_infinite = amount == u64::MAX;
+                            summary_lines.push(format!(
+                                "SPL Token approve{}: delegate {} on {} (amount: {})",
+                                if is_infinite { " (infinite)" } else { "" },
+                                delegate,
+                                source,
+                                amount
+                            ));
+                            detail["kind"] = json!("spl_token_approve");
+                            detail["source"] = json!(source);
+                            detail["delegate"] = json!(delegate);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["infinite"] = json!(is_infinite);
+
                             warnings.push(json!({
                                 "kind": "token_approve",
                                 "severity": if is_infinite { "high" } else { "medium" },
                                 "infinite": is_infinite,
                                 "amount": amount.to_string(),
+                                "delegate": delegate,
+                                "source": source,
                                 "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
                             }));
                         }
+                        spl_token::instruction::TokenInstruction::ApproveChecked { amount, decimals } => {
+                            // accounts: [source, mint, delegate, authority]
+                            let source = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let delegate = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            let is_infinite = amount == u64::MAX;
+                            summary_lines.push(format!(
+                                "SPL Token approve_checked{}: delegate {} on {} (mint: {}, amount: {}, decimals: {})",
+                                if is_infinite { " (infinite)" } else { "" },
+                                delegate,
+                                source,
+                                mint,
+                                amount,
+                                decimals
+                            ));
+                            detail["kind"] = json!("spl_token_approve_checked");
+                            detail["source"] = json!(source);
+                            detail["mint"] = json!(mint);
+                            detail["delegate"] = json!(delegate);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["decimals"] = json!(decimals);
+                            detail["infinite"] = json!(is_infinite);
+
+                            warnings.push(json!({
+                                "kind": "token_approve",
+                                "severity": if is_infinite { "high" } else { "medium" },
+                                "infinite": is_infinite,
+                                "amount": amount.to_string(),
+                                "delegate": delegate,
+                                "source": source,
+                                "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
+                            }));
+                        }
+                        spl_token::instruction::TokenInstruction::Revoke => {
+                            // accounts: [source, authority]
+                            let source = key_at(&ci.accounts, 0);
+                            let authority = key_at(&ci.accounts, 1);
+                            summary_lines.push(format!("SPL Token revoke: {}", source));
+                            detail["kind"] = json!("spl_token_revoke");
+                            detail["source"] = json!(source);
+                            detail["authority"] = json!(authority);
+                        }
+                        spl_token::instruction::TokenInstruction::CloseAccount => {
+                            // accounts: [account, destination, authority]
+                            let account = key_at(&ci.accounts, 0);
+                            let destination = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            summary_lines.push(format!(
+                                "SPL Token close_account: {} -> {}",
+                                account, destination
+                            ));
+                            detail["kind"] = json!("spl_token_close_account");
+                            detail["account"] = json!(account);
+                            detail["destination"] = json!(destination);
+                            detail["authority"] = json!(authority);
+
+                            warnings.push(json!({
+                                "kind": "close_token_account",
+                                "severity": "medium",
+                                "account": account,
+                                "destination": destination,
+                                "note": "This transaction closes a token account."
+                            }));
+                        }
                         spl_token::instruction::TokenInstruction::SetAuthority { .. } => {
+                            summary_lines.push("SPL Token set_authority".to_string());
+                            detail["kind"] = json!("spl_token_set_authority");
                             warnings.push(json!({
                                 "kind": "set_authority",
                                 "severity": "high",
                                 "note": "This transaction changes token authority (high risk)."
                             }));
                         }
-                        spl_token::instruction::TokenInstruction::CloseAccount => {
-                            warnings.push(json!({
-                                "kind": "close_token_account",
-                                "severity": "medium",
-                                "note": "This transaction closes a token account."
-                            }));
-                        }
-                        spl_token::instruction::TokenInstruction::Transfer { .. }
-                        | spl_token::instruction::TokenInstruction::TransferChecked { .. } => {
-                            // Normal
-                        }
-                        spl_token::instruction::TokenInstruction::Revoke => {
-                            // Often fine
-                        }
                         _ => {}
                     }
                 }
-            } else if pid == "11111111111111111111111111111111" {
+            } else if pid == ata_pid {
+                // Typically: create associated token account
+                // accounts: [payer, ata, owner, mint, system, token, rent] (+ remaining)
+                let payer = key_at(&ci.accounts, 0);
+                let ata = key_at(&ci.accounts, 1);
+                let owner = key_at(&ci.accounts, 2);
+                let mint = key_at(&ci.accounts, 3);
+                summary_lines.push(format!(
+                    "Create ATA: {} (owner: {}, mint: {})",
+                    ata, owner, mint
+                ));
+                detail["kind"] = json!("create_ata");
+                detail["payer"] = json!(payer);
+                detail["ata"] = json!(ata);
+                detail["owner"] = json!(owner);
+                detail["mint"] = json!(mint);
+            } else if pid == system_pid {
+                // We don't fully decode SystemInstruction yet; flag generally.
+                summary_lines.push("System Program instruction".to_string());
+                detail["kind"] = json!("system_program");
                 warnings.push(json!({
                     "kind": "system_program",
                     "severity": "medium",
                     "note": "This transaction calls the System Program (may transfer SOL or create accounts)."
                 }));
             }
+
+            details_instructions.push(detail);
         }
 
         // Store pending confirmation (5min default)
@@ -2968,7 +3123,11 @@
             "replace_recent_blockhash": replace,
             "tx_bytes_len": tx_bytes.len(),
             "program_ids": program_ids,
+            "summary_lines": summary_lines,
             "risk_warnings": warnings,
+            "details": {
+                "instructions": details_instructions
+            },
             "suggestions": {
                 "compute_unit_limit": suggested_cu_limit,
                 "compute_unit_price_micro_lamports": suggested_cu_price,
@@ -3001,8 +3160,10 @@
             "context": sim.context,
             "value": sim.value,
             "preview": {
+                "summary_lines": summary.get("summary_lines"),
+                "risk_warnings": summary.get("risk_warnings"),
                 "program_ids": summary.get("program_ids"),
-                "risk_warnings": summary.get("risk_warnings")
+                "details": summary.get("details")
             },
             "suggestions": summary.get("suggestions")
         }))?;
