@@ -181,6 +181,11 @@
                 expires,
                 &hash,
                 "execute_transfer_object",
+                Some(json!({
+                    "sender": request.sender,
+                    "recipient": request.recipient,
+                    "object_id": request.object_id
+                })),
             )?;
 
             let response = Self::pretty_json(&json!({
@@ -281,6 +286,12 @@
                 expires,
                 &hash,
                 "execute_pay_sui",
+                Some(json!({
+                    "sender": request.sender,
+                    "recipients": request.recipients,
+                    "amounts": request.amounts,
+                    "input_coins": request.input_coins
+                })),
             )?;
 
             let response = Self::pretty_json(&json!({
@@ -379,6 +390,12 @@
                 expires,
                 &hash,
                 "execute_add_stake",
+                Some(json!({
+                    "sender": request.sender,
+                    "validator": request.validator,
+                    "coins": request.coins,
+                    "amount": request.amount
+                })),
             )?;
 
             let response = Self::pretty_json(&json!({
@@ -475,6 +492,10 @@
                 expires,
                 &hash,
                 "execute_withdraw_stake",
+                Some(json!({
+                    "sender": request.sender,
+                    "staked_sui": request.staked_sui
+                })),
             )?;
 
             let response = Self::pretty_json(&json!({
@@ -1251,6 +1272,8 @@
         &self,
         Parameters(request): Parameters<ExecuteBatchTransactionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        let requests_count = request.requests.len();
+
         let (tx_data, _) = self
             .build_batch_transaction_data(
                 &request.sender,
@@ -1280,6 +1303,10 @@
                 expires,
                 &hash,
                 "execute_batch_transaction",
+                Some(json!({
+                    "sender": request.sender,
+                    "requests_count": requests_count,
+                })),
             )?;
 
             let response = Self::pretty_json(&json!({
@@ -1363,6 +1390,11 @@
                     "status": row.status,
                     "digest": row.digest,
                     "last_error": row.last_error,
+                    "tool_context": row.tool_context,
+                    "summary": row
+                        .summary_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str::<Value>(s).ok()),
                 })),
             });
         }

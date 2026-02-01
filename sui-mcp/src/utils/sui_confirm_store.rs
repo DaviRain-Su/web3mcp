@@ -15,6 +15,10 @@ pub struct SuiPendingRow {
     pub status: String,
     pub digest: Option<String>,
     pub last_error: Option<String>,
+
+    // Human-friendly summary fields
+    pub tool_context: Option<String>,
+    pub summary_json: Option<String>,
 }
 
 fn now_ms() -> u128 {
@@ -93,7 +97,7 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         }
     }
 
-    let migrations: [(&str, &str); 5] = [
+    let migrations: [(&str, &str); 6] = [
         (
             "updated_at_ms",
             "ALTER TABLE sui_pending_confirmations ADD COLUMN updated_at_ms INTEGER",
@@ -113,6 +117,10 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         (
             "tool_context",
             "ALTER TABLE sui_pending_confirmations ADD COLUMN tool_context TEXT",
+        ),
+        (
+            "summary_json",
+            "ALTER TABLE sui_pending_confirmations ADD COLUMN summary_json TEXT",
         ),
     ];
     for (col, stmt) in migrations {
@@ -148,12 +156,16 @@ pub fn insert_pending(
     expires_at_ms: u128,
     tx_summary_hash: &str,
     tool_context: &str,
+    summary: Option<Value>,
 ) -> Result<(), ErrorData> {
     let conn = connect()?;
+    let summary_json =
+        summary.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "{}".to_string()));
+
     conn.execute(
         "INSERT OR REPLACE INTO sui_pending_confirmations
-         (id, tx_bytes_b64, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tool_context)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7)",
+         (id, tx_bytes_b64, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tool_context, summary_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8)",
         rusqlite::params![
             id,
             tx_bytes_b64,
@@ -162,6 +174,7 @@ pub fn insert_pending(
             expires_at_ms as i64,
             tx_summary_hash,
             tool_context,
+            summary_json,
         ],
     )
     .map_err(|e| ErrorData {
@@ -176,7 +189,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<SuiPendin
     let mut stmt = conn
         .prepare(
             "SELECT id, tx_bytes_b64, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash,
-                    status, digest, last_error
+                    status, digest, last_error, tool_context, summary_json
              FROM sui_pending_confirmations
              WHERE id=?1",
         )
@@ -242,6 +255,16 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<SuiPendin
             message: Cow::from(format!("Failed to decode row field 8: {}", e)),
             data: None,
         })?;
+        let tool_context: Option<String> = r.get(9).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode row field 9: {}", e)),
+            data: None,
+        })?;
+        let summary_json: Option<String> = r.get(10).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode row field 10: {}", e)),
+            data: None,
+        })?;
 
         return Ok(Some(SuiPendingRow {
             id,
@@ -253,6 +276,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<SuiPendin
             status: status.unwrap_or_else(|| "pending".to_string()),
             digest,
             last_error,
+            tool_context,
+            summary_json,
         }));
     }
 
