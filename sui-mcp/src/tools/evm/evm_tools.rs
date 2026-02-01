@@ -3516,7 +3516,7 @@ fn abi_entry_json(
         };
 
         // Basic sender mismatch protection.
-        if request.allow_sender_mismatch.unwrap_or(false) == false {
+        if !request.allow_sender_mismatch.unwrap_or(false) {
             let wallet_addr = ethers::signers::Signer::address(&wallet);
             if wallet_addr != from {
                 return Err(ErrorData {

@@ -850,13 +850,26 @@
             if result.execution_error_source.is_some()
                 && !allow_preflight_failure.unwrap_or(false)
             {
+                let msg = result
+                    .execution_error_source
+                    .as_deref()
+                    .unwrap_or("dry-run failed (missing execution_error_source)");
+                self.write_audit_log(
+                    context,
+                    json!({
+                        "event": "dry_run_failed",
+                        "message": msg,
+                        "allow_preflight_failure": allow_preflight_failure.unwrap_or(false),
+                        "sender": signer.to_string(),
+                    }),
+                );
                 return Err(ErrorData {
                     code: ErrorCode(-32603),
-                    message: Cow::from(format!(
-                        "Dry-run failed: {}",
-                        result.execution_error_source.as_ref().unwrap()
-                    )),
-                    data: None,
+                    message: Cow::from(format!("Dry-run failed: {}", msg)),
+                    data: Some(json!({
+                        "dry_run": result,
+                        "note": "Set allow_preflight_failure=true to proceed anyway"
+                    })),
                 });
             }
             Some(result)
