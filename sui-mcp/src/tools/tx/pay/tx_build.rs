@@ -1468,14 +1468,21 @@
                     }),
                 );
 
-                let summary = Self::summarize_transaction(&result);
+                let execution_summary = Self::summarize_transaction(&result);
+                let stored_summary = row
+                    .summary_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str::<Value>(s).ok());
+
                 let response = Self::pretty_json(&json!({
                     "status": "sent",
                     "confirmation_id": row.id,
                     "digest": result.digest,
+                    "tool_context": row.tool_context,
+                    "summary": stored_summary,
                     "dry_run": preflight,
                     "result": result,
-                    "summary": summary
+                    "execution_summary": execution_summary
                 }))?;
                 Ok(CallToolResult::success(vec![Content::text(response)]))
             }
@@ -1703,6 +1710,11 @@
                     "status": row.status,
                     "digest": row.digest,
                     "last_error": row.last_error,
+                    "tool_context": row.tool_context,
+                    "summary": row
+                        .summary_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str::<Value>(s).ok()),
                 })),
             });
         }
@@ -1767,14 +1779,21 @@
                     }),
                 );
 
-                let summary = Self::summarize_transaction(&result);
+                let execution_summary = Self::summarize_transaction(&result);
+                let stored_summary = row
+                    .summary_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str::<Value>(s).ok());
+
                 let response = Self::pretty_json(&json!({
                     "status": "sent",
                     "confirmation_id": row.id,
                     "digest": result.digest,
+                    "tool_context": row.tool_context,
+                    "summary": stored_summary,
                     "dry_run": preflight,
                     "result": result,
-                    "summary": summary
+                    "execution_summary": execution_summary
                 }))?;
                 Ok(CallToolResult::success(vec![Content::text(response)]))
             }
@@ -1792,7 +1811,29 @@
                 }
 
                 let _ = crate::utils::sui_confirm_store::mark_failed(&conn, &row.id, &e.message);
-                Err(e)
+
+                self.write_audit_log(
+                    "sui_retry_pending_confirmation",
+                    json!({
+                        "event": "failed",
+                        "confirmation_id": row.id,
+                        "error": e.message,
+                    }),
+                );
+
+                Err(ErrorData {
+                    code: e.code,
+                    message: e.message,
+                    data: Some(json!({
+                        "confirmation_id": row.id,
+                        "tool_context": row.tool_context,
+                        "summary": row
+                            .summary_json
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str::<Value>(s).ok()),
+                        "note": "Retry execution failed. Check last_dry_run_* fields in DB or re-run with preflight=true for more context."
+                    })),
+                })
             }
         }
     }
