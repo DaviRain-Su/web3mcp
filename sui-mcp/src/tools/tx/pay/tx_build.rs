@@ -206,13 +206,7 @@
         &self,
         Parameters(request): Parameters<ExecutePaySuiRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !request.confirm.unwrap_or(false) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("pay_sui requires confirm=true"),
-                data: None,
-            });
-        }
+        // NOTE: safe-default confirmation handling happens after tx_data is built.
         let (tx_data, _) = self
             .build_pay_sui_data(
                 &request.sender,
@@ -222,6 +216,49 @@
                 request.gas_budget,
             )
             .await?;
+
+        if !request.confirm.unwrap_or(false) {
+            // Safe default: create a pending confirmation instead of broadcasting.
+            let tx_bytes_b64 = Self::encode_tx_bytes(&tx_data)?;
+            let tx_bytes = Self::decode_base64("tx_bytes", &tx_bytes_b64)?;
+
+            let created = crate::utils::evm_confirm_store::now_ms();
+            let ttl = crate::utils::sui_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+            let hash = crate::utils::sui_confirm_store::tx_summary_hash(&tx_bytes);
+
+            // short id: sui_confirm_<16hex>
+            let seed = format!(
+                "{}:{}:{}:{}",
+                created,
+                request.sender,
+                request.recipients.len(),
+                hash
+            );
+            let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
+            let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
+
+            crate::utils::sui_confirm_store::insert_pending(
+                &confirmation_id,
+                &tx_bytes_b64,
+                created,
+                expires,
+                &hash,
+                "execute_pay_sui",
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "expires_in_ms": ttl,
+                "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
+                "next": {
+                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                }
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
         let signer = if let Some(signer) = request.signer.as_deref() {
@@ -1161,6 +1198,122 @@
             }),
         );
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Confirm and execute a previously prepared Sui transaction.
+    #[tool(description = "Sui: confirm and execute a pending transaction created by a safe-default tool (e.g. execute_pay_sui without confirm)")]
+    async fn sui_confirm_execution(
+        &self,
+        Parameters(request): Parameters<SuiConfirmExecutionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = crate::utils::sui_confirm_store::connect()?;
+        crate::utils::sui_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
+
+        let row = crate::utils::sui_confirm_store::get_row(&conn, &request.id)?.ok_or_else(|| {
+            ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Unknown or expired confirmation_id"),
+                data: None,
+            }
+        })?;
+
+        if row.status != "pending" {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Confirmation not pending (status={})",
+                    row.status
+                )),
+                data: Some(json!({
+                    "status": row.status,
+                    "digest": row.digest,
+                    "last_error": row.last_error,
+                })),
+            });
+        }
+
+        if row.tx_summary_hash != request.tx_summary_hash {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("tx_summary_hash mismatch; rebuild and confirm again"),
+                data: Some(json!({
+                    "expected": row.tx_summary_hash,
+                    "provided": request.tx_summary_hash,
+                })),
+            });
+        }
+
+        let tx_bytes = Self::decode_base64("tx_bytes", &row.tx_bytes_b64)?;
+        let tx_data: TransactionData = bcs::from_bytes(&tx_bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid transaction bytes: {}", e)),
+            data: None,
+        })?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(s) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(s))?
+        } else {
+            tx_data.sender()
+        };
+
+        // Mark as consumed before signing/broadcast (best-effort).
+        crate::utils::sui_confirm_store::mark_consumed(&conn, &row.id)?;
+
+        let sent = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data,
+                request.allow_sender_mismatch,
+                Some(request.preflight.unwrap_or(true)),
+                request.allow_preflight_failure,
+                "sui_confirm_execution",
+            )
+            .await;
+
+        match sent {
+            Ok((result, preflight)) => {
+                let digest = result.digest.to_string();
+                let _ = crate::utils::sui_confirm_store::mark_sent(&conn, &row.id, &digest);
+
+                self.write_audit_log(
+                    "sui_confirm_execution",
+                    json!({
+                        "event": "sent",
+                        "confirmation_id": row.id,
+                        "digest": result.digest,
+                        "signer": signer.to_string(),
+                    }),
+                );
+
+                let summary = Self::summarize_transaction(&result);
+                let response = Self::pretty_json(&json!({
+                    "status": "sent",
+                    "confirmation_id": row.id,
+                    "digest": result.digest,
+                    "dry_run": preflight,
+                    "result": result,
+                    "summary": summary
+                }))?;
+                Ok(CallToolResult::success(vec![Content::text(response)]))
+            }
+            Err(e) => {
+                let _ = crate::utils::sui_confirm_store::mark_failed(&conn, &row.id, &e.message);
+                self.write_audit_log(
+                    "sui_confirm_execution",
+                    json!({
+                        "event": "failed",
+                        "confirmation_id": row.id,
+                        "error": e.message,
+                    }),
+                );
+                Err(e)
+            }
+        }
     }
 
     /// Build a stake transaction

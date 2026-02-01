@@ -15,8 +15,12 @@ pub mod evm_calldata;
 #[path = "utils/evm_confirm_ux.rs"]
 pub mod evm_confirm_ux;
 
+#[path = "utils/sui_confirm_store.rs"]
+pub mod sui_confirm_store;
+
 pub mod utils {
     pub use crate::evm_calldata;
     pub use crate::evm_confirm_store;
     pub use crate::evm_confirm_ux;
+    pub use crate::sui_confirm_store;
 }

@@ -6,5 +6,6 @@ pub mod evm_confirm_store;
 pub mod evm_confirm_ux;
 pub mod json;
 pub mod network;
+pub mod sui_confirm_store;
 pub mod sui_parse;
 pub mod token_registry;

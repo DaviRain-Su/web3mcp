@@ -879,8 +879,30 @@ pub struct ExecutePaySuiRequest {
     pub preflight: Option<bool>,
     #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
     pub allow_preflight_failure: Option<bool>,
-    #[schemars(description = "Confirm sensitive action (required)")]
+    #[schemars(
+        description = "Confirm sensitive action (required). If false, a confirmation_id is returned."
+    )]
     pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SuiConfirmExecutionRequest {
+    #[schemars(description = "Confirmation id (sui_confirm_...)")]
+    pub id: String,
+    #[schemars(description = "Tx summary hash (0x...) to prevent stale/changed tx")]
+    pub tx_summary_hash: String,
+    #[schemars(
+        description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
+    )]
+    pub keystore_path: Option<String>,
+    #[schemars(description = "Signer address or alias (optional; defaults to tx sender)")]
+    pub signer: Option<String>,
+    #[schemars(description = "Allow signer to differ from transaction sender (default: false)")]
+    pub allow_sender_mismatch: Option<bool>,
+    #[schemars(description = "Run dry-run before execution at confirm-time (default: true)")]
+    pub preflight: Option<bool>,
+    #[schemars(description = "Allow execution even if dry-run fails (default: false)")]
+    pub allow_preflight_failure: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
