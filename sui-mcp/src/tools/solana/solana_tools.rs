@@ -3888,11 +3888,22 @@
                 };
                 out.push(line);
 
+                let labeled: Vec<Value> = program_ids_unknown
+                    .iter()
+                    .map(|p| {
+                        json!({
+                            "pubkey": p,
+                            "label": Self::solana_known_program_label(p)
+                        })
+                    })
+                    .collect();
+
                 warnings.push(json!({
                     "kind": "unknown_program",
                     "severity": "high",
                     "count": program_ids_unknown.len(),
                     "program_ids": program_ids_unknown,
+                    "programs": labeled,
                     "note": "This transaction calls one or more unknown programs. Only confirm if you trust the source and understand what it does."
                 }));
             }
