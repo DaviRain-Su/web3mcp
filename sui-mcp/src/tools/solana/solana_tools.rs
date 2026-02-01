@@ -99,6 +99,39 @@
         }
     }
 
+    fn solana_jup_swap_direction(swap_dbg: &str) -> Option<String> {
+        // Extract direction-like booleans from the Debug string.
+        // We keep this intentionally lightweight (string contains checks).
+        if swap_dbg.contains("a_to_b: true") {
+            Some("a_to_b".to_string())
+        } else if swap_dbg.contains("a_to_b: false") {
+            Some("b_to_a".to_string())
+        } else if swap_dbg.contains("x_to_y: true") {
+            Some("x_to_y".to_string())
+        } else if swap_dbg.contains("x_to_y: false") {
+            Some("y_to_x".to_string())
+        } else if swap_dbg.contains("is_quote_to_base: true") {
+            Some("quote_to_base".to_string())
+        } else if swap_dbg.contains("is_quote_to_base: false") {
+            Some("base_to_quote".to_string())
+        } else if swap_dbg.contains("is_base_to_quote: false") {
+            Some("quote_to_base".to_string())
+        } else {
+            None
+        }
+    }
+
+    fn solana_jup_swap_side(swap_dbg: &str) -> Option<&'static str> {
+        // For orderbook-style swaps (Serum/OpenBook/Phoenix), Carbon's Debug includes side.
+        if swap_dbg.contains("side: Bid") {
+            Some("bid")
+        } else if swap_dbg.contains("side: Ask") {
+            Some("ask")
+        } else {
+            None
+        }
+    }
+
     fn solana_rpc_url_for_network(network: Option<&str>) -> Result<String, ErrorData> {
         // Priority:
         // 1) SOLANA_RPC_URL (explicit override)
@@ -3359,6 +3392,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3412,6 +3447,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3464,6 +3501,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3511,6 +3550,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3560,6 +3601,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3607,6 +3650,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "percent": s.percent,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3660,6 +3705,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3709,6 +3756,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3735,6 +3784,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
@@ -3761,6 +3812,8 @@
                                                 "i": i,
                                                 "swap": swap_dbg,
                                                 "dex": Self::solana_jup_swap_dex_label(&swap_dbg),
+                                                "direction": Self::solana_jup_swap_direction(&swap_dbg),
+                                                "side": Self::solana_jup_swap_side(&swap_dbg),
                                                 "bps": s.bps,
                                                 "input_index": s.input_index,
                                                 "output_index": s.output_index
