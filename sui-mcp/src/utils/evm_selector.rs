@@ -125,6 +125,60 @@ pub fn classify_calldata(data_hex: &str) -> Option<Value> {
             }
         }
 
+        // Permit2 permit:
+        // - permit(address owner, PermitSingle permitSingle, bytes signature) => 0x2b67b570
+        //   PermitSingle = (PermitDetails details,address spender,uint256 sigDeadline)
+        //   PermitDetails = (address token,uint160 amount,uint48 expiration,uint48 nonce)
+        "2b67b570" => {
+            // selector + owner + details.token + details.amount + details.expiration + details.nonce + spender + sigDeadline + signature(offset...)
+            if hexs.len() < 8 + 64 * 8 {
+                Some(json!({"label":"permit2_permit_single","selector":sel}))
+            } else {
+                let owner = format!("0x{}", hexs[8 + 24..8 + 64].to_lowercase());
+                let token = format!("0x{}", hexs[8 + 64 + 24..8 + 64 + 64].to_lowercase());
+                let amount_hex = format!("0x{}", &hexs[8 + 64 * 2..8 + 64 * 3]);
+                let expiration_hex = format!("0x{}", &hexs[8 + 64 * 3..8 + 64 * 4]);
+                let nonce_hex = format!("0x{}", &hexs[8 + 64 * 4..8 + 64 * 5]);
+                let spender = format!("0x{}", hexs[8 + 64 * 5 + 24..8 + 64 * 6].to_lowercase());
+                let sig_deadline_hex = format!("0x{}", &hexs[8 + 64 * 6..8 + 64 * 7]);
+                Some(json!({
+                    "label": "permit2_permit_single",
+                    "selector": sel,
+                    "owner": owner,
+                    "token": token,
+                    "amount_hex": amount_hex,
+                    "expiration_hex": expiration_hex,
+                    "nonce_hex": nonce_hex,
+                    "spender": spender,
+                    "sig_deadline_hex": sig_deadline_hex,
+                    "signature": "dynamic_bytes"
+                }))
+            }
+        }
+
+        // Permit2 permitBatch:
+        // - permit(address owner, PermitBatch permitBatch, bytes signature) => 0x2a2d80d1
+        //   PermitBatch = (PermitDetails[] details,address spender,uint256 sigDeadline)
+        // We decode only owner/spender/sigDeadline here; details is dynamic array.
+        "2a2d80d1" => {
+            if hexs.len() < 8 + 64 * 3 {
+                Some(json!({"label":"permit2_permit_batch","selector":sel}))
+            } else {
+                let owner = format!("0x{}", hexs[8 + 24..8 + 64].to_lowercase());
+                let spender = format!("0x{}", hexs[8 + 64 + 24..8 + 64 + 64].to_lowercase());
+                let sig_deadline_hex = format!("0x{}", &hexs[8 + 64 * 2..8 + 64 * 3]);
+                Some(json!({
+                    "label": "permit2_permit_batch",
+                    "selector": sel,
+                    "owner": owner,
+                    "spender": spender,
+                    "sig_deadline_hex": sig_deadline_hex,
+                    "details": "dynamic_array",
+                    "signature": "dynamic_bytes"
+                }))
+            }
+        }
+
         _ => Some(json!({"label":"unknown","selector":sel})),
     }
 }
