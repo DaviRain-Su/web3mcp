@@ -798,6 +798,7 @@
                                     &mut data,
                                     json!({
                                         "decision": "approve_spender_mismatch",
+                                        "decision_label": "approve_spender_mismatch",
                                         "expected_spender": expected,
                                         "got_spender": spender,
                                     }),
@@ -848,6 +849,7 @@
                                         &mut data,
                                         json!({
                                             "decision": "approve_amount_too_small",
+                                            "decision_label": "approve_amount_too_small",
                                             "approve_amount_raw": amount_u256.to_string(),
                                             "required_raw": required_u256.to_string(),
                                         }),
@@ -919,6 +921,7 @@
                                 &mut resp,
                                 json!({
                                     "decision": "approve_skipped",
+                                    "decision_label": "approve_skipped",
                                     "allowance_raw": allowance_raw.to_string(),
                                     "required_raw": required.to_string(),
                                 }),
