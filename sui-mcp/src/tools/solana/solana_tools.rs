@@ -3952,6 +3952,10 @@
             "replace_recent_blockhash": replace,
             "tx_bytes_len": tx_bytes.len(),
             "program_ids": program_ids,
+            "programs_labeled": program_ids.iter().map(|p| json!({
+                "pubkey": p,
+                "label": Self::solana_known_program_label(p)
+            })).collect::<Vec<Value>>(),
             "program_ids_unknown": program_ids_unknown,
             "summary_lines": summary_lines,
             "risk_warnings": warnings,
