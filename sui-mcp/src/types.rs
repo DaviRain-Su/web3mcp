@@ -312,8 +312,26 @@ pub struct EvmSendRawTransactionRequest {
 pub struct EvmSpeedUpTxRequest {
     #[schemars(description = "Chain id")]
     pub chain_id: u64,
-    #[schemars(description = "Pending transaction hash to speed up")]
-    pub tx_hash: String,
+
+    #[schemars(description = "Pending transaction hash to speed up (preferred)")]
+    pub tx_hash: Option<String>,
+
+    #[schemars(description = "Alternative: tx.from (0x...) when tx_hash is unavailable")]
+    pub from: Option<String>,
+    #[schemars(description = "Alternative: tx nonce (u64) when tx_hash is unavailable")]
+    pub nonce: Option<u64>,
+    #[schemars(description = "Alternative: tx.to (0x...) when tx_hash is unavailable")]
+    pub to: Option<String>,
+    #[schemars(description = "Alternative: tx.value_wei (decimal) when tx_hash is unavailable")]
+    pub value_wei: Option<String>,
+    #[schemars(description = "Alternative: tx.data_hex (0x...) when tx_hash is unavailable")]
+    pub data_hex: Option<String>,
+
+    #[schemars(
+        description = "If true, avoid changing anything except fees (may skip preflight if gas_limit already known)"
+    )]
+    pub strict: Option<bool>,
+
     #[schemars(description = "Fee bump multiplier in basis points (default 12000 = +20%)")]
     pub fee_bump_bps: Option<u64>,
     #[schemars(description = "Override maxFeePerGas (wei) (decimal or 0x)")]
@@ -326,8 +344,20 @@ pub struct EvmSpeedUpTxRequest {
 pub struct EvmCancelTxRequest {
     #[schemars(description = "Chain id")]
     pub chain_id: u64,
-    #[schemars(description = "Pending transaction hash to cancel")]
-    pub tx_hash: String,
+
+    #[schemars(description = "Pending transaction hash to cancel (preferred)")]
+    pub tx_hash: Option<String>,
+
+    #[schemars(description = "Alternative: tx.from (0x...) when tx_hash is unavailable")]
+    pub from: Option<String>,
+    #[schemars(description = "Alternative: tx nonce (u64) when tx_hash is unavailable")]
+    pub nonce: Option<u64>,
+
+    #[schemars(
+        description = "If true, avoid changing anything except fees (may skip preflight if gas_limit already known)"
+    )]
+    pub strict: Option<bool>,
+
     #[schemars(description = "Fee bump multiplier in basis points (default 13000 = +30%)")]
     pub fee_bump_bps: Option<u64>,
 }

@@ -3735,33 +3735,88 @@ fn abi_entry_json(
         Parameters(request): Parameters<EvmSpeedUpTxRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let provider = self.evm_provider(request.chain_id).await?;
-        let h = Self::parse_evm_h256(&request.tx_hash)?;
-        let tx = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction(&provider, h)
-            .await
-            .map_err(|e| Self::sdk_error("evm_speed_up_tx:get_transaction", e))?
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Transaction not found by hash"),
-                data: None,
-            })?;
 
-        let from = tx.from;
-        let nonce = tx.nonce;
+        let strict = request.strict.unwrap_or(false);
 
-        // Build base request
-        let to = tx.to.unwrap_or(from);
-        let value = tx.value;
-        let data_hex = Some(format!("0x{}", hex::encode(tx.input.0.clone())));
+        // Source tx fields
+        let (from, nonce, to, value, data_hex, gas_limit_from_tx, old_max_fee, old_max_prio, original_tx_hash) =
+            if let Some(tx_hash) = request.tx_hash.as_deref() {
+                let h = Self::parse_evm_h256(tx_hash)?;
+                let tx = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction(&provider, h)
+                    .await
+                    .map_err(|e| Self::sdk_error("evm_speed_up_tx:get_transaction", e))?
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("Transaction not found by hash"),
+                        data: None,
+                    })?;
+
+                let from = tx.from;
+                let nonce = tx.nonce;
+                let to = tx.to.unwrap_or(from);
+                let value = tx.value;
+                let data_hex = Some(format!("0x{}", hex::encode(tx.input.0.clone())));
+                let gas_limit_from_tx = tx.gas.as_u64();
+
+                // old fee hints from tx if present
+                let old_max_fee = tx.max_fee_per_gas.or(tx.gas_price);
+                let old_max_prio = tx.max_priority_fee_per_gas;
+
+                (
+                    from,
+                    nonce,
+                    to,
+                    value,
+                    data_hex,
+                    Some(gas_limit_from_tx),
+                    old_max_fee,
+                    old_max_prio,
+                    Some(tx_hash.to_string()),
+                )
+            } else {
+                // from+nonce mode (requires full tx payload for speed-up)
+                let from = Self::parse_evm_address(
+                    request.from.as_deref().ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("Missing tx_hash or from"),
+                        data: None,
+                    })?,
+                )?;
+                let nonce = ethers::types::U256::from(
+                    request.nonce.ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("Missing nonce"),
+                        data: None,
+                    })?,
+                );
+                let to = Self::parse_evm_address(
+                    request.to.as_deref().ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(
+                            "Missing to (required when tx_hash is not provided)",
+                        ),
+                        data: None,
+                    })?,
+                )?;
+                let value = Self::parse_evm_u256(
+                    "value_wei",
+                    request.value_wei.as_deref().unwrap_or("0"),
+                )?;
+                let data_hex = Some(request.data_hex.clone().unwrap_or_else(|| "0x".to_string()));
+                (from, nonce, to, value, data_hex, None, None, None, None)
+            };
 
         // Fee suggestions (best-effort): use legacy gas_price and convert into EIP-1559 params.
         let gas_price = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_gas_price(&provider)
             .await
             .unwrap_or_else(|_| ethers::types::U256::from(0));
         let suggested_max_fee = gas_price.checked_mul(ethers::types::U256::from(2)).unwrap_or(gas_price);
-        let suggested_max_prio = gas_price.checked_div(ethers::types::U256::from(10)).unwrap_or(ethers::types::U256::from(0));
+        let suggested_max_prio = gas_price
+            .checked_div(ethers::types::U256::from(10))
+            .unwrap_or(ethers::types::U256::from(0));
 
-        let old_max_fee = tx.max_fee_per_gas.unwrap_or(tx.gas_price.unwrap_or(gas_price));
-        let old_max_prio = tx.max_priority_fee_per_gas.unwrap_or(ethers::types::U256::from(0));
+        let old_max_fee = old_max_fee.unwrap_or(gas_price);
+        let old_max_prio = old_max_prio.unwrap_or(ethers::types::U256::from(0));
 
         let bump_bps = request.fee_bump_bps.unwrap_or(12_000);
 
@@ -3788,18 +3843,24 @@ fn abi_entry_json(
             max_priority_fee_per_gas_wei: Some(max_prio.to_string()),
         };
 
-        // Preflight for gas limit and sanity.
-        let pre = self.evm_preflight(Parameters(EvmPreflightRequest { tx: tx_req })).await?;
-        let pre_json = Self::evm_extract_first_json(&pre).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from("Failed to parse evm_preflight response"),
-            data: None,
-        })?;
-        let tx_final: EvmTxRequest = serde_json::from_value(pre_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
-            code: ErrorCode(-32603),
-            message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
-            data: None,
-        })?;
+        let tx_final: EvmTxRequest = if strict && gas_limit_from_tx.is_some() {
+            let mut t = tx_req;
+            t.gas_limit = gas_limit_from_tx;
+            t
+        } else {
+            // Preflight for gas limit and sanity.
+            let pre = self.evm_preflight(Parameters(EvmPreflightRequest { tx: tx_req })).await?;
+            let pre_json = Self::evm_extract_first_json(&pre).ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Failed to parse evm_preflight response"),
+                data: None,
+            })?;
+            serde_json::from_value(pre_json.get("tx").cloned().unwrap_or(Value::Null)).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
+                data: None,
+            })?
+        };
 
         let confirmation_id = format!("evm_replace_{}_{}", crate::utils::evm_confirm_store::now_ms(), nonce);
         let ttl = crate::utils::evm_confirm_store::default_ttl_ms();
@@ -3812,17 +3873,18 @@ fn abi_entry_json(
             "evm_speed_up_tx",
             json!({
                 "event": "pending",
-                "original_tx_hash": request.tx_hash,
+                "original_tx_hash": original_tx_hash,
                 "confirmation_id": confirmation_id,
                 "nonce": nonce.as_u64(),
                 "max_fee_per_gas_wei": tx_final.max_fee_per_gas_wei,
                 "max_priority_fee_per_gas_wei": tx_final.max_priority_fee_per_gas_wei,
+                "strict": strict,
             }),
         );
 
         let response = Self::pretty_json(&json!({
             "status": "pending",
-            "original_tx_hash": request.tx_hash,
+            "original_tx_hash": original_tx_hash,
             "confirmation_id": confirmation_id,
             "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final),
             "tx_summary_hash": hash,
@@ -3830,7 +3892,8 @@ fn abi_entry_json(
             "web3mcp": {
                 "debug": {
                     "decision": "evm_speed_up_tx",
-                    "decision_label": "evm_speed_up_tx"
+                    "decision_label": "evm_speed_up_tx",
+                    "strict": strict
                 }
             },
             "next": {
@@ -3846,27 +3909,56 @@ fn abi_entry_json(
         Parameters(request): Parameters<EvmCancelTxRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let provider = self.evm_provider(request.chain_id).await?;
-        let h = Self::parse_evm_h256(&request.tx_hash)?;
-        let tx = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction(&provider, h)
-            .await
-            .map_err(|e| Self::sdk_error("evm_cancel_tx:get_transaction", e))?
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Transaction not found by hash"),
-                data: None,
-            })?;
 
-        let from = tx.from;
-        let nonce = tx.nonce;
+        let strict = request.strict.unwrap_or(false);
+
+        let (from, nonce, old_max_fee, old_max_prio, original_tx_hash) = if let Some(tx_hash) = request.tx_hash.as_deref() {
+            let h = Self::parse_evm_h256(tx_hash)?;
+            let tx = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction(&provider, h)
+                .await
+                .map_err(|e| Self::sdk_error("evm_cancel_tx:get_transaction", e))?
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Transaction not found by hash"),
+                    data: None,
+                })?;
+            (
+                tx.from,
+                tx.nonce,
+                tx.max_fee_per_gas.or(tx.gas_price),
+                tx.max_priority_fee_per_gas,
+                Some(tx_hash.to_string()),
+            )
+        } else {
+            let from = Self::parse_evm_address(
+                request.from.as_deref().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Missing tx_hash or from"),
+                    data: None,
+                })?,
+            )?;
+            let nonce = ethers::types::U256::from(
+                request.nonce.ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Missing nonce"),
+                    data: None,
+                })?,
+            );
+            (from, nonce, None, None, None)
+        };
 
         let gas_price = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_gas_price(&provider)
             .await
             .unwrap_or_else(|_| ethers::types::U256::from(0));
-        let suggested_max_fee = gas_price.checked_mul(ethers::types::U256::from(2)).unwrap_or(gas_price);
-        let suggested_max_prio = gas_price.checked_div(ethers::types::U256::from(10)).unwrap_or(ethers::types::U256::from(0));
+        let suggested_max_fee = gas_price
+            .checked_mul(ethers::types::U256::from(2))
+            .unwrap_or(gas_price);
+        let suggested_max_prio = gas_price
+            .checked_div(ethers::types::U256::from(10))
+            .unwrap_or(ethers::types::U256::from(0));
 
-        let old_max_fee = tx.max_fee_per_gas.unwrap_or(tx.gas_price.unwrap_or(gas_price));
-        let old_max_prio = tx.max_priority_fee_per_gas.unwrap_or(ethers::types::U256::from(0));
+        let old_max_fee = old_max_fee.unwrap_or(gas_price);
+        let old_max_prio = old_max_prio.unwrap_or(ethers::types::U256::from(0));
 
         let bump_bps = request.fee_bump_bps.unwrap_or(13_000);
         let max_fee = crate::utils::evm_tx_replace::bump_u256(Some(old_max_fee), Some(suggested_max_fee), bump_bps);
@@ -3907,17 +3999,18 @@ fn abi_entry_json(
             "evm_cancel_tx",
             json!({
                 "event": "pending",
-                "original_tx_hash": request.tx_hash,
+                "original_tx_hash": original_tx_hash,
                 "confirmation_id": confirmation_id,
                 "nonce": nonce.as_u64(),
                 "max_fee_per_gas_wei": tx_final.max_fee_per_gas_wei,
                 "max_priority_fee_per_gas_wei": tx_final.max_priority_fee_per_gas_wei,
+                "strict": strict,
             }),
         );
 
         let response = Self::pretty_json(&json!({
             "status": "pending",
-            "original_tx_hash": request.tx_hash,
+            "original_tx_hash": original_tx_hash,
             "confirmation_id": confirmation_id,
             "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx_final),
             "tx_summary_hash": hash,
@@ -3925,7 +4018,8 @@ fn abi_entry_json(
             "web3mcp": {
                 "debug": {
                     "decision": "evm_cancel_tx",
-                    "decision_label": "evm_cancel_tx"
+                    "decision_label": "evm_cancel_tx",
+                    "strict": strict
                 }
             },
             "next": {
