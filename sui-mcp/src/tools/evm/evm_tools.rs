@@ -173,7 +173,7 @@
 
         let mut items: Vec<Value> = Vec::new();
 
-        let mut sql = "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json, raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed FROM evm_pending_confirmations".to_string();
+        let mut sql = "SELECT id, chain_id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error, tx_json, raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed, expected_spender, required_allowance_raw, expected_token, approve_confirmation_id, swap_confirmation_id FROM evm_pending_confirmations".to_string();
         let mut params: Vec<rusqlite::types::Value> = Vec::new();
         let mut where_clauses: Vec<String> = Vec::new();
 
@@ -215,6 +215,11 @@
                 let signed_at_ms: Option<i64> = row.get(11)?;
                 let second_confirm_token: Option<String> = row.get(12)?;
                 let second_confirmed: Option<i64> = row.get(13)?;
+                let expected_spender: Option<String> = row.get(14)?;
+                let required_allowance_raw: Option<String> = row.get(15)?;
+                let expected_token: Option<String> = row.get(16)?;
+                let approve_confirmation_id: Option<String> = row.get(17)?;
+                let swap_confirmation_id: Option<String> = row.get(18)?;
                 Ok((
                     id,
                     chain_id,
@@ -230,6 +235,11 @@
                     signed_at_ms,
                     second_confirm_token,
                     second_confirmed,
+                    expected_spender,
+                    required_allowance_raw,
+                    expected_token,
+                    approve_confirmation_id,
+                    swap_confirmation_id,
                 ))
             })
             .map_err(|e| ErrorData {
@@ -251,6 +261,10 @@
                 .and_then(|t| t.data_hex.as_deref())
                 .and_then(crate::utils::evm_selector::classify_calldata);
 
+            let summary = tx
+                .as_ref()
+                .map(crate::utils::evm_confirm_store::tx_summary_for_response);
+
             items.push(json!({
                 "id": r.0,
                 "chain_id": r.1,
@@ -266,7 +280,15 @@
                 "second_confirm_token": r.12,
                 "second_confirmed": r.13.map(|v| v == 1).unwrap_or(false),
                 "tx_summary_hash": r.5,
-                "tx_summary": tx.as_ref().map(crate::utils::evm_confirm_store::tx_summary_for_response),
+                "summary": summary,
+                "tx_summary": summary,
+                "tool_context": json!({
+                    "expected_spender": r.14,
+                    "required_allowance_raw": r.15,
+                    "expected_token": r.16,
+                    "approve_confirmation_id": r.17,
+                    "swap_confirmation_id": r.18,
+                }),
                 "calldata": calldata
             }));
         }
@@ -311,6 +333,7 @@
                 "second_confirmed": r.second_confirmed,
                 "tx_summary_hash": r.tx_summary_hash,
                 "tx": r.tx,
+                "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&r.tx),
                 "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&r.tx),
                 "tool_context": json!({
                     "expected_spender": r.expected_spender,
