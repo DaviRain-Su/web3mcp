@@ -76,6 +76,7 @@ mod router_prelude;
 mod server;
 mod sui;
 mod types;
+mod types_solana_idl_dynamic;
 mod utils;
 
 // Bring required identifiers for generated router into scope.
@@ -85,6 +86,7 @@ use router_prelude::*;
 
 pub use server::SuiMcpServer;
 pub use types::*;
+pub use types_solana_idl_dynamic::*;
 
 // AutoFilledMoveCall moved to src/move_auto_fill.rs
 

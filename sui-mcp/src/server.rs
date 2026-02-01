@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use rmcp::handler::server::router::tool::ToolRouter;
+use std::sync::Arc;
 use sui_sdk::{SuiClient, SuiClientBuilder};
 
 /// Sui MCP Server - provides tools for interacting with the Sui blockchain via RPC
@@ -8,6 +9,9 @@ pub struct SuiMcpServer {
     pub rpc_url: String,
     pub client: SuiClient,
     pub tool_router: ToolRouter<Self>,
+
+    // In-memory caches
+    pub solana_idl_cache: Arc<crate::utils::solana_idl_cache::SolanaIdlCache>,
 }
 
 impl SuiMcpServer {
@@ -18,6 +22,7 @@ impl SuiMcpServer {
             rpc_url: url,
             client,
             tool_router: Self::tool_router(),
+            solana_idl_cache: Arc::new(crate::utils::solana_idl_cache::SolanaIdlCache::new()),
         })
     }
 

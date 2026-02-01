@@ -344,10 +344,15 @@ pub struct SolanaIdlGetRequest {
 pub struct SolanaIdlPlanInstructionRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
+
+    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    pub idl_id: Option<String>,
+
     #[schemars(description = "Solana program id (base58)")]
     pub program_id: String,
     #[schemars(description = "IDL name/version key")]
     pub name: String,
+
     #[schemars(description = "Instruction name")]
     pub instruction: String,
     #[schemars(description = "Optional args object (name->value)")]
@@ -362,10 +367,15 @@ pub struct SolanaIdlPlanInstructionRequest {
 pub struct SolanaIdlBuildInstructionRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
+
+    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    pub idl_id: Option<String>,
+
     #[schemars(description = "Solana program id (base58)")]
     pub program_id: String,
     #[schemars(description = "IDL name/version key")]
     pub name: String,
+
     #[schemars(description = "Instruction name")]
     pub instruction: String,
     #[schemars(description = "Args object (name->value)")]
@@ -380,6 +390,10 @@ pub struct SolanaIdlBuildInstructionRequest {
 pub struct SolanaIdlExecuteRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
+
+    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    pub idl_id: Option<String>,
+
     #[schemars(description = "Solana program id (base58)")]
     pub program_id: String,
     #[schemars(description = "IDL name/version key")]
@@ -436,6 +450,9 @@ pub struct SolanaIdlSimulateInstructionRequest {
     // Back-compat fields
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
+
+    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    pub idl_id: Option<String>,
 
     #[schemars(description = "Solana program id (base58)")]
     pub program_id: String,

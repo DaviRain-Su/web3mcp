@@ -5150,6 +5150,185 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    // ---------------- Solana IDL (Dynamic + Registry) ----------------
+
+    #[tool(description = "Solana IDL: load an IDL dynamically (json/base64/url/path) into an in-memory cache. Optionally persist to abi_registry.")]
+    async fn solana_idl_load(
+        &self,
+        Parameters(request): Parameters<SolanaIdlLoadRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // load bytes
+        let mut idl_json: Option<String> = None;
+
+        if let Some(s) = request.idl_json.clone().filter(|s| !s.trim().is_empty()) {
+            idl_json = Some(s);
+        } else if let Some(b64) = request.idl_base64.clone().filter(|s| !s.trim().is_empty()) {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(b64.trim())
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid idl_base64: {e}")),
+                    data: None,
+                })?;
+            let s = String::from_utf8(bytes).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("idl_base64 is not valid UTF-8: {e}")),
+                data: None,
+            })?;
+            idl_json = Some(s);
+        } else if let Some(url) = request.idl_url.clone().filter(|s| !s.trim().is_empty()) {
+            let url = url.trim().to_string();
+            let resp = reqwest::Client::new()
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| Self::sdk_error("solana_idl_load", e))?;
+            let status = resp.status();
+            let body = resp.text().await.map_err(|e| Self::sdk_error("solana_idl_load", e))?;
+            if !status.is_success() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to fetch idl_url (status={status}): {url}")),
+                    data: Some(json!({"status": status.as_u16(), "url": url})),
+                });
+            }
+            idl_json = Some(body);
+        } else if let Some(path) = request.idl_path.clone().filter(|s| !s.trim().is_empty()) {
+            let data = std::fs::read_to_string(path.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to read idl_path: {e}")),
+                data: Some(json!({"path": path})),
+            })?;
+            idl_json = Some(data);
+        }
+
+        let idl_json = idl_json.ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Provide one of: idl_json|idl_base64|idl_url|idl_path"),
+            data: None,
+        })?;
+
+        let idl: Value = serde_json::from_str(&idl_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid IDL JSON: {e}")),
+            data: None,
+        })?;
+
+        // compute stable id
+        let hash = solana_sdk::hash::hash(idl_json.as_bytes()).to_string();
+        let idl_id = format!("idl_{}", &hash[..16]);
+
+        self.solana_idl_cache.put(idl_id.clone(), idl.clone());
+
+        // optional persist to registry
+        let persisted = request.persist.unwrap_or(false);
+        let mut persisted_path: Option<String> = None;
+        let mut persisted_name: Option<String> = None;
+        let mut persisted_program_id: Option<String> = None;
+
+        if persisted {
+            let program_id = request
+                .program_id
+                .as_deref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("persist=true requires program_id"),
+                    data: None,
+                })?;
+            let program_id = Self::solana_parse_program_id(&program_id)?.to_string();
+
+            let inferred = crate::utils::solana_idl_registry::infer_name_from_idl_json(&idl)
+                .unwrap_or_else(|| "default".to_string());
+            let name_raw = request.name.clone().unwrap_or(inferred);
+            let name = crate::utils::solana_idl_registry::sanitize_name(&name_raw);
+
+            let overwrite = request.overwrite.unwrap_or(false);
+            let path = crate::utils::solana_idl_registry::write_idl(&program_id, &name, &idl, overwrite)?;
+
+            persisted_path = Some(path.to_string_lossy().to_string());
+            persisted_name = Some(name);
+            persisted_program_id = Some(program_id);
+        }
+
+        let response = Self::pretty_json(&json!({
+            "status": "ok",
+            "idl_id": idl_id,
+            "program_id": request.program_id,
+            "persisted": persisted,
+            "persisted_program_id": persisted_program_id,
+            "persisted_name": persisted_name,
+            "persisted_path": persisted_path
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: unload an in-memory IDL handle")]
+    async fn solana_idl_unload(
+        &self,
+        Parameters(request): Parameters<SolanaIdlUnloadRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let removed = self.solana_idl_cache.remove(request.idl_id.trim());
+        let response = Self::pretty_json(&json!({
+            "status": "ok",
+            "idl_id": request.idl_id,
+            "removed": removed
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana IDL: list instructions for an in-memory IDL handle")]
+    async fn solana_idl_list_instructions(
+        &self,
+        Parameters(request): Parameters<SolanaIdlListInstructionsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let idl = self
+            .solana_idl_cache
+            .get(request.idl_id.trim())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Unknown idl_id (not loaded)") ,
+                data: Some(json!({"idl_id": request.idl_id})),
+            })?;
+
+        let instructions = idl
+            .get("instructions")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let out: Vec<Value> = instructions
+            .iter()
+            .filter_map(|ix| {
+                let name = ix.get("name")?.as_str()?.to_string();
+                let accounts_len = ix
+                    .get("accounts")
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let args = ix
+                    .get("args")
+                    .and_then(|a| a.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                Some(json!({
+                    "name": name,
+                    "accounts_len": accounts_len,
+                    "args": args
+                }))
+            })
+            .collect();
+
+        let response = Self::pretty_json(&json!({
+            "status": "ok",
+            "idl_id": request.idl_id,
+            "count": out.len(),
+            "instructions": out
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     // ---------------- Solana IDL Registry ----------------
 
     #[tool(description = "Solana IDL Registry: register an IDL JSON under abi_registry/solana/<program_id>/<name>.json")]
@@ -5346,7 +5525,18 @@
         let name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
         let instruction = request.instruction.trim().to_string();
 
-        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &name)?;
+        let idl = if let Some(ref idl_id) = request.idl_id {
+            self.solana_idl_cache
+                .get(idl_id.trim())
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Unknown idl_id (not loaded)"),
+                    data: Some(json!({"idl_id": idl_id})),
+                })?
+        } else {
+            crate::utils::solana_idl_registry::read_idl(&program_id, &name)?
+        };
+
         let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction)?;
 
         let args_obj = request.args.unwrap_or_else(|| json!({}));
@@ -5663,7 +5853,17 @@
         let name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
         let instruction = request.instruction.trim().to_string();
 
-        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &name)?;
+        let idl = if let Some(ref idl_id) = request.idl_id {
+            self.solana_idl_cache
+                .get(idl_id.trim())
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Unknown idl_id (not loaded)"),
+                    data: Some(json!({"idl_id": idl_id})),
+                })?
+        } else {
+            crate::utils::solana_idl_registry::read_idl(&program_id, &name)?
+        };
         let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction)?;
 
         let args_obj = request.args;
@@ -5783,13 +5983,24 @@
         let network_str = network.unwrap_or("mainnet").to_string();
         let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
 
+        // Program id is always required for building the Instruction (program_id field), even if IDL is loaded dynamically.
         let program_id_pk = Self::solana_parse_program_id(request.program_id.trim())?;
         let program_id = program_id_pk.to_string();
         let idl_name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
         let instruction_name = request.instruction.trim().to_string();
 
         // 1) Build instruction (IDL)
-        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &idl_name)?;
+        let idl = if let Some(ref idl_id) = request.idl_id {
+            self.solana_idl_cache
+                .get(idl_id.trim())
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Unknown idl_id (not loaded)"),
+                    data: Some(json!({"idl_id": idl_id})),
+                })?
+        } else {
+            crate::utils::solana_idl_registry::read_idl(&program_id, &idl_name)?
+        };
         let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction_name)?;
 
         // args in order
@@ -6064,13 +6275,24 @@
         let network_str = request.network.clone().unwrap_or("mainnet".to_string());
         let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
 
+        // Program id is always required for building the Instruction (program_id field), even if IDL is loaded dynamically.
         let program_id_pk = Self::solana_parse_program_id(request.program_id.trim())?;
         let program_id = program_id_pk.to_string();
         let idl_name = crate::utils::solana_idl_registry::sanitize_name(request.name.trim());
         let instruction_name = request.instruction.trim().to_string();
 
         // 1) Build instruction (IDL)
-        let idl = crate::utils::solana_idl_registry::read_idl(&program_id, &idl_name)?;
+        let idl = if let Some(ref idl_id) = request.idl_id {
+            self.solana_idl_cache
+                .get(idl_id.trim())
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Unknown idl_id (not loaded)"),
+                    data: Some(json!({"idl_id": idl_id})),
+                })?
+        } else {
+            crate::utils::solana_idl_registry::read_idl(&program_id, &idl_name)?
+        };
         let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, &instruction_name)?;
 
         // args in order
