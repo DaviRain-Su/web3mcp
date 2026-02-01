@@ -1136,6 +1136,20 @@
                 .ok();
             }
 
+            if n.contains("ed25519") || n.contains("ed_25519") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "Ed25519SigVerify111111111111111111111111111",
+                )
+                .ok();
+            }
+
+            if n.contains("secp256k1") || n.contains("secp_256k1") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "KeccakSecp256k11111111111111111111111111111",
+                )
+                .ok();
+            }
+
             // Sysvars (note: these are accounts, not programs, but the hint is still useful)
             if n == "rent" || n.contains("sysvarrent") {
                 return solana_sdk::pubkey::Pubkey::from_str(
