@@ -84,31 +84,90 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
     })?;
 
     // Migrations: add new columns if missing.
-    // We ignore "duplicate column name" (idempotent), but surface other migration errors.
-    for stmt in [
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN updated_at_ms INTEGER",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN status TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN tx_hash TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN last_error TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN raw_tx_prefix TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN signed_at_ms INTEGER",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirm_token TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirmed INTEGER",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_spender TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN required_allowance_raw TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_token TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN approve_confirmation_id TEXT",
-        "ALTER TABLE evm_pending_confirmations ADD COLUMN swap_confirmation_id TEXT",
-    ] {
-        if let Err(e) = conn.execute(stmt, []) {
-            let msg = e.to_string().to_lowercase();
-            if !msg.contains("duplicate column") {
-                return Err(ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("SQLite migration failed: {} ({})", stmt, e)),
-                    data: None,
-                });
-            }
+    // Use PRAGMA table_info to avoid depending on sqlite error strings.
+    let mut existing_cols = std::collections::HashSet::<String>::new();
+    {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(evm_pending_confirmations)")
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to prepare PRAGMA table_info: {}", e)),
+                data: None,
+            })?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to query PRAGMA table_info: {}", e)),
+                data: None,
+            })?;
+        for name in rows.flatten() {
+            existing_cols.insert(name);
+        }
+    }
+
+    let migrations: [(&str, &str); 13] = [
+        (
+            "updated_at_ms",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN updated_at_ms INTEGER",
+        ),
+        (
+            "status",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN status TEXT",
+        ),
+        (
+            "tx_hash",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN tx_hash TEXT",
+        ),
+        (
+            "last_error",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN last_error TEXT",
+        ),
+        (
+            "raw_tx_prefix",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN raw_tx_prefix TEXT",
+        ),
+        (
+            "signed_at_ms",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN signed_at_ms INTEGER",
+        ),
+        (
+            "second_confirm_token",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirm_token TEXT",
+        ),
+        (
+            "second_confirmed",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN second_confirmed INTEGER",
+        ),
+        (
+            "expected_spender",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_spender TEXT",
+        ),
+        (
+            "required_allowance_raw",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN required_allowance_raw TEXT",
+        ),
+        (
+            "expected_token",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_token TEXT",
+        ),
+        (
+            "approve_confirmation_id",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN approve_confirmation_id TEXT",
+        ),
+        (
+            "swap_confirmation_id",
+            "ALTER TABLE evm_pending_confirmations ADD COLUMN swap_confirmation_id TEXT",
+        ),
+    ];
+
+    for (col, stmt) in migrations {
+        if !existing_cols.contains(col) {
+            conn.execute(stmt, []).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("SQLite migration failed: {} ({})", stmt, e)),
+                data: None,
+            })?;
         }
     }
 

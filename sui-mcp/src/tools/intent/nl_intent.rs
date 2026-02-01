@@ -712,6 +712,21 @@
                                         }),
                                     );
 
+                                    self.write_audit_log(
+                                        "evm_confirm_execution",
+                                        json!({
+                                            "event": "blocked",
+                                            "reason": "allowance_insufficient",
+                                            "confirmation_id": id,
+                                            "token": expected_token,
+                                            "spender": spender,
+                                            "allowance_raw": allowance_raw.to_string(),
+                                            "required_raw": required.to_string(),
+                                            "approve_confirmation_id": row.approve_confirmation_id,
+                                            "approve_status": approve_status,
+                                        }),
+                                    );
+
                                     return Err(ErrorData {
                                         code: ErrorCode(-32602),
                                         message: Cow::from(d.message),
@@ -761,13 +776,40 @@
                                         expected, spender
                                     ),
                                 );
+                                let mut data = json!({
+                                    "status": "failed",
+                                    "reason": "approve_spender_mismatch",
+                                    "expected_spender": expected,
+                                    "got_spender": spender,
+                                });
+                                crate::utils::evm_confirm_ux::attach_web3mcp_debug(
+                                    &mut data,
+                                    json!({
+                                        "decision": "approve_spender_mismatch",
+                                        "expected_spender": expected,
+                                        "got_spender": spender,
+                                    }),
+                                );
+
+                                // Audit
+                                self.write_audit_log(
+                                    "evm_confirm_execution",
+                                    json!({
+                                        "event": "blocked",
+                                        "reason": "approve_spender_mismatch",
+                                        "confirmation_id": id,
+                                        "expected_spender": expected,
+                                        "got_spender": spender,
+                                    }),
+                                );
+
                                 return Err(ErrorData {
                                     code: ErrorCode(-32602),
                                     message: Cow::from(format!(
                                         "Approve spender mismatch: expected {} but tx approves {}",
                                         expected, spender
                                     )),
-                                    data: None,
+                                    data: Some(data),
                                 });
                             }
                         }
@@ -784,18 +826,39 @@
                                             amount_u256, required_u256
                                         ),
                                     );
+                                    let mut data = json!({
+                                        "status": "failed",
+                                        "reason": "approve_amount_too_small",
+                                        "approve_amount_raw": amount_u256.to_string(),
+                                        "required_raw": required_u256.to_string(),
+                                    });
+                                    crate::utils::evm_confirm_ux::attach_web3mcp_debug(
+                                        &mut data,
+                                        json!({
+                                            "decision": "approve_amount_too_small",
+                                            "approve_amount_raw": amount_u256.to_string(),
+                                            "required_raw": required_u256.to_string(),
+                                        }),
+                                    );
+
+                                    self.write_audit_log(
+                                        "evm_confirm_execution",
+                                        json!({
+                                            "event": "blocked",
+                                            "reason": "approve_amount_too_small",
+                                            "confirmation_id": id,
+                                            "approve_amount_raw": amount_u256.to_string(),
+                                            "required_raw": required_u256.to_string(),
+                                        }),
+                                    );
+
                                     return Err(ErrorData {
                                         code: ErrorCode(-32602),
                                         message: Cow::from(format!(
                                             "Approve amount too small ({} < {}). Please rebuild approve.",
                                             amount_u256, required_u256
                                         )),
-                                        data: Some(json!({
-                                            "status": "failed",
-                                            "reason": "approve_amount_too_small",
-                                            "approve_amount_raw": amount_u256.to_string(),
-                                            "required_raw": required_u256.to_string(),
-                                        })),
+                                        data: Some(data),
                                     });
                                 }
                             }
@@ -840,6 +903,28 @@
                                 "spender": spender,
                                 "token": token_addr
                             });
+                            crate::utils::evm_confirm_ux::attach_web3mcp_debug(
+                                &mut resp,
+                                json!({
+                                    "decision": "approve_skipped",
+                                    "allowance_raw": allowance_raw.to_string(),
+                                    "required_raw": required.to_string(),
+                                }),
+                            );
+
+                            self.write_audit_log(
+                                "evm_confirm_execution",
+                                json!({
+                                    "event": "skipped",
+                                    "reason": "allowance_sufficient",
+                                    "confirmation_id": id,
+                                    "allowance_raw": allowance_raw.to_string(),
+                                    "required_raw": required.to_string(),
+                                    "spender": spender,
+                                    "token": token_addr,
+                                }),
+                            );
+
 
                             // If this approve is linked to a swap, provide the next confirm command.
                             if let Some(swap_id) = row.swap_confirmation_id.as_deref() {
