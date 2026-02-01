@@ -461,6 +461,76 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    async fn solana_wait_for_signature(
+        client: &solana_client::nonblocking::rpc_client::RpcClient,
+        sig: &solana_sdk::signature::Signature,
+        commitment: &str,
+        timeout_ms: u64,
+    ) -> Result<serde_json::Value, ErrorData> {
+        use solana_transaction_status::TransactionConfirmationStatus as Tcs;
+
+        let want = commitment.trim().to_lowercase();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+
+        loop {
+            let res = client
+                .get_signature_statuses(&[*sig])
+                .await
+                .map_err(|e| Self::sdk_error("solana_wait_for_signature", e))?;
+
+            let st = res.value.get(0).cloned().unwrap_or(None);
+            if let Some(s) = st {
+                if let Some(err) = s.err {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Transaction failed"),
+                        data: Some(json!({"signature": sig.to_string(), "err": err})),
+                    });
+                }
+
+                let level_ok = match want.as_str() {
+                    "processed" => true,
+                    "confirmed" => matches!(s.confirmation_status, Some(Tcs::Confirmed | Tcs::Finalized)),
+                    "finalized" => matches!(s.confirmation_status, Some(Tcs::Finalized)),
+                    _ => true,
+                };
+
+                if level_ok {
+                    return Ok(json!({
+                        "signature": sig.to_string(),
+                        "confirmation_status": s.confirmation_status,
+                        "confirmations": s.confirmations,
+                        "slot": s.slot,
+                        "status": "ok"
+                    }));
+                }
+            }
+
+            if std::time::Instant::now() >= deadline {
+                return Ok(json!({
+                    "signature": sig.to_string(),
+                    "status": "timeout"
+                }));
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        }
+    }
+
+    fn solana_try_sign_if_needed(
+        tx: &mut solana_sdk::transaction::Transaction,
+        kp: Option<&solana_sdk::signature::Keypair>,
+    ) {
+        if let Some(k) = kp {
+            // If signatures are missing or default, attempt to sign.
+            let all_default = tx.signatures.iter().all(|s| *s == solana_sdk::signature::Signature::default());
+            if tx.signatures.is_empty() || all_default {
+                let bh = tx.message.recent_blockhash;
+                tx.sign(&[k], bh);
+            }
+        }
+    }
+
     #[tool(description = "Solana: build a (optionally signed) transaction from one or more instructions")]
     async fn solana_tx_build(
         &self,
@@ -576,6 +646,208 @@
             "instructions": ix_summaries,
             "transaction_base64": tx_base64,
             "transaction_bytes_len": tx_bytes.len(),
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: send a transaction (safe default: creates pending confirmation unless confirm=true)")]
+    async fn solana_send_transaction(
+        &self,
+        Parameters(request): Parameters<SolanaSendTransactionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref();
+        let rpc_url = Self::solana_rpc_url_for_network(network)?;
+
+        let tx_bytes = base64::engine::general_purpose::STANDARD
+            .decode(request.transaction_base64.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction_base64: {}", e)),
+                data: None,
+            })?;
+
+        let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+        if !request.confirm.unwrap_or(false) {
+            // Safe default: do not broadcast.
+            let created = crate::utils::solana_confirm_store::now_ms();
+            let ttl = crate::utils::solana_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+
+            let id_seed = format!("{}:{}", created, hash);
+            let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+            let confirmation_id = format!("solana_confirm_{}", &id_suffix[..16]);
+
+            let summary = json!({
+                "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                "rpc_url": rpc_url,
+                "tx_bytes_len": tx_bytes.len(),
+            });
+
+            crate::utils::solana_confirm_store::insert_pending(
+                &confirmation_id,
+                request.transaction_base64.trim(),
+                created,
+                expires,
+                &hash,
+                "solana_send_transaction",
+                Some(summary.clone()),
+            )?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "summary": summary,
+                "expires_in_ms": ttl,
+                "note": "Not broadcast. Call solana_confirm_transaction to broadcast and wait.",
+                "next": {
+                    "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let client = Self::solana_rpc(network)?;
+
+        let mut tx: solana_sdk::transaction::Transaction =
+            bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction bytes: {}", e)),
+                data: None,
+            })?;
+
+        // Try to sign if needed and keypair is available.
+        let kp = Self::solana_keypair_path()
+            .ok()
+            .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+        Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
+
+        let skip_preflight = request.skip_preflight.unwrap_or(false);
+        let sig = client
+            .send_transaction_with_config(
+                &tx,
+                solana_client::rpc_config::RpcSendTransactionConfig {
+                    skip_preflight,
+                    preflight_commitment: Some(
+                        Self::solana_commitment_from_str(request.commitment.as_deref())?.commitment,
+                    ),
+                    encoding: None,
+                    max_retries: None,
+                    min_context_slot: None,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_send_transaction", e))?;
+
+        let timeout_ms = request.timeout_ms.unwrap_or(60_000);
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+
+        let response = Self::pretty_json(&json!({
+            "status": "sent",
+            "rpc_url": rpc_url,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "signature": sig.to_string(),
+            "tx_summary_hash": hash,
+            "skip_preflight": skip_preflight,
+            "commitment": commitment,
+            "wait": waited
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: confirm and broadcast a pending transaction created by solana_send_transaction")]
+    async fn solana_confirm_transaction(
+        &self,
+        Parameters(request): Parameters<SolanaConfirmTransactionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // Best-effort cleanup
+        let _ = crate::utils::solana_confirm_store::cleanup_expired();
+
+        let pending = crate::utils::solana_confirm_store::get_pending(&request.id)?;
+        if pending.tx_summary_hash != request.hash {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Hash mismatch for confirmation id"),
+                data: Some(json!({
+                    "id": request.id,
+                    "expected": pending.tx_summary_hash,
+                    "provided": request.hash
+                })),
+            });
+        }
+
+        let network = request
+            .network
+            .clone()
+            .or_else(|| pending.summary.as_ref().and_then(|v| v.get("network").and_then(|x| x.as_str()).map(|s| s.to_string())))
+            .unwrap_or("mainnet".to_string());
+
+        let rpc_url = Self::solana_rpc_url_for_network(Some(&network))?;
+        let client = Self::solana_rpc(Some(&network))?;
+
+        let tx_bytes = base64::engine::general_purpose::STANDARD
+            .decode(pending.tx_base64.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid stored tx_base64: {}", e)),
+                data: None,
+            })?;
+
+        let mut tx: solana_sdk::transaction::Transaction =
+            bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid stored transaction bytes: {}", e)),
+                data: None,
+            })?;
+
+        // Sign if needed.
+        let kp_path = Self::solana_keypair_path().ok();
+        let kp = kp_path
+            .as_deref()
+            .and_then(|p| Self::solana_read_keypair_from_json_file(p).ok());
+        Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
+
+        let skip_preflight = request.skip_preflight.unwrap_or(false);
+        let sig = client
+            .send_transaction_with_config(
+                &tx,
+                solana_client::rpc_config::RpcSendTransactionConfig {
+                    skip_preflight,
+                    preflight_commitment: Some(
+                        Self::solana_commitment_from_str(request.commitment.as_deref())?.commitment,
+                    ),
+                    encoding: None,
+                    max_retries: None,
+                    min_context_slot: None,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_confirm_transaction", e))?;
+
+        let timeout_ms = request.timeout_ms.unwrap_or(60_000);
+        let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+
+        // If we got ok, remove pending; if timeout, keep it for retry.
+        if waited.get("status").and_then(|v| v.as_str()) == Some("ok") {
+            let _ = crate::utils::solana_confirm_store::remove_pending(&request.id);
+        }
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": network,
+            "confirmation_id": request.id,
+            "tx_summary_hash": request.hash,
+            "signature": sig.to_string(),
+            "skip_preflight": skip_preflight,
+            "commitment": commitment,
+            "wait": waited,
+            "note": "If wait.status==timeout you can call solana_confirm_transaction again with same id/hash."
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))

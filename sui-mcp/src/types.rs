@@ -482,6 +482,38 @@ pub struct SolanaTxBuildRequest {
     pub sign: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaSendTransactionRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Transaction bytes (base64). Can be signed or unsigned")]
+    pub transaction_base64: String,
+    #[schemars(description = "If true, broadcast immediately; if false (default), create a pending confirmation")]
+    pub confirm: Option<bool>,
+    #[schemars(description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)")]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaConfirmTransactionRequest {
+    #[schemars(description = "Confirmation id returned by solana_send_transaction")]
+    pub id: String,
+    #[schemars(description = "tx_summary_hash returned by solana_send_transaction")]
+    pub hash: String,
+    #[schemars(description = "Network override: mainnet|devnet|testnet (optional; default from stored request context if available; otherwise mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Commitment to wait for: processed|confirmed|finalized (default confirmed)")]
+    pub commitment: Option<String>,
+    #[schemars(description = "Skip preflight (default false)")]
+    pub skip_preflight: Option<bool>,
+    #[schemars(description = "Optional timeout in ms for confirmation wait (default 60000)")]
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvmTxRequest {
     #[schemars(description = "Chain id")]

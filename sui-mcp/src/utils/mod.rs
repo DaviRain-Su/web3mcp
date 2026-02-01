@@ -13,3 +13,4 @@ pub mod sui_parse;
 pub mod token_registry;
 pub mod solana_idl_registry;
 pub mod solana_idl;
+pub mod solana_confirm_store;
