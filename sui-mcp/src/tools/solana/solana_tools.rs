@@ -3652,6 +3652,63 @@
             details_instructions.push(detail);
         }
 
+        // Post-process summary_lines: compact noisy lines (esp. ComputeBudget)
+        {
+            let mut cu_limit: Option<String> = None;
+            let mut cu_price: Option<String> = None;
+            let mut heap: Option<String> = None;
+            let mut data_limit: Option<String> = None;
+
+            let mut out: Vec<String> = Vec::new();
+            for s in summary_lines.into_iter() {
+                if let Some(v) = s.strip_prefix("ComputeBudget: CU limit = ") {
+                    cu_limit = Some(v.trim().to_string());
+                    continue;
+                }
+                if let Some(v) = s.strip_prefix("ComputeBudget: CU price = ") {
+                    // Keep only the number (drop trailing unit if present)
+                    cu_price = Some(v.replace(" micro-lamports", "").trim().to_string());
+                    continue;
+                }
+                if let Some(v) = s.strip_prefix("ComputeBudget: heap frame = ") {
+                    heap = Some(v.trim().to_string());
+                    continue;
+                }
+                if let Some(v) = s.strip_prefix("ComputeBudget: loaded accounts data limit = ") {
+                    data_limit = Some(v.trim().to_string());
+                    continue;
+                }
+                if s.starts_with("ComputeBudget") {
+                    // Drop other compute budget noise (unable to decode etc.)
+                    continue;
+                }
+
+                // De-dupe exact duplicates while preserving order
+                if !out.contains(&s) {
+                    out.push(s);
+                }
+            }
+
+            let mut cb_parts: Vec<String> = Vec::new();
+            if let Some(v) = cu_limit {
+                cb_parts.push(format!("cu_limit={}", v));
+            }
+            if let Some(v) = cu_price {
+                cb_parts.push(format!("cu_price_micro_lamports={}", v));
+            }
+            if let Some(v) = heap {
+                cb_parts.push(format!("heap_frame={}", v));
+            }
+            if let Some(v) = data_limit {
+                cb_parts.push(format!("loaded_accounts_data_limit={}", v));
+            }
+            if !cb_parts.is_empty() {
+                out.insert(0, format!("ComputeBudget: {}", cb_parts.join(", ")));
+            }
+
+            summary_lines = out;
+        }
+
         // Store pending confirmation (5min default)
         let created = crate::utils::solana_confirm_store::now_ms();
         let ttl_default = 5 * 60 * 1000;
