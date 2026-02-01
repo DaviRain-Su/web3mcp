@@ -3245,15 +3245,27 @@
                 // Full decoding requires Jupiter-specific instruction layouts (often Anchor-encoded).
                 // For now, provide wallet-like clarity without guessing amounts.
                 detail["kind"] = json!("jupiter_v6");
-                detail["note"] = json!("Jupiter router instruction (swap/route). Full decoding not implemented.");
+                detail["note"] = json!("Jupiter router instruction (Anchor-encoded). Decoding is best-effort.");
                 detail["accounts_len"] = json!(ci.accounts.len());
+
+                // Anchor programs typically prefix instruction data with an 8-byte discriminator.
+                if ci.data.len() >= 8 {
+                    let disc8 = &ci.data[0..8];
+                    let disc_u64 = u64::from_le_bytes(disc8.try_into().unwrap());
+                    detail["anchor_discriminator_u64_le"] = json!(disc_u64.to_string());
+                    detail["anchor_discriminator_hex"] = json!(disc8.iter().map(|b| format!("{:02x}", b)).collect::<String>());
+                    detail["anchor_discriminator_base64"] = json!(base64::engine::general_purpose::STANDARD.encode(disc8));
+                    detail["anchor_args_len"] = json!(ci.data.len().saturating_sub(8));
+                }
+
+                // Keep a short prefix for debugging/mapping
                 detail["data_prefix_base64"] = json!(
                     base64::engine::general_purpose::STANDARD
                         .encode(ci.data.iter().take(16).copied().collect::<Vec<u8>>())
                 );
 
                 summary_lines.push(format!(
-                    "Jupiter: route/swap (accounts={}, data_len={})",
+                    "Jupiter: Anchor ix (accounts={}, data_len={})",
                     ci.accounts.len(),
                     ci.data.len()
                 ));
