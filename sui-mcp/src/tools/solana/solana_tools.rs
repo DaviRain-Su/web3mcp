@@ -3638,12 +3638,19 @@
                         }
                     }
                     _ => {
-                        summary_lines.push("System Program instruction".to_string());
-                        detail["kind"] = json!("system_program");
+                        if let Some(d) = discr {
+                            summary_lines.push(format!("System Program instruction (discriminant={})", d));
+                            detail["kind"] = json!("system_program_unknown");
+                            detail["discriminant"] = json!(d);
+                        } else {
+                            summary_lines.push("System Program instruction".to_string());
+                            detail["kind"] = json!("system_program_unknown");
+                        }
+
                         warnings.push(json!({
                             "kind": "system_program",
-                            "severity": "medium",
-                            "note": "This transaction calls the System Program (may transfer SOL or create accounts)."
+                            "severity": "low",
+                            "note": "System Program instruction was not fully decoded. Review details before confirming."
                         }));
                     }
                 }
