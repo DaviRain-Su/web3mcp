@@ -1079,6 +1079,53 @@
             }));
         }
 
+        fn solana_is_default_pubkey(pk: &solana_sdk::pubkey::Pubkey) -> bool {
+            *pk == solana_sdk::pubkey::Pubkey::default()
+        }
+
+        fn expected_program_id_for_account_name(name: &str) -> Option<solana_sdk::pubkey::Pubkey> {
+            // Heuristics to help users avoid placeholder/mistmatched program ids.
+            let n = name.to_lowercase();
+            if n.contains("systemprogram") {
+                // System Program
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "11111111111111111111111111111111",
+                )
+                .ok();
+            }
+            if n == "tokenprogram" || n.contains("spltokenprogram") || n.contains("token_program") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                )
+                .ok();
+            }
+            if n.contains("token2022") || n.contains("token_2022") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                )
+                .ok();
+            }
+            if n.contains("associatedtokenprogram") || n.contains("associated_token_program") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+                )
+                .ok();
+            }
+            None
+        }
+
+        // Always provide offline hints about expected programs (when detectable).
+        let mut hints: Vec<Value> = Vec::new();
+        for a in &ix.accounts {
+            let expected = expected_program_id_for_account_name(&a.name).map(|p| p.to_string());
+            if expected.is_some() {
+                hints.push(json!({
+                    "name": a.name,
+                    "expected_program_id": expected
+                }));
+            }
+        }
+
         let validate = request.validate_on_chain.unwrap_or(false);
         let mut onchain: Option<Value> = None;
         if validate {
@@ -1089,10 +1136,44 @@
             for a in &ix.accounts {
                 if let Some(pk_str) = accounts_obj.get(&a.name).and_then(|v| v.as_str()) {
                     let pk = Self::solana_parse_pubkey(pk_str, &format!("account:{}", a.name))?;
-                    let acc = client
-                        .get_account(&pk)
-                        .await
-                        .ok();
+                    let acc = client.get_account(&pk).await.ok();
+
+                    let mut warnings: Vec<Value> = Vec::new();
+                    if solana_is_default_pubkey(&pk) {
+                        warnings.push(json!({
+                            "kind": "placeholder_pubkey",
+                            "message": "pubkey is 111111... (default). This is almost never valid for real instructions"
+                        }));
+                    }
+                    if a.is_signer && solana_is_default_pubkey(&pk) {
+                        warnings.push(json!({
+                            "kind": "signer_placeholder",
+                            "message": "signer account is placeholder (111111...). Provide a real signer pubkey"
+                        }));
+                    }
+
+                    if let Some(expected_pid) = expected_program_id_for_account_name(&a.name) {
+                        if pk != expected_pid {
+                            warnings.push(json!({
+                                "kind": "program_id_mismatch",
+                                "message": "account name suggests this should be a well-known program id",
+                                "expected": expected_pid.to_string()
+                            }));
+                        }
+                    }
+
+                    // If it's expected to be a program, it should be executable.
+                    if expected_program_id_for_account_name(&a.name).is_some() {
+                        if let Some(ref aa) = acc {
+                            if !aa.executable {
+                                warnings.push(json!({
+                                    "kind": "expected_executable",
+                                    "message": "expected executable program account, but executable=false"
+                                }));
+                            }
+                        }
+                    }
+
                     checks.push(json!({
                         "name": a.name,
                         "pubkey": pk.to_string(),
@@ -1101,6 +1182,7 @@
                         "lamports": acc.as_ref().map(|x| x.lamports),
                         "data_len": acc.as_ref().map(|x| x.data.len()),
                         "executable": acc.as_ref().map(|x| x.executable),
+                        "warnings": warnings
                     }));
                 } else {
                     checks.push(json!({
@@ -1112,9 +1194,7 @@
                 }
             }
 
-            onchain = Some(json!({
-                "checks": checks
-            }));
+            onchain = Some(json!({ "checks": checks }));
         }
 
         let response = Self::pretty_json(&json!({
@@ -1129,6 +1209,7 @@
                 "args": missing_args,
                 "accounts": missing_accounts
             },
+            "hints": hints,
             "validate_on_chain": validate,
             "onchain": onchain,
             "tool_context": json!({
