@@ -2403,11 +2403,30 @@
         let mut suggested_cu_price: Option<u64> = None;
         let mut price_sample: Option<Value> = None;
         if suggest_price {
-            // Best-effort: use recent prioritization fees for empty address set.
-            if let Ok(fees) = client.get_recent_prioritization_fees(&[]).await {
+            // Prefer account-scoped fees if the caller provided addresses.
+            let addr_strs: Vec<String> = cfg
+                .as_ref()
+                .and_then(|c| c.simulate_accounts.clone())
+                .unwrap_or_default();
+
+            let addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
+                .iter()
+                .filter_map(|s| solana_sdk::pubkey::Pubkey::from_str(s.trim()).ok())
+                .collect();
+
+            let fees_res = if !addrs.is_empty() {
+                client.get_recent_prioritization_fees(&addrs).await
+            } else {
+                // fallback: cluster-wide sample
+                client.get_recent_prioritization_fees(&[]).await
+            };
+
+            if let Ok(fees) = fees_res {
                 let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
                 suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
                 price_sample = Some(json!({
+                    "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
+                    "addresses_count": addrs.len(),
                     "count": fees.len(),
                     "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
                     "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
@@ -2588,10 +2607,28 @@
         let mut suggested_cu_price: Option<u64> = None;
         let mut price_sample: Option<Value> = None;
         if suggest_price {
-            if let Ok(fees) = client.get_recent_prioritization_fees(&[]).await {
+            let addr_strs: Vec<String> = cfg
+                .as_ref()
+                .and_then(|c| c.simulate_accounts.clone())
+                .unwrap_or_default();
+
+            let addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
+                .iter()
+                .filter_map(|s| solana_sdk::pubkey::Pubkey::from_str(s.trim()).ok())
+                .collect();
+
+            let fees_res = if !addrs.is_empty() {
+                client.get_recent_prioritization_fees(&addrs).await
+            } else {
+                client.get_recent_prioritization_fees(&[]).await
+            };
+
+            if let Ok(fees) = fees_res {
                 let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
                 suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
                 price_sample = Some(json!({
+                    "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
+                    "addresses_count": addrs.len(),
                     "count": fees.len(),
                     "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
                     "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
