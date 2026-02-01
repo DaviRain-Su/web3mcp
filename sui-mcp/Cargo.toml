@@ -41,6 +41,8 @@ solana-client = "3.1.8"
 solana-sdk = "3.0.0"
 solana-transaction-status = "3.1.8"
 solana-compute-budget-interface = "3.0.0"
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 bs58 = "0.5"
 solana-commitment-config = { version = "3.1.0", features = ["serde"] }
 solana-rpc-client-api = "3.1.8"
