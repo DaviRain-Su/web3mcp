@@ -701,12 +701,26 @@
                                         }
                                     }
 
+                                    let mut msg = format!(
+                                        "Allowance insufficient ({} < {}). Please confirm the approve tx first.",
+                                        allowance_raw, required
+                                    );
+                                    if let Some(obj) = data.as_object() {
+                                        if obj
+                                            .get("approve_status")
+                                            .and_then(Value::as_str)
+                                            == Some("sent")
+                                        {
+                                            msg = format!(
+                                                "Allowance insufficient ({} < {}). Approve tx already sent—wait 1-2 blocks, then confirm swap again.",
+                                                allowance_raw, required
+                                            );
+                                        }
+                                    }
+
                                     return Err(ErrorData {
                                         code: ErrorCode(-32602),
-                                        message: Cow::from(format!(
-                                            "Allowance insufficient ({} < {}). Please confirm the approve tx first.",
-                                            allowance_raw, required
-                                        )),
+                                        message: Cow::from(msg),
                                         data: Some(data),
                                     });
                                 }
