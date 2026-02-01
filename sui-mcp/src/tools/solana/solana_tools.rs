@@ -1085,13 +1085,13 @@
 
         fn expected_program_id_for_account_name(name: &str) -> Option<solana_sdk::pubkey::Pubkey> {
             // Heuristics to help users avoid placeholder/mistmatched program ids.
+            // This is intentionally conservative (best-effort hints, not hard validation).
             let n = name.to_lowercase();
-            if n.contains("systemprogram") {
+
+            // Programs
+            if n.contains("systemprogram") || n == "system_program" {
                 // System Program
-                return solana_sdk::pubkey::Pubkey::from_str(
-                    "11111111111111111111111111111111",
-                )
-                .ok();
+                return solana_sdk::pubkey::Pubkey::from_str("11111111111111111111111111111111").ok();
             }
             if n == "tokenprogram" || n.contains("spltokenprogram") || n.contains("token_program") {
                 return solana_sdk::pubkey::Pubkey::from_str(
@@ -1105,23 +1105,72 @@
                 )
                 .ok();
             }
-            if n.contains("associatedtokenprogram") || n.contains("associated_token_program") {
+            if n.contains("associatedtokenprogram")
+                || n.contains("associated_token_program")
+                || n == "ata_program"
+            {
                 return solana_sdk::pubkey::Pubkey::from_str(
                     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
                 )
                 .ok();
             }
+
+            // Sysvars (note: these are accounts, not programs, but the hint is still useful)
+            if n == "rent" || n.contains("sysvarrent") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "SysvarRent111111111111111111111111111111111",
+                )
+                .ok();
+            }
+            if n == "clock" || n.contains("sysvarclock") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "SysvarC1ock11111111111111111111111111111111",
+                )
+                .ok();
+            }
+            if n == "recentblockhashes" || n.contains("sysvarrecentblockhashes") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "SysvarRecentB1ockHashes11111111111111111111",
+                )
+                .ok();
+            }
+            if n == "instructions" || n.contains("sysvarinstructions") {
+                return solana_sdk::pubkey::Pubkey::from_str(
+                    "Sysvar1nstructions1111111111111111111111111",
+                )
+                .ok();
+            }
+
             None
         }
 
-        // Always provide offline hints about expected programs (when detectable).
+        fn hint_for_account_name(name: &str) -> Option<String> {
+            let n = name.to_lowercase();
+            if n.contains("associatedtokenaccount") || n == "ata" || n.ends_with("_ata") {
+                return Some(
+                    "looks like an ATA (Associated Token Account). You typically derive it from (owner,mint[,token_program])."
+                        .to_string(),
+                );
+            }
+            if n.contains("user") && n.contains("token") && n.contains("account") {
+                return Some(
+                    "looks like a user token account. Usually this is an SPL token account (often the ATA)."
+                        .to_string(),
+                );
+            }
+            None
+        }
+
+        // Always provide offline hints (best-effort) to avoid common footguns.
         let mut hints: Vec<Value> = Vec::new();
         for a in &ix.accounts {
             let expected = expected_program_id_for_account_name(&a.name).map(|p| p.to_string());
-            if expected.is_some() {
+            let note = hint_for_account_name(&a.name);
+            if expected.is_some() || note.is_some() {
                 hints.push(json!({
                     "name": a.name,
-                    "expected_program_id": expected
+                    "expected_program_id": expected,
+                    "note": note
                 }));
             }
         }
