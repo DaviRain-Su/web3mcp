@@ -3011,6 +3011,7 @@
             let mut detail = json!({
                 "index": ix_index,
                 "program_id": pid,
+                "program_label": Self::solana_known_program_label(&pid),
                 "accounts": ci.accounts.iter().map(|a| key_of(*a)).collect::<Vec<String>>(),
                 "accounts_labeled": ci.accounts.iter().map(|a| {
                     let pk = key_of(*a);
