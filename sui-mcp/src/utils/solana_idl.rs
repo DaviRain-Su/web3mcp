@@ -25,6 +25,37 @@ pub struct IdlInstruction {
     pub args: Vec<IdlArg>,
 }
 
+fn flatten_idl_accounts(accounts: &Value, out: &mut Vec<IdlAccount>) {
+    // Anchor IDL accounts can be either:
+    // - flat: [{name,isMut,isSigner}, ...]
+    // - nested: [{name, accounts:[...]}, ...]
+    // We'll flatten nested structures (dropping the grouping node).
+    if let Some(arr) = accounts.as_array() {
+        for a in arr {
+            if let Some(inner) = a.get("accounts") {
+                flatten_idl_accounts(inner, out);
+                continue;
+            }
+
+            let name = a
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let is_mut = a.get("isMut").and_then(|v| v.as_bool()).unwrap_or(false);
+            let is_signer = a.get("isSigner").and_then(|v| v.as_bool()).unwrap_or(false);
+            out.push(IdlAccount {
+                name,
+                is_mut,
+                is_signer,
+            });
+        }
+    }
+}
+
 pub fn normalize_idl_instruction(idl: &Value, ix_name: &str) -> Result<IdlInstruction, ErrorData> {
     let ix = idl
         .get("instructions")
@@ -40,30 +71,14 @@ pub fn normalize_idl_instruction(idl: &Value, ix_name: &str) -> Result<IdlInstru
             data: Some(serde_json::json!({"instruction": ix_name})),
         })?;
 
-    let accounts = ix
-        .get("accounts")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from("IDL instruction missing accounts[]"),
-            data: Some(serde_json::json!({"instruction": ix_name})),
-        })?
-        .iter()
-        .map(|a| {
-            let name = a
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let is_mut = a.get("isMut").and_then(|v| v.as_bool()).unwrap_or(false);
-            let is_signer = a.get("isSigner").and_then(|v| v.as_bool()).unwrap_or(false);
-            IdlAccount {
-                name,
-                is_mut,
-                is_signer,
-            }
-        })
-        .collect::<Vec<_>>();
+    let accounts_raw = ix.get("accounts").ok_or_else(|| ErrorData {
+        code: ErrorCode(-32602),
+        message: Cow::from("IDL instruction missing accounts"),
+        data: Some(serde_json::json!({"instruction": ix_name})),
+    })?;
+
+    let mut accounts: Vec<IdlAccount> = Vec::new();
+    flatten_idl_accounts(accounts_raw, &mut accounts);
 
     let args = ix
         .get("args")
@@ -561,5 +576,33 @@ mod tests {
         let c = serde_json::json!({"variant":"C","value":[7,8]});
         let enc = encode_borsh_value(&idl, &serde_json::json!({"defined":"MyEnum"}), &c).unwrap();
         assert_eq!(enc, vec![2u8, 7u8, 8u8]);
+    }
+}
+
+#[cfg(test)]
+mod accounts_flatten_tests {
+    use super::*;
+
+    #[test]
+    fn flatten_nested_accounts() {
+        let idl = serde_json::json!({
+            "instructions": [
+                {
+                    "name": "ix",
+                    "accounts": [
+                        {"name": "a", "isMut": false, "isSigner": false},
+                        {"name": "group", "accounts": [
+                            {"name": "b", "isMut": true, "isSigner": false},
+                            {"name": "c", "isMut": false, "isSigner": true}
+                        ]}
+                    ],
+                    "args": []
+                }
+            ]
+        });
+
+        let ix = normalize_idl_instruction(&idl, "ix").unwrap();
+        let names: Vec<String> = ix.accounts.into_iter().map(|a| a.name).collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
     }
 }
