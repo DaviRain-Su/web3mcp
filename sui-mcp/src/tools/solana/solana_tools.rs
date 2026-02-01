@@ -1239,7 +1239,7 @@
             });
         }
 
-        let data = crate::utils::solana_idl::encode_anchor_ix_data(&ix.name, &args_pairs)?;
+        let data = crate::utils::solana_idl::encode_anchor_ix_data(&idl, &ix.name, &args_pairs)?;
         let data_b64 = base64::engine::general_purpose::STANDARD.encode(&data);
 
         let validate = request.validate_on_chain.unwrap_or(false);
@@ -1360,7 +1360,7 @@
             });
         }
 
-        let data = crate::utils::solana_idl::encode_anchor_ix_data(&ix.name, &args_pairs)?;
+        let data = crate::utils::solana_idl::encode_anchor_ix_data(&idl, &ix.name, &args_pairs)?;
         let data_b64 = base64::engine::general_purpose::STANDARD.encode(&data);
 
         // Optional on-chain checks

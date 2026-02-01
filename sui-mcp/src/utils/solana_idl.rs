@@ -1,7 +1,7 @@
+use base64::Engine;
 use rmcp::model::{ErrorCode, ErrorData};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use base64::Engine;
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -30,8 +30,9 @@ pub fn normalize_idl_instruction(idl: &Value, ix_name: &str) -> Result<IdlInstru
         .get("instructions")
         .and_then(|v| v.as_array())
         .and_then(|arr| {
-            arr.iter()
-                .find(|i| i.get("name").and_then(|n| n.as_str()).map(|s| s == ix_name) == Some(true))
+            arr.iter().find(|i| {
+                i.get("name").and_then(|n| n.as_str()).map(|s| s == ix_name) == Some(true)
+            })
         })
         .ok_or_else(|| ErrorData {
             code: ErrorCode(-32602),
@@ -55,10 +56,7 @@ pub fn normalize_idl_instruction(idl: &Value, ix_name: &str) -> Result<IdlInstru
                 .unwrap_or("")
                 .to_string();
             let is_mut = a.get("isMut").and_then(|v| v.as_bool()).unwrap_or(false);
-            let is_signer = a
-                .get("isSigner")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let is_signer = a.get("isSigner").and_then(|v| v.as_bool()).unwrap_or(false);
             IdlAccount {
                 name,
                 is_mut,
@@ -98,11 +96,15 @@ pub fn anchor_discriminator(ix_name: &str) -> [u8; 8] {
     out
 }
 
-pub fn encode_anchor_ix_data(ix_name: &str, args: &[(IdlArg, Value)]) -> Result<Vec<u8>, ErrorData> {
+pub fn encode_anchor_ix_data(
+    idl: &Value,
+    ix_name: &str,
+    args: &[(IdlArg, Value)],
+) -> Result<Vec<u8>, ErrorData> {
     let mut out = Vec::new();
     out.extend_from_slice(&anchor_discriminator(ix_name));
     for (arg, v) in args {
-        let mut enc = encode_borsh_value(&arg.ty, v)?;
+        let mut enc = encode_borsh_value(idl, &arg.ty, v)?;
         out.append(&mut enc);
     }
     Ok(out)
@@ -150,7 +152,7 @@ fn as_bytes(v: &Value) -> Option<Vec<u8>> {
     None
 }
 
-pub fn encode_borsh_value(ty: &Value, v: &Value) -> Result<Vec<u8>, ErrorData> {
+pub fn encode_borsh_value(idl: &Value, ty: &Value, v: &Value) -> Result<Vec<u8>, ErrorData> {
     // Anchor IDL types:
     // - string literal: "u64" | "bool" | "string" | "publicKey" | "bytes" | ...
     // - object: {"vec": <type>} | {"option": <type>} | {"array": [<type>, <len>]} | {"defined": "Type"}
@@ -166,7 +168,7 @@ pub fn encode_borsh_value(ty: &Value, v: &Value) -> Result<Vec<u8>, ErrorData> {
                 return Ok(vec![0u8]);
             }
             let mut out = vec![1u8];
-            out.extend_from_slice(&encode_borsh_value(inner, v)?);
+            out.extend_from_slice(&encode_borsh_value(idl, inner, v)?);
             return Ok(out);
         }
 
@@ -179,7 +181,7 @@ pub fn encode_borsh_value(ty: &Value, v: &Value) -> Result<Vec<u8>, ErrorData> {
             let mut out = Vec::new();
             out.extend_from_slice(&(arr.len() as u32).to_le_bytes());
             for x in arr {
-                out.extend_from_slice(&encode_borsh_value(inner, x)?);
+                out.extend_from_slice(&encode_borsh_value(idl, inner, x)?);
             }
             return Ok(out);
         }
@@ -196,25 +198,25 @@ pub fn encode_borsh_value(ty: &Value, v: &Value) -> Result<Vec<u8>, ErrorData> {
                 if arr.len() != len {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
-                        message: Cow::from(format!("Expected array length {} but got {}", len, arr.len())),
+                        message: Cow::from(format!(
+                            "Expected array length {} but got {}",
+                            len,
+                            arr.len()
+                        )),
                         data: None,
                     });
                 }
                 let mut out = Vec::new();
                 for x in arr {
-                    out.extend_from_slice(&encode_borsh_value(inner, x)?);
+                    out.extend_from_slice(&encode_borsh_value(idl, inner, x)?);
                 }
                 return Ok(out);
             }
         }
 
         if let Some(def) = obj.get("defined") {
-            // For now: we don't expand custom defined structs/enums.
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("defined types not supported yet (provide primitive/vec/option)"),
-                data: Some(serde_json::json!({"defined": def})),
-            });
+            let name = def.as_str().unwrap_or("");
+            return encode_defined_type(idl, name, v);
         }
     }
 
@@ -225,17 +227,225 @@ pub fn encode_borsh_value(ty: &Value, v: &Value) -> Result<Vec<u8>, ErrorData> {
     })
 }
 
+fn idl_find_defined<'a>(idl: &'a Value, name: &str) -> Option<&'a Value> {
+    idl.get("types")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter().find(|t| {
+                t.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s == name)
+                    .unwrap_or(false)
+            })
+        })
+        .and_then(|t| t.get("type"))
+}
+
+fn encode_defined_type(idl: &Value, name: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
+    let ty = idl_find_defined(idl, name).ok_or_else(|| ErrorData {
+        code: ErrorCode(-32602),
+        message: Cow::from("Unknown defined type in IDL"),
+        data: Some(serde_json::json!({"defined": name})),
+    })?;
+
+    let kind = ty.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+    match kind {
+        "struct" => encode_defined_struct(idl, name, ty, v),
+        "enum" => encode_defined_enum(idl, name, ty, v),
+        _ => Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Unsupported defined type kind"),
+            data: Some(serde_json::json!({"defined": name, "kind": kind})),
+        }),
+    }
+}
+
+fn encode_defined_struct(
+    idl: &Value,
+    name: &str,
+    ty: &Value,
+    v: &Value,
+) -> Result<Vec<u8>, ErrorData> {
+    let fields = ty
+        .get("fields")
+        .and_then(|f| f.as_array())
+        .ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Defined struct missing fields[]"),
+            data: Some(serde_json::json!({"defined": name})),
+        })?;
+
+    let obj = v.as_object().ok_or_else(|| ErrorData {
+        code: ErrorCode(-32602),
+        message: Cow::from("Expected object for struct value"),
+        data: Some(serde_json::json!({"defined": name, "value": v})),
+    })?;
+
+    let mut out = Vec::new();
+    for f in fields {
+        let fname = f.get("name").and_then(|x| x.as_str()).unwrap_or("");
+        let fty = f.get("type").cloned().unwrap_or(Value::Null);
+        let fv = obj.get(fname).cloned().unwrap_or(Value::Null);
+
+        // If field type is option and value missing, we can treat as null.
+        if fv.is_null() {
+            // If the field isn't option, this will error downstream; that's fine.
+        }
+
+        out.extend_from_slice(&encode_borsh_value(idl, &fty, &fv)?);
+    }
+    Ok(out)
+}
+
+fn encode_defined_enum(
+    idl: &Value,
+    name: &str,
+    ty: &Value,
+    v: &Value,
+) -> Result<Vec<u8>, ErrorData> {
+    let variants = ty
+        .get("variants")
+        .and_then(|x| x.as_array())
+        .ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Defined enum missing variants[]"),
+            data: Some(serde_json::json!({"defined": name})),
+        })?;
+
+    // Accept:
+    // - "VariantName" (string) for no-field variants
+    // - {"VariantName": <payload>} (single-key object)
+    // - {"variant":"VariantName","value":<payload>} / {"variant":"VariantName","fields":<payload>}
+
+    let (variant_name, payload): (String, Value) = if let Some(s) = v.as_str() {
+        (s.to_string(), Value::Null)
+    } else if let Some(obj) = v.as_object() {
+        if let Some(var) = obj.get("variant").and_then(|x| x.as_str()) {
+            let p = obj
+                .get("value")
+                .or_else(|| obj.get("fields"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            (var.to_string(), p)
+        } else if obj.len() == 1 {
+            let (k, val) = obj.iter().next().unwrap();
+            (k.to_string(), val.clone())
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Enum value must be string or single-key object"),
+                data: Some(serde_json::json!({"defined": name, "value": v})),
+            });
+        }
+    } else {
+        return Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Enum value must be string or object"),
+            data: Some(serde_json::json!({"defined": name, "value": v})),
+        });
+    };
+
+    let mut idx: Option<u8> = None;
+    let mut variant_def: Option<&Value> = None;
+    for (i, vv) in variants.iter().enumerate() {
+        let n = vv.get("name").and_then(|x| x.as_str()).unwrap_or("");
+        if n == variant_name {
+            idx = Some(i as u8);
+            variant_def = Some(vv);
+            break;
+        }
+    }
+
+    let idx = idx.ok_or_else(|| ErrorData {
+        code: ErrorCode(-32602),
+        message: Cow::from("Unknown enum variant"),
+        data: Some(serde_json::json!({"defined": name, "variant": variant_name})),
+    })?;
+    let variant_def = variant_def.unwrap();
+
+    let mut out = vec![idx];
+
+    let fields = variant_def.get("fields");
+    if fields.is_none() {
+        // no payload
+        return Ok(out);
+    }
+
+    // fields can be array of types or array of named {name,type}
+    let empty: Vec<Value> = Vec::new();
+    let fields_arr = fields.and_then(|x| x.as_array()).unwrap_or(&empty);
+    let named = fields_arr.first().and_then(|x| x.get("name")).is_some();
+
+    if named {
+        let pobj = payload.as_object().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Expected object payload for named enum variant"),
+            data: Some(
+                serde_json::json!({"defined": name, "variant": variant_name, "payload": payload}),
+            ),
+        })?;
+
+        for f in fields_arr {
+            let fname = f.get("name").and_then(|x| x.as_str()).unwrap_or("");
+            let fty = f.get("type").cloned().unwrap_or(Value::Null);
+            let fv = pobj.get(fname).cloned().unwrap_or(Value::Null);
+            out.extend_from_slice(&encode_borsh_value(idl, &fty, &fv)?);
+        }
+    } else {
+        let parr = payload.as_array().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Expected array payload for tuple enum variant"),
+            data: Some(
+                serde_json::json!({"defined": name, "variant": variant_name, "payload": payload}),
+            ),
+        })?;
+
+        if parr.len() != fields_arr.len() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Tuple enum payload length mismatch"),
+                data: Some(serde_json::json!({
+                    "defined": name,
+                    "variant": variant_name,
+                    "expected": fields_arr.len(),
+                    "got": parr.len()
+                })),
+            });
+        }
+
+        for (i, f) in fields_arr.iter().enumerate() {
+            // tuple fields may be raw type or {type: ...}
+            let fty = f.get("type").cloned().unwrap_or_else(|| f.clone());
+            out.extend_from_slice(&encode_borsh_value(idl, &fty, &parr[i])?);
+        }
+    }
+
+    Ok(out)
+}
+
 fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
     match t {
         "bool" => Ok(vec![if v.as_bool().unwrap_or(false) { 1 } else { 0 }]),
         "u8" => Ok(vec![as_u64(v).ok_or_else(|| err_expected(t))? as u8]),
         "i8" => Ok(vec![as_i64(v).ok_or_else(|| err_expected(t))? as i8 as u8]),
-        "u16" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u16).to_le_bytes().to_vec()),
-        "i16" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i16).to_le_bytes().to_vec()),
-        "u32" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u32).to_le_bytes().to_vec()),
-        "i32" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i32).to_le_bytes().to_vec()),
-        "u64" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u64).to_le_bytes().to_vec()),
-        "i64" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i64).to_le_bytes().to_vec()),
+        "u16" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u16)
+            .to_le_bytes()
+            .to_vec()),
+        "i16" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i16)
+            .to_le_bytes()
+            .to_vec()),
+        "u32" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u32)
+            .to_le_bytes()
+            .to_vec()),
+        "i32" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i32)
+            .to_le_bytes()
+            .to_vec()),
+        "u64" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u64)
+            .to_le_bytes()
+            .to_vec()),
+        "i64" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i64)
+            .to_le_bytes()
+            .to_vec()),
         "u128" => {
             let n = v
                 .as_str()
@@ -288,5 +498,68 @@ fn err_expected(t: &str) -> ErrorData {
         code: ErrorCode(-32602),
         message: Cow::from(format!("Invalid value for type {}", t)),
         data: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discriminator_matches_sha256_prefix() {
+        let d = anchor_discriminator("initialize");
+        let h = sha2::Sha256::digest(b"global:initialize");
+        assert_eq!(&d[..], &h[..8]);
+    }
+
+    #[test]
+    fn encode_defined_struct_and_enum() {
+        // Minimal Anchor-style IDL with a struct + enum.
+        let idl = serde_json::json!({
+            "types": [
+                {
+                    "name": "MyStruct",
+                    "type": {
+                        "kind": "struct",
+                        "fields": [
+                            {"name": "a", "type": "u8"},
+                            {"name": "b", "type": "u16"}
+                        ]
+                    }
+                },
+                {
+                    "name": "MyEnum",
+                    "type": {
+                        "kind": "enum",
+                        "variants": [
+                            {"name": "A"},
+                            {"name": "B", "fields": [{"name": "x", "type": "u64"}]},
+                            {"name": "C", "fields": ["u8", "u8"]}
+                        ]
+                    }
+                }
+            ]
+        });
+
+        // struct: a=1, b=513 => [1, 1, 2]
+        let s = serde_json::json!({"a": 1, "b": 513});
+        let enc = encode_borsh_value(&idl, &serde_json::json!({"defined":"MyStruct"}), &s).unwrap();
+        assert_eq!(enc, vec![1u8, 1u8, 2u8]);
+
+        // enum A: variant index 0
+        let a = serde_json::json!("A");
+        let enc = encode_borsh_value(&idl, &serde_json::json!({"defined":"MyEnum"}), &a).unwrap();
+        assert_eq!(enc, vec![0u8]);
+
+        // enum B {x=9}: variant index 1 + u64(9)
+        let b = serde_json::json!({"B": {"x": 9}});
+        let enc = encode_borsh_value(&idl, &serde_json::json!({"defined":"MyEnum"}), &b).unwrap();
+        assert_eq!(&enc[0..1], &[1u8]);
+        assert_eq!(u64::from_le_bytes(enc[1..9].try_into().unwrap()), 9u64);
+
+        // enum C tuple (7,8): variant index 2 + u8 + u8
+        let c = serde_json::json!({"variant":"C","value":[7,8]});
+        let enc = encode_borsh_value(&idl, &serde_json::json!({"defined":"MyEnum"}), &c).unwrap();
+        assert_eq!(enc, vec![2u8, 7u8, 8u8]);
     }
 }
