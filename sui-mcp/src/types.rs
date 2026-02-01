@@ -624,6 +624,15 @@ pub struct SolanaSimulateConfig {
         description = "If true and sig_verify=true, require a local keypair to produce/verify signatures when tx is missing signatures (default false)."
     )]
     pub strict_sig_verify: Option<bool>,
+
+    #[schemars(
+        description = "Optional: request simulated account results for these addresses (base58 pubkeys). This uses RPC simulateTransaction config.accounts."
+    )]
+    pub simulate_accounts: Option<Vec<String>>,
+    #[schemars(
+        description = "Encoding for simulate_accounts results: base64|base64+zstd|jsonParsed (default base64)."
+    )]
+    pub accounts_encoding: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

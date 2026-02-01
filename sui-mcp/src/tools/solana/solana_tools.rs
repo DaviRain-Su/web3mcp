@@ -523,12 +523,36 @@
     ) {
         if let Some(k) = kp {
             // If signatures are missing or default, attempt to sign.
-            let all_default = tx.signatures.iter().all(|s| *s == solana_sdk::signature::Signature::default());
+            let all_default = tx
+                .signatures
+                .iter()
+                .all(|s| *s == solana_sdk::signature::Signature::default());
             if tx.signatures.is_empty() || all_default {
                 let bh = tx.message.recent_blockhash;
                 tx.sign(&[k], bh);
             }
         }
+    }
+
+    fn solana_ui_account_encoding_from_str(
+        encoding: &str,
+    ) -> Result<solana_rpc_client_api::response::UiAccountEncoding, ErrorData> {
+        let e = encoding.trim().to_lowercase();
+        let enc = match e.as_str() {
+            "base64" => solana_rpc_client_api::response::UiAccountEncoding::Base64,
+            "base64+zstd" | "base64zstd" => solana_rpc_client_api::response::UiAccountEncoding::Base64Zstd,
+            "jsonparsed" | "json_parsed" => solana_rpc_client_api::response::UiAccountEncoding::JsonParsed,
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "accounts_encoding must be one of: base64|base64+zstd|jsonParsed",
+                    ),
+                    data: Some(json!({ "provided": encoding })),
+                })
+            }
+        };
+        Ok(enc)
     }
 
     #[tool(description = "Solana: build a (optionally signed) transaction from one or more instructions")]
@@ -733,6 +757,25 @@
             .or(request.commitment.clone())
             .unwrap_or("confirmed".to_string());
 
+        let accounts_cfg = if let Some(ref c) = cfg {
+            if let Some(ref addrs) = c.simulate_accounts {
+                if addrs.is_empty() {
+                    None
+                } else {
+                    let enc_str = c.accounts_encoding.as_deref().unwrap_or("base64");
+                    let enc = Self::solana_ui_account_encoding_from_str(enc_str)?;
+                    Some(solana_client::rpc_config::RpcSimulateTransactionAccountsConfig {
+                        encoding: Some(enc),
+                        addresses: addrs.clone(),
+                    })
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let sim = client
             .simulate_transaction_with_config(
                 &tx,
@@ -741,7 +784,7 @@
                     replace_recent_blockhash: replace,
                     commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
                     encoding: None,
-                    accounts: None,
+                    accounts: accounts_cfg,
                     min_context_slot: None,
                     inner_instructions: false,
                 },
@@ -872,6 +915,25 @@
             .or(request.commitment.clone())
             .unwrap_or("confirmed".to_string());
 
+        let accounts_cfg = if let Some(ref c) = cfg {
+            if let Some(ref addrs) = c.simulate_accounts {
+                if addrs.is_empty() {
+                    None
+                } else {
+                    let enc_str = c.accounts_encoding.as_deref().unwrap_or("base64");
+                    let enc = Self::solana_ui_account_encoding_from_str(enc_str)?;
+                    Some(solana_client::rpc_config::RpcSimulateTransactionAccountsConfig {
+                        encoding: Some(enc),
+                        addresses: addrs.clone(),
+                    })
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let sim = client
             .simulate_transaction_with_config(
                 &tx,
@@ -880,7 +942,7 @@
                     replace_recent_blockhash: replace,
                     commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
                     encoding: None,
-                    accounts: None,
+                    accounts: accounts_cfg,
                     min_context_slot: None,
                     inner_instructions: false,
                 },
@@ -1904,6 +1966,25 @@
             .or(request.commitment.clone())
             .unwrap_or("confirmed".to_string());
 
+        let accounts_cfg = if let Some(ref c) = cfg {
+            if let Some(ref addrs) = c.simulate_accounts {
+                if addrs.is_empty() {
+                    None
+                } else {
+                    let enc_str = c.accounts_encoding.as_deref().unwrap_or("base64");
+                    let enc = Self::solana_ui_account_encoding_from_str(enc_str)?;
+                    Some(solana_client::rpc_config::RpcSimulateTransactionAccountsConfig {
+                        encoding: Some(enc),
+                        addresses: addrs.clone(),
+                    })
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let sim = client
             .simulate_transaction_with_config(
                 &tx,
@@ -1912,7 +1993,7 @@
                     replace_recent_blockhash: replace,
                     commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
                     encoding: None,
-                    accounts: None,
+                    accounts: accounts_cfg,
                     min_context_slot: None,
                     inner_instructions: false,
                 },
