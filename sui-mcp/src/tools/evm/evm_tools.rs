@@ -311,7 +311,14 @@
                 "second_confirmed": r.second_confirmed,
                 "tx_summary_hash": r.tx_summary_hash,
                 "tx": r.tx,
-                "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&r.tx)
+                "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&r.tx),
+                "tool_context": json!({
+                    "expected_spender": r.expected_spender,
+                    "required_allowance_raw": r.required_allowance_raw,
+                    "expected_token": r.expected_token,
+                    "approve_confirmation_id": r.approve_confirmation_id,
+                    "swap_confirmation_id": r.swap_confirmation_id,
+                })
             }))
         }))?;
 
@@ -346,6 +353,14 @@
             data: None,
         })?;
 
+        let tool_context = json!({
+            "expected_spender": row.expected_spender,
+            "required_allowance_raw": row.required_allowance_raw,
+            "expected_token": row.expected_token,
+            "approve_confirmation_id": row.approve_confirmation_id,
+            "swap_confirmation_id": row.swap_confirmation_id,
+        });
+
         if let Some(cid) = request.chain_id {
             if cid != row.chain_id {
                 return Err(ErrorData {
@@ -363,7 +378,11 @@
             let response = Self::pretty_json(&json!({
                 "status": "sent",
                 "confirmation_id": row.id,
+                "chain_id": row.chain_id,
                 "tx_hash": row.tx_hash,
+                "tx_summary_hash": row.tx_summary_hash,
+                "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
+                "tool_context": tool_context,
                 "note": "Already broadcast"
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -373,7 +392,14 @@
             return Err(ErrorData {
                 code: ErrorCode(-32602),
                 message: Cow::from("Pending confirmation expired; re-run dry-run."),
-                data: None,
+                data: Some(json!({
+                    "confirmation_id": row.id,
+                    "chain_id": row.chain_id,
+                    "tx_summary_hash": row.tx_summary_hash,
+                    "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
+                    "tool_context": tool_context,
+                    "status": row.status,
+                })),
             });
         }
 
@@ -384,7 +410,14 @@
                     "tx_summary_hash mismatch: expected={} got={}",
                     row.tx_summary_hash, provided_hash
                 )),
-                data: None,
+                data: Some(json!({
+                    "confirmation_id": row.id,
+                    "chain_id": row.chain_id,
+                    "expected": row.tx_summary_hash,
+                    "provided": provided_hash,
+                    "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
+                    "tool_context": tool_context,
+                })),
             });
         }
 
@@ -393,7 +426,16 @@
             return Err(ErrorData {
                 code: ErrorCode(-32602),
                 message: Cow::from(format!("Unsupported status for retry: {}", row.status)),
-                data: None,
+                data: Some(json!({
+                    "confirmation_id": row.id,
+                    "chain_id": row.chain_id,
+                    "status": row.status,
+                    "tx_hash": row.tx_hash,
+                    "last_error": row.last_error,
+                    "tx_summary_hash": row.tx_summary_hash,
+                    "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
+                    "tool_context": tool_context,
+                })),
             });
         }
 
@@ -424,8 +466,10 @@
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "confirmation_id": id,
-                "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                "chain_id": row.chain_id,
                 "tx_summary_hash": new_hash,
+                "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                "tool_context": tool_context,
                 "note": "Tx changed during preflight (nonce/fees). Re-confirm/retry with new tx_summary_hash."
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -439,8 +483,10 @@
                 let response = Self::pretty_json(&json!({
                     "status": "pending",
                     "confirmation_id": id,
-                    "tx_summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                    "chain_id": row.chain_id,
                     "tx_summary_hash": provided_hash,
+                    "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                    "tool_context": tool_context,
                     "note": "Second confirmation required for large-value tx",
                     "next": {
                         "how_to_retry": format!("Call evm_retry_pending_confirmation again with confirm_token='{}'", token)
@@ -456,7 +502,7 @@
         // Sign.
         let signed = self
             .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
-                tx,
+                tx: tx.clone(),
                 allow_sender_mismatch: Some(false),
             }))
             .await?;
@@ -487,16 +533,42 @@
 
         match sent {
             Ok(ok) => {
-                if let Some(v) = Self::evm_extract_first_json(&ok) {
-                    if let Some(tx_hash) = v.get("tx_hash").and_then(Value::as_str) {
-                        let _ = crate::utils::evm_confirm_store::mark_sent(&conn, id, tx_hash);
+                let mut tx_hash: Option<String> = None;
+                let send_result = Self::evm_extract_first_json(&ok);
+                if let Some(v) = send_result.as_ref() {
+                    if let Some(h) = v.get("tx_hash").and_then(Value::as_str) {
+                        tx_hash = Some(h.to_string());
+                        let _ = crate::utils::evm_confirm_store::mark_sent(&conn, id, h);
                     }
                 }
-                Ok(ok)
+
+                let response = Self::pretty_json(&json!({
+                    "status": "sent",
+                    "confirmation_id": id,
+                    "chain_id": row.chain_id,
+                    "tx_hash": tx_hash,
+                    "tx_summary_hash": provided_hash,
+                    "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                    "tool_context": tool_context.clone(),
+                    "send_result": send_result
+                }))?;
+
+                Ok(CallToolResult::success(vec![Content::text(response)]))
             }
             Err(e) => {
                 let _ = crate::utils::evm_confirm_store::mark_failed(&conn, id, &e.message);
-                Err(e)
+                Err(ErrorData {
+                    code: e.code,
+                    message: e.message,
+                    data: Some(json!({
+                        "confirmation_id": id,
+                        "chain_id": row.chain_id,
+                        "tx_summary_hash": provided_hash,
+                        "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                        "tool_context": tool_context,
+                        "note": "Retry broadcast failed. You can inspect the pending record via evm_get_pending_confirmation or retry again."
+                    })),
+                })
             }
         }
     }
