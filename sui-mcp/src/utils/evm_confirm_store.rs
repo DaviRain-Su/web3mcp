@@ -24,6 +24,7 @@ pub struct PendingRow {
     pub required_allowance_raw: Option<String>,
     pub expected_token: Option<String>,
     pub approve_confirmation_id: Option<String>,
+    pub swap_confirmation_id: Option<String>,
 }
 
 pub fn now_ms() -> u128 {
@@ -97,6 +98,7 @@ pub fn connect() -> Result<rusqlite::Connection, ErrorData> {
         "ALTER TABLE evm_pending_confirmations ADD COLUMN required_allowance_raw TEXT",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN expected_token TEXT",
         "ALTER TABLE evm_pending_confirmations ADD COLUMN approve_confirmation_id TEXT",
+        "ALTER TABLE evm_pending_confirmations ADD COLUMN swap_confirmation_id TEXT",
     ] {
         if let Err(e) = conn.execute(stmt, []) {
             let msg = e.to_string().to_lowercase();
@@ -182,7 +184,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         .prepare(
             "SELECT id, chain_id, tx_json, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tx_hash, last_error,
                     raw_tx_prefix, signed_at_ms, second_confirm_token, second_confirmed,
-                    expected_spender, required_allowance_raw, expected_token, approve_confirmation_id
+                    expected_spender, required_allowance_raw, expected_token, approve_confirmation_id, swap_confirmation_id
              FROM evm_pending_confirmations
              WHERE id = ?1",
         )
@@ -211,6 +213,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         let required_allowance_raw: Option<String> = row.get(15)?;
         let expected_token: Option<String> = row.get(16)?;
         let approve_confirmation_id: Option<String> = row.get(17)?;
+        let swap_confirmation_id: Option<String> = row.get(18)?;
         Ok((
             id,
             chain_id,
@@ -230,6 +233,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
             required_allowance_raw,
             expected_token,
             approve_confirmation_id,
+            swap_confirmation_id,
         ))
     }) {
         Ok(v) => Some(v),
@@ -262,6 +266,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         required_allowance_raw,
         expected_token,
         approve_confirmation_id,
+        swap_confirmation_id,
     )) = row
     else {
         return Ok(None);
@@ -292,6 +297,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<PendingRo
         required_allowance_raw,
         expected_token,
         approve_confirmation_id,
+        swap_confirmation_id,
     }))
 }
 
@@ -552,6 +558,29 @@ pub fn set_approve_link(
     .map_err(|e| ErrorData {
         code: ErrorCode(-32603),
         message: Cow::from(format!("Failed to link approve confirmation: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn set_swap_link(
+    approve_confirmation_id: &str,
+    swap_confirmation_id: &str,
+) -> Result<(), ErrorData> {
+    let conn = connect()?;
+    conn.execute(
+        "UPDATE evm_pending_confirmations
+         SET swap_confirmation_id=?2, updated_at_ms=?3
+         WHERE id=?1",
+        rusqlite::params![
+            approve_confirmation_id,
+            swap_confirmation_id,
+            now_ms() as i64
+        ],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to link swap confirmation: {}", e)),
         data: None,
     })?;
     Ok(())

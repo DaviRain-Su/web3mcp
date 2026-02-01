@@ -332,6 +332,10 @@
                                         &confirmation_id,
                                         &approve_confirmation_id,
                                     );
+                                    let _ = crate::utils::evm_confirm_store::set_swap_link(
+                                        &approve_confirmation_id,
+                                        &confirmation_id,
+                                    );
 
                                     approve_flow = Some(json!({
                                         "needed": true,
@@ -660,22 +664,50 @@
                                     .unwrap_or_else(|| ethers::types::U256::from(0));
 
                                 if allowance_raw < required {
+                                    let mut data = json!({
+                                        "status": "pending",
+                                        "reason": "allowance_insufficient",
+                                        "token": expected_token,
+                                        "spender": spender,
+                                        "allowance_raw": allowance_raw.to_string(),
+                                        "required_raw": required.to_string(),
+                                        "approve_confirmation_id": row.approve_confirmation_id,
+                                        "note": "Run/confirm approve, wait for it to mine, then confirm swap again",
+                                    });
+
+                                    // If we know the approve confirmation, add its status/tx_hash to improve UX.
+                                    if let Some(approve_id) = row.approve_confirmation_id.as_deref() {
+                                        if let Ok(Some(approve_row)) =
+                                            crate::utils::evm_confirm_store::get_row(&conn, approve_id)
+                                        {
+                                            if let Value::Object(ref mut m) = data {
+                                                m.insert(
+                                                    "approve_status".to_string(),
+                                                    Value::String(approve_row.status.clone()),
+                                                );
+                                                if let Some(h) = approve_row.tx_hash.clone() {
+                                                    m.insert("approve_tx_hash".to_string(), Value::String(h));
+                                                }
+                                                if approve_row.status == "sent" {
+                                                    m.insert(
+                                                        "note".to_string(),
+                                                        Value::String(
+                                                            "Approve tx already sent; wait 1-2 blocks for it to mine, then confirm swap again"
+                                                                .to_string(),
+                                                        ),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     return Err(ErrorData {
                                         code: ErrorCode(-32602),
                                         message: Cow::from(format!(
                                             "Allowance insufficient ({} < {}). Please confirm the approve tx first.",
                                             allowance_raw, required
                                         )),
-                                        data: Some(json!({
-                                            "status": "pending",
-                                            "reason": "allowance_insufficient",
-                                            "token": expected_token,
-                                            "spender": spender,
-                                            "allowance_raw": allowance_raw.to_string(),
-                                            "required_raw": required.to_string(),
-                                            "note": "Run/confirm approve, wait for it to mine, then confirm swap again",
-                                        "approve_confirmation_id": row.approve_confirmation_id
-                                        })),
+                                        data: Some(data),
                                     });
                                 }
                             }
@@ -801,7 +833,7 @@
                                 );
                                 let _ = crate::utils::evm_confirm_store::mark_skipped(&conn, &id, &reason);
 
-                                let response = Self::pretty_json(&json!({
+                                let mut resp = json!({
                                     "resolved_network": resolved_network,
                                     "status": "skipped",
                                     "confirmation_id": id,
@@ -810,7 +842,32 @@
                                     "required_raw": required.to_string(),
                                     "spender": spender,
                                     "token": token_addr
-                                }))?;
+                                });
+
+                                // If this approve is linked to a swap, provide the next confirm command.
+                                if let Some(swap_id) = row.swap_confirmation_id.as_deref() {
+                                    if let Ok(Some(swap_row)) =
+                                        crate::utils::evm_confirm_store::get_row(&conn, swap_id)
+                                    {
+                                        if let Value::Object(ref mut m) = resp {
+                                            m.insert(
+                                                "swap_confirmation_id".to_string(),
+                                                Value::String(swap_id.to_string()),
+                                            );
+                                            m.insert(
+                                                "next".to_string(),
+                                                json!({
+                                                    "how_to_confirm_swap": format!(
+                                                        "confirm {} hash:{} (swap)",
+                                                        swap_id, swap_row.tx_summary_hash
+                                                    )
+                                                }),
+                                            );
+                                        }
+                                    }
+                                }
+
+                                let response = Self::pretty_json(&resp)?;
                                 return Ok(CallToolResult::success(vec![Content::text(response)]));
                             }
                         }
