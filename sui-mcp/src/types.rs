@@ -444,6 +444,44 @@ pub struct SolanaGetTokenBalanceRequest {
     pub mint: String,
 }
 
+// ---------------- Solana tx build ----------------
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SolanaAccountMetaInput {
+    #[schemars(description = "Account pubkey (base58)")]
+    pub pubkey: String,
+    #[schemars(description = "Is signer")]
+    pub is_signer: bool,
+    #[schemars(description = "Is writable")]
+    pub is_writable: bool,
+    #[schemars(description = "Optional name (for debugging)")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SolanaInstructionInput {
+    #[schemars(description = "Program id (base58)")]
+    pub program_id: String,
+    #[schemars(description = "Account metas")]
+    pub accounts: Vec<SolanaAccountMetaInput>,
+    #[schemars(description = "Instruction data (base64)")]
+    pub data_base64: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaTxBuildRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey")]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+    #[schemars(description = "One or more instructions")]
+    pub instructions: Vec<SolanaInstructionInput>,
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvmTxRequest {
     #[schemars(description = "Chain id")]

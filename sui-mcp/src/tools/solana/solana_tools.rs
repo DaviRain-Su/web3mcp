@@ -461,6 +461,126 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Solana: build a (optionally signed) transaction from one or more instructions")]
+    async fn solana_tx_build(
+        &self,
+        Parameters(request): Parameters<SolanaTxBuildRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref();
+        let rpc_url = Self::solana_rpc_url_for_network(network)?;
+        let client = Self::solana_rpc(network)?;
+
+        let sign = request.sign.unwrap_or(false);
+        let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
+        let kp = if sign {
+            Some(Self::solana_read_keypair_from_json_file(kp_path.as_ref().unwrap())?)
+        } else {
+            None
+        };
+
+        let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+            Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+        } else if let Some(ref k) = kp {
+            solana_sdk::signature::Signer::pubkey(k)
+        } else {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("fee_payer is required unless sign=true and SOLANA_KEYPAIR_PATH is set"),
+                data: None,
+            });
+        };
+
+        let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_tx_build", e))?
+        };
+
+        if request.instructions.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("instructions is required"),
+                data: None,
+            });
+        }
+
+        let mut ixs: Vec<solana_sdk::instruction::Instruction> = Vec::new();
+        let mut ix_summaries: Vec<Value> = Vec::new();
+
+        for (idx, ix) in request.instructions.iter().enumerate() {
+            let program_id = Self::solana_parse_program_id(ix.program_id.trim())?;
+            let data = base64::engine::general_purpose::STANDARD
+                .decode(ix.data_base64.trim())
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid data_base64 for instruction {}: {}", idx, e)),
+                    data: None,
+                })?;
+
+            let mut metas: Vec<solana_sdk::instruction::AccountMeta> = Vec::new();
+            for m in &ix.accounts {
+                let pk = Self::solana_parse_pubkey(m.pubkey.trim(), "account pubkey")?;
+                metas.push(if m.is_writable {
+                    solana_sdk::instruction::AccountMeta::new(pk, m.is_signer)
+                } else {
+                    solana_sdk::instruction::AccountMeta::new_readonly(pk, m.is_signer)
+                });
+            }
+
+            ixs.push(solana_sdk::instruction::Instruction {
+                program_id,
+                accounts: metas,
+                data,
+            });
+
+            ix_summaries.push(json!({
+                "index": idx,
+                "program_id": ix.program_id,
+                "accounts_count": ix.accounts.len(),
+                "data_base64_len": ix.data_base64.len()
+            }));
+        }
+
+        let message = solana_sdk::message::Message::new(&ixs, Some(&fee_payer));
+
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+        tx.message.recent_blockhash = recent_blockhash;
+
+        if sign {
+            let k = kp.as_ref().unwrap();
+            tx.sign(&[k], recent_blockhash);
+        }
+
+        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize transaction: {}", e)),
+            data: None,
+        })?;
+
+        let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "fee_payer": fee_payer.to_string(),
+            "recent_blockhash": recent_blockhash.to_string(),
+            "signed": sign,
+            "keypair_path": kp_path,
+            "instructions": ix_summaries,
+            "transaction_base64": tx_base64,
+            "transaction_bytes_len": tx_bytes.len(),
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     // ---------------- Solana IDL Registry ----------------
 
     #[tool(description = "Solana IDL Registry: register an IDL JSON under abi_registry/solana/<program_id>/<name>.json")]
