@@ -191,12 +191,50 @@
         ethers::types::Bytes::from(out)
     }
 
-    #[tool(description = "EVM: list local Foundry keystore accounts")]
+    fn evm_read_keystore_address(name: &str) -> Result<String, ErrorData> {
+        let dir = Self::evm_keystore_dir();
+        let path = format!("{}/{}", dir, name);
+        let content = std::fs::read_to_string(&path).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to read keystore {}: {}", path, e)),
+            data: None,
+        })?;
+        let json: Value = serde_json::from_str(&content).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid keystore JSON: {}", e)),
+            data: None,
+        })?;
+        let address = json.get("address")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Keystore missing 'address' field"),
+                data: None,
+            })?;
+        // Add 0x prefix if not present
+        if address.starts_with("0x") {
+            Ok(address.to_string())
+        } else {
+            Ok(format!("0x{}", address))
+        }
+    }
+
+    #[tool(description = "EVM: list local Foundry keystore accounts with addresses (no password needed)")]
     async fn evm_keystore_list(
         &self,
         Parameters(_request): Parameters<EvmKeystoreListRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let accounts = Self::evm_list_keystore_accounts()?;
+        let account_names = Self::evm_list_keystore_accounts()?;
+        let accounts: Vec<Value> = account_names
+            .iter()
+            .map(|name| {
+                let address = Self::evm_read_keystore_address(name).unwrap_or_else(|_| "unknown".to_string());
+                json!({
+                    "name": name,
+                    "address": address
+                })
+            })
+            .collect();
         let response = Self::pretty_json(&json!({
             "keystore_dir": Self::evm_keystore_dir(),
             "accounts": accounts
