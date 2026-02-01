@@ -1,3 +1,23 @@
+    fn solana_known_program_label(pid: &str) -> Option<&'static str> {
+        match pid {
+            // Core
+            "11111111111111111111111111111111" => Some("System Program"),
+            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" => Some("Memo Program"),
+            "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" => Some("Associated Token Account Program"),
+            "ComputeBudget111111111111111111111111111111" => Some("Compute Budget Program"),
+
+            // Metaplex
+            "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s" => Some("Metaplex Token Metadata"),
+
+            // Address lookup tables (v0)
+            "AddressLookupTab1e1111111111111111111111111" => {
+                Some("Address Lookup Table Program")
+            }
+
+            _ => None,
+        }
+    }
+
     fn solana_rpc_url_for_network(network: Option<&str>) -> Result<String, ErrorData> {
         // Priority:
         // 1) SOLANA_RPC_URL (explicit override)
@@ -2953,7 +2973,8 @@
                 || pid == token_2022_pid
                 || pid == ata_pid
                 || pid == compute_budget_pid
-                || pid == system_pid;
+                || pid == system_pid
+                || Self::solana_known_program_label(&pid).is_some();
             if !pid.is_empty() && !known_program && !program_ids_unknown.contains(&pid) {
                 program_ids_unknown.push(pid.clone());
             }
