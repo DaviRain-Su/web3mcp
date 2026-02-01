@@ -3295,6 +3295,69 @@
                             }).collect::<Vec<String>>().join(""));
                         summary_lines.push(format!("Jupiter: instruction={name}"));
                     }
+
+                    // Best-effort: decode SharedAccountsRoute (most common Jupiter v6 swap instruction)
+                    // using carbon-jupiter-swap-decoder's generated Borsh types.
+                    if matched == Some("shared_accounts_route") {
+                        // Note: instruction data = [8-byte anchor discriminator] + [borsh-encoded args]
+                        if ci.data.len() > 8 {
+                            if let Ok(ix) = <carbon_jupiter_swap_decoder::instructions::shared_accounts_route::SharedAccountsRoute as carbon_core::borsh::BorshDeserialize>::try_from_slice(&ci.data[8..]) {
+                                detail["jupiter_shared_accounts_route"] = json!({
+                                    "id": ix.id,
+                                    "in_amount": ix.in_amount.to_string(),
+                                    "quoted_out_amount": ix.quoted_out_amount.to_string(),
+                                    "slippage_bps": ix.slippage_bps,
+                                    "platform_fee_bps": ix.platform_fee_bps,
+                                    "route_plan_len": ix.route_plan.len(),
+                                    "route_plan": ix.route_plan.iter().take(8).enumerate().map(|(i, s)| {
+                                        json!({
+                                            "i": i,
+                                            "swap": format!("{:?}", s.swap),
+                                            "percent": s.percent,
+                                            "input_index": s.input_index,
+                                            "output_index": s.output_index
+                                        })
+                                    }).collect::<Vec<Value>>()
+                                });
+
+                                // Accounts layout (first 13 accounts) from carbon decoder docs
+                                let accs: Vec<String> = ci.accounts.iter().map(|a| key_of(*a)).collect();
+                                if accs.len() >= 13 {
+                                    detail["jupiter_accounts"] = json!({
+                                        "token_program": accs[0],
+                                        "program_authority": accs[1],
+                                        "user_transfer_authority": accs[2],
+                                        "source_token_account": accs[3],
+                                        "program_source_token_account": accs[4],
+                                        "program_destination_token_account": accs[5],
+                                        "destination_token_account": accs[6],
+                                        "source_mint": accs[7],
+                                        "destination_mint": accs[8],
+                                        "platform_fee_account": accs[9],
+                                        "token_2022_program": accs[10],
+                                        "event_authority": accs[11],
+                                        "program": accs[12]
+                                    });
+
+                                    summary_lines.push(format!(
+                                        "Jupiter swap: {} -> {} (in={}, quote_out={}, slippage_bps={})",
+                                        accs[7],
+                                        accs[8],
+                                        ix.in_amount,
+                                        ix.quoted_out_amount,
+                                        ix.slippage_bps
+                                    ));
+                                } else {
+                                    summary_lines.push(format!(
+                                        "Jupiter swap: in={}, quote_out={}, slippage_bps={} (accounts too short to label mints)",
+                                        ix.in_amount,
+                                        ix.quoted_out_amount,
+                                        ix.slippage_bps
+                                    ));
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Keep a short prefix for debugging/mapping

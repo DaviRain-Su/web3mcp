@@ -1229,6 +1229,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh-derive-internal-satellite"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "996ac35ecdc9995ca77355f4ad93d4ff5d4d49215e8155ecc863d1be43bfe8ef"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "borsh-schema-derive-internal"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1408,6 +1419,70 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd1ddba47aba30b6a889298ad0109c3b8dcb0e8fc993b459daa7067d46f865e0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "carbon-core"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71498aece4ecab92457e81078eb22ec07cff87c1e599570355bd1f518185c922"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "borsh 1.6.0",
+ "bs58 0.5.1",
+ "carbon-macros",
+ "carbon-proc-macros",
+ "log",
+ "serde",
+ "serde_json",
+ "solana-account",
+ "solana-hash 3.1.0",
+ "solana-instruction 3.1.0",
+ "solana-message",
+ "solana-program",
+ "solana-pubkey 3.0.0",
+ "solana-signature 3.1.0",
+ "solana-transaction",
+ "solana-transaction-context",
+ "solana-transaction-status",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "uuid 1.20.0",
+]
+
+[[package]]
+name = "carbon-jupiter-swap-decoder"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adae7a13eb9880bcc57dcd67f6fc40bf3bbbeb80c33607cddebb0bb675bf6dfc"
+dependencies = [
+ "carbon-core",
+ "serde",
+ "solana-account",
+ "solana-instruction 3.1.0",
+ "solana-pubkey 3.0.0",
+]
+
+[[package]]
+name = "carbon-macros"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50085799d24728d29148fd8b7a618b39f88c5f0784112c883ce46908e7d0b168"
+
+[[package]]
+name = "carbon-proc-macros"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b73cbb018afd27973e5d6297461d15d1c715bdaca0cb5bc19c68c42f0f7b8ba3"
+dependencies = [
+ "borsh-derive-internal-satellite",
+ "hex",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -12039,6 +12114,8 @@ dependencies = [
  "bcs",
  "bincode",
  "bs58 0.5.1",
+ "carbon-core",
+ "carbon-jupiter-swap-decoder",
  "ethers",
  "fastcrypto-zkp",
  "hex",
@@ -13551,6 +13628,7 @@ dependencies = [
  "getrandom 0.3.4",
  "js-sys",
  "rand 0.9.2",
+ "serde_core",
  "wasm-bindgen",
 ]
 
