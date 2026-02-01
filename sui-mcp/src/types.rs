@@ -1002,6 +1002,12 @@ pub struct SolanaSendTransactionRequest {
         description = "If true, broadcast immediately; if false (default), create a pending confirmation"
     )]
     pub confirm: Option<bool>,
+
+    #[schemars(
+        description = "Safety guard: when confirm=true, require explicit opt-in to broadcast a raw tx without a prior preview/confirmation step. Set true only if you know what you are doing. (default false)"
+    )]
+    pub allow_direct_send: Option<bool>,
+
     #[schemars(
         description = "Commitment to wait for when confirm=true: processed|confirmed|finalized (default confirmed)"
     )]
@@ -1062,6 +1068,21 @@ pub struct SolanaSimulateConfig {
         description = "If true, try to suggest a compute unit price (micro-lamports) based on recentPrioritizationFees RPC (default false)."
     )]
     pub suggest_compute_unit_price: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaTxPreviewRequest {
+    #[schemars(description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify.")]
+    pub simulate_config: Option<SolanaSimulateConfig>,
+
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Transaction bytes (base64). Usually unsigned.")]
+    pub transaction_base64: String,
+
+    #[schemars(description = "Optional override: ttl for confirmation token in ms (default 300000 = 5min). Max 900000.")]
+    pub confirm_ttl_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

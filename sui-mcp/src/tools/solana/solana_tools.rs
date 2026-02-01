@@ -2465,6 +2465,7 @@
                 price_sample = Some(json!({
                     "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
                     "addresses_count": addrs.len(),
+                    "addresses": addrs.iter().take(16).map(|p| p.to_string()).collect::<Vec<String>>(),
                     "count": fees.len(),
                     "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
                     "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
@@ -2708,6 +2709,307 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Solana: preview+simulate a transaction, return a short-lived confirmation token (id/hash) (safe default: does not broadcast)")]
+    async fn solana_tx_preview(
+        &self,
+        Parameters(request): Parameters<SolanaTxPreviewRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let cfg = request.simulate_config.clone();
+        let network = cfg
+            .as_ref()
+            .and_then(|c| c.network.as_deref())
+            .or(request.network.as_deref());
+        let network_str = network.unwrap_or("mainnet").to_string();
+        let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
+        let client = Self::solana_rpc(Some(&network_str))?;
+
+        // Decode + parse tx
+        let tx_bytes_in = base64::engine::general_purpose::STANDARD
+            .decode(request.transaction_base64.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction_base64: {}", e)),
+                data: None,
+            })?;
+
+        let mut tx: solana_sdk::transaction::Transaction =
+            bincode::deserialize(&tx_bytes_in).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction bytes: {}", e)),
+                data: None,
+            })?;
+
+        // Default-safe: keep sig_verify=false unless explicitly requested.
+        let sig_verify = cfg.as_ref().and_then(|c| c.sig_verify).unwrap_or(false);
+        let strict_sig_verify = cfg
+            .as_ref()
+            .and_then(|c| c.strict_sig_verify)
+            .unwrap_or(false);
+
+        // By default, refresh blockhash to reduce "BlockhashNotFound".
+        let replace = cfg
+            .as_ref()
+            .and_then(|c| c.replace_recent_blockhash)
+            .unwrap_or(true);
+        if replace {
+            let bh = client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_tx_preview", e))?;
+            tx.message.recent_blockhash = bh;
+        }
+
+        if sig_verify {
+            // If strict, require a local keypair when signatures are missing.
+            let need_sign = tx.signatures.is_empty()
+                || tx
+                    .signatures
+                    .iter()
+                    .all(|s| *s == solana_sdk::signature::Signature::default());
+
+            let kp = Self::solana_keypair_path()
+                .ok()
+                .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
+
+            if strict_sig_verify && need_sign && kp.is_none() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "sig_verify=true requires signatures but no local keypair is available. Set SOLANA_KEYPAIR_PATH or set simulate_config.strict_sig_verify=false",
+                    ),
+                    data: None,
+                });
+            }
+
+            // Best-effort sign if signatures are missing and a keypair is available.
+            Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
+        }
+
+        let commitment = cfg
+            .as_ref()
+            .and_then(|c| c.commitment.clone())
+            .unwrap_or("confirmed".to_string());
+
+        let accounts_cfg = if let Some(ref c) = cfg {
+            if let Some(ref addrs) = c.simulate_accounts {
+                if addrs.is_empty() {
+                    None
+                } else {
+                    let enc_str = c.accounts_encoding.as_deref().unwrap_or("base64");
+                    let enc = Self::solana_ui_account_encoding_from_str(enc_str)?;
+                    Some(solana_client::rpc_config::RpcSimulateTransactionAccountsConfig {
+                        encoding: Some(enc),
+                        addresses: addrs.clone(),
+                    })
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let sim = client
+            .simulate_transaction_with_config(
+                &tx,
+                solana_client::rpc_config::RpcSimulateTransactionConfig {
+                    sig_verify,
+                    replace_recent_blockhash: replace,
+                    commitment: Some(Self::solana_commitment_from_str(Some(&commitment))?),
+                    encoding: None,
+                    accounts: accounts_cfg,
+                    min_context_slot: None,
+                    inner_instructions: false,
+                },
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_tx_preview", e))?;
+
+        // Re-serialize (may differ from input if blockhash/signatures updated)
+        let tx_bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize tx: {}", e)),
+            data: None,
+        })?;
+        let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+        let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+        // Compute suggestions
+        let suggested_cu_limit = Self::solana_suggest_compute_unit_limit(sim.value.units_consumed);
+
+        let suggest_price = cfg
+            .as_ref()
+            .and_then(|c| c.suggest_compute_unit_price)
+            .unwrap_or(false);
+        let mut suggested_cu_price: Option<u64> = None;
+        let mut price_sample: Option<Value> = None;
+        if suggest_price {
+            let addr_strs: Vec<String> = cfg
+                .as_ref()
+                .and_then(|c| c.simulate_accounts.clone())
+                .unwrap_or_default();
+
+            let mut addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
+                .iter()
+                .filter_map(|s| solana_sdk::pubkey::Pubkey::from_str(s.trim()).ok())
+                .collect();
+
+            if addrs.is_empty() {
+                addrs = tx
+                    .message
+                    .account_keys
+                    .iter()
+                    .take(16)
+                    .cloned()
+                    .collect();
+            }
+
+            let fees_res = if !addrs.is_empty() {
+                client.get_recent_prioritization_fees(&addrs).await
+            } else {
+                client.get_recent_prioritization_fees(&[]).await
+            };
+
+            if let Ok(fees) = fees_res {
+                let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
+                suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
+                price_sample = Some(json!({
+                    "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
+                    "addresses_count": addrs.len(),
+                    "addresses": addrs.iter().take(16).map(|p| p.to_string()).collect::<Vec<String>>(),
+                    "count": fees.len(),
+                    "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
+                    "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
+                    "p90": Self::solana_percentile_u64(vals, 0.90),
+                    "suggested_from": "p75"
+                }));
+            }
+        }
+
+        // Lightweight preview analysis
+        let mut program_ids: Vec<String> = Vec::new();
+        let mut warnings: Vec<Value> = Vec::new();
+        for ci in &tx.message.instructions {
+            let pid = tx
+                .message
+                .account_keys
+                .get(ci.program_id_index as usize)
+                .map(|p| p.to_string())
+                .unwrap_or_default();
+            if !pid.is_empty() && !program_ids.contains(&pid) {
+                program_ids.push(pid.clone());
+            }
+
+            if pid == spl_token::id().to_string() {
+                if let Ok(tok_ix) = spl_token::instruction::TokenInstruction::unpack(&ci.data) {
+                    match tok_ix {
+                        spl_token::instruction::TokenInstruction::Approve { amount }
+                        | spl_token::instruction::TokenInstruction::ApproveChecked { amount, .. } => {
+                            let is_infinite = amount == u64::MAX;
+                            warnings.push(json!({
+                                "kind": "token_approve",
+                                "severity": if is_infinite { "high" } else { "medium" },
+                                "infinite": is_infinite,
+                                "amount": amount.to_string(),
+                                "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
+                            }));
+                        }
+                        spl_token::instruction::TokenInstruction::SetAuthority { .. } => {
+                            warnings.push(json!({
+                                "kind": "set_authority",
+                                "severity": "high",
+                                "note": "This transaction changes token authority (high risk)."
+                            }));
+                        }
+                        spl_token::instruction::TokenInstruction::CloseAccount => {
+                            warnings.push(json!({
+                                "kind": "close_token_account",
+                                "severity": "medium",
+                                "note": "This transaction closes a token account."
+                            }));
+                        }
+                        spl_token::instruction::TokenInstruction::Transfer { .. }
+                        | spl_token::instruction::TokenInstruction::TransferChecked { .. } => {
+                            // Normal
+                        }
+                        spl_token::instruction::TokenInstruction::Revoke => {
+                            // Often fine
+                        }
+                        _ => {}
+                    }
+                }
+            } else if pid == "11111111111111111111111111111111" {
+                warnings.push(json!({
+                    "kind": "system_program",
+                    "severity": "medium",
+                    "note": "This transaction calls the System Program (may transfer SOL or create accounts)."
+                }));
+            }
+        }
+
+        // Store pending confirmation (5min default)
+        let created = crate::utils::solana_confirm_store::now_ms();
+        let ttl_default = 5 * 60 * 1000;
+        let ttl = request
+            .confirm_ttl_ms
+            .unwrap_or(ttl_default)
+            .min(15 * 60 * 1000);
+        let expires = created + ttl;
+
+        let id_seed = format!("{}:{}", created, hash);
+        let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+        let confirmation_id = format!("solana_preview_{}", &id_suffix[..16]);
+
+        let summary = json!({
+            "network": network_str,
+            "rpc_url": rpc_url,
+            "commitment": commitment,
+            "sig_verify": sig_verify,
+            "replace_recent_blockhash": replace,
+            "tx_bytes_len": tx_bytes.len(),
+            "program_ids": program_ids,
+            "risk_warnings": warnings,
+            "suggestions": {
+                "compute_unit_limit": suggested_cu_limit,
+                "compute_unit_price_micro_lamports": suggested_cu_price,
+                "recent_prioritization_fees": price_sample
+            }
+        });
+
+        crate::utils::solana_confirm_store::insert_pending(
+            &confirmation_id,
+            &tx_base64,
+            created,
+            expires,
+            &hash,
+            "solana_tx_preview",
+            Some(summary.clone()),
+        )?;
+
+        let response = Self::pretty_json(&json!({
+            "status": "preview",
+            "rpc_url": rpc_url,
+            "network": network_str,
+            "confirmation_id": confirmation_id,
+            "tx_summary_hash": hash,
+            "expires_in_ms": ttl,
+            "confirmation": {
+                "tool": "solana_confirm_transaction",
+                "args": { "id": confirmation_id, "hash": hash, "commitment": commitment }
+            },
+            "transaction_base64": tx_base64,
+            "context": sim.context,
+            "value": sim.value,
+            "preview": {
+                "program_ids": summary.get("program_ids"),
+                "risk_warnings": summary.get("risk_warnings")
+            },
+            "suggestions": summary.get("suggestions")
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Solana: send a transaction (safe default: creates pending confirmation unless confirm=true)")]
     async fn solana_send_transaction(
         &self,
@@ -2725,6 +3027,20 @@
             })?;
 
         let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+        if request.confirm.unwrap_or(false) && !request.allow_direct_send.unwrap_or(false) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "Direct broadcast is blocked by default. Use solana_tx_preview (or confirm=false) to create a confirmation token, then call solana_confirm_transaction; or set allow_direct_send=true if you know what you are doing.",
+                ),
+                data: Some(json!({
+                    "hint": "Call solana_send_transaction with confirm=false (safe) or use solana_tx_preview, then solana_confirm_transaction",
+                    "tool_preview": "solana_tx_preview",
+                    "tool_confirm": "solana_confirm_transaction"
+                })),
+            });
+        }
 
         if !request.confirm.unwrap_or(false) {
             // Safe default: do not broadcast.
