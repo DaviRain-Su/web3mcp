@@ -2893,6 +2893,7 @@
         let mut details_instructions: Vec<Value> = Vec::new();
 
         let token_pid = spl_token::id().to_string();
+        let token_2022_pid = spl_token_2022::id().to_string();
         let ata_pid = spl_associated_token_account::id().to_string();
         let compute_budget_pid = solana_compute_budget_interface::id().to_string();
         let system_pid = "11111111111111111111111111111111";
@@ -2999,6 +3000,8 @@
                     }
                 }
             } else if pid == token_pid {
+                // Legacy SPL Token Program
+
                 if let Ok(tok_ix) = spl_token::instruction::TokenInstruction::unpack(&ci.data) {
                     match tok_ix {
                         spl_token::instruction::TokenInstruction::Transfer { amount } => {
@@ -3141,6 +3144,153 @@
                         }
                         _ => {}
                     }
+                }
+            } else if pid == token_2022_pid {
+                // SPL Token-2022 Program
+                if let Ok(tok_ix) = spl_token_2022::instruction::TokenInstruction::unpack(&ci.data) {
+                    match tok_ix {
+                        #[allow(deprecated)]
+                        spl_token_2022::instruction::TokenInstruction::Transfer { amount } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let destination = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            summary_lines.push(format!(
+                                "SPL Token-2022 transfer: {} -> {} (amount: {})",
+                                source, destination, amount
+                            ));
+                            detail["kind"] = json!("spl_token_2022_transfer");
+                            detail["source"] = json!(source);
+                            detail["destination"] = json!(destination);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                        }
+                        spl_token_2022::instruction::TokenInstruction::TransferChecked { amount, decimals } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let destination = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            summary_lines.push(format!(
+                                "SPL Token-2022 transfer_checked: {} -> {} (mint: {}, amount: {}, decimals: {})",
+                                source, destination, mint, amount, decimals
+                            ));
+                            detail["kind"] = json!("spl_token_2022_transfer_checked");
+                            detail["source"] = json!(source);
+                            detail["destination"] = json!(destination);
+                            detail["mint"] = json!(mint);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["decimals"] = json!(decimals);
+                        }
+                        spl_token_2022::instruction::TokenInstruction::Approve { amount } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let delegate = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            let is_infinite = amount == u64::MAX;
+                            summary_lines.push(format!(
+                                "SPL Token-2022 approve{}: delegate {} on {} (amount: {})",
+                                if is_infinite { " (infinite)" } else { "" },
+                                delegate,
+                                source,
+                                amount
+                            ));
+                            detail["kind"] = json!("spl_token_2022_approve");
+                            detail["source"] = json!(source);
+                            detail["delegate"] = json!(delegate);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["infinite"] = json!(is_infinite);
+
+                            warnings.push(json!({
+                                "kind": "token_approve",
+                                "severity": if is_infinite { "high" } else { "medium" },
+                                "infinite": is_infinite,
+                                "amount": amount.to_string(),
+                                "delegate": delegate,
+                                "source": source,
+                                "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::ApproveChecked { amount, decimals } => {
+                            let source = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let delegate = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            let is_infinite = amount == u64::MAX;
+                            summary_lines.push(format!(
+                                "SPL Token-2022 approve_checked{}: delegate {} on {} (mint: {}, amount: {}, decimals: {})",
+                                if is_infinite { " (infinite)" } else { "" },
+                                delegate,
+                                source,
+                                mint,
+                                amount,
+                                decimals
+                            ));
+                            detail["kind"] = json!("spl_token_2022_approve_checked");
+                            detail["source"] = json!(source);
+                            detail["mint"] = json!(mint);
+                            detail["delegate"] = json!(delegate);
+                            detail["authority"] = json!(authority);
+                            detail["amount"] = json!(amount.to_string());
+                            detail["decimals"] = json!(decimals);
+                            detail["infinite"] = json!(is_infinite);
+
+                            warnings.push(json!({
+                                "kind": "token_approve",
+                                "severity": if is_infinite { "high" } else { "medium" },
+                                "infinite": is_infinite,
+                                "amount": amount.to_string(),
+                                "delegate": delegate,
+                                "source": source,
+                                "note": if is_infinite { "This looks like an infinite token approval." } else { "Token approval." }
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::Revoke => {
+                            let source = key_at(&ci.accounts, 0);
+                            let authority = key_at(&ci.accounts, 1);
+                            summary_lines.push(format!("SPL Token-2022 revoke: {}", source));
+                            detail["kind"] = json!("spl_token_2022_revoke");
+                            detail["source"] = json!(source);
+                            detail["authority"] = json!(authority);
+                        }
+                        spl_token_2022::instruction::TokenInstruction::CloseAccount => {
+                            let account = key_at(&ci.accounts, 0);
+                            let destination = key_at(&ci.accounts, 1);
+                            let authority = key_at(&ci.accounts, 2);
+                            summary_lines.push(format!(
+                                "SPL Token-2022 close_account: {} -> {}",
+                                account, destination
+                            ));
+                            detail["kind"] = json!("spl_token_2022_close_account");
+                            detail["account"] = json!(account);
+                            detail["destination"] = json!(destination);
+                            detail["authority"] = json!(authority);
+
+                            warnings.push(json!({
+                                "kind": "close_token_account",
+                                "severity": "medium",
+                                "account": account,
+                                "destination": destination,
+                                "note": "This transaction closes a token account."
+                            }));
+                        }
+                        spl_token_2022::instruction::TokenInstruction::SetAuthority { .. } => {
+                            summary_lines.push("SPL Token-2022 set_authority".to_string());
+                            detail["kind"] = json!("spl_token_2022_set_authority");
+                            warnings.push(json!({
+                                "kind": "set_authority",
+                                "severity": "high",
+                                "note": "This transaction changes token authority (high risk)."
+                            }));
+                        }
+                        _ => {
+                            // Many Token-2022 extensions exist; keep a generic line.
+                            summary_lines.push("SPL Token-2022 instruction".to_string());
+                            detail["kind"] = json!("spl_token_2022");
+                        }
+                    }
+                } else {
+                    summary_lines.push("SPL Token-2022 instruction (unable to decode)".to_string());
+                    detail["kind"] = json!("spl_token_2022");
                 }
             } else if pid == ata_pid {
                 // Typically: create associated token account
