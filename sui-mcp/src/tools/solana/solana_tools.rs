@@ -2133,6 +2133,33 @@
         xs.get(idx).copied()
     }
 
+    fn solana_suggest_fee_sample_addresses_from_metas(
+        metas: &[solana_sdk::instruction::AccountMeta],
+        max: usize,
+    ) -> Vec<solana_sdk::pubkey::Pubkey> {
+        // Heuristic: take writable accounts first (most likely to be hot / stateful),
+        // then fill with remaining accounts. Dedup while preserving order.
+        let mut out: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+
+        let mut push = |pk: solana_sdk::pubkey::Pubkey| {
+            if out.len() >= max {
+                return;
+            }
+            if !out.contains(&pk) {
+                out.push(pk);
+            }
+        };
+
+        for m in metas.iter().filter(|m| m.is_writable) {
+            push(m.pubkey);
+        }
+        for m in metas.iter().filter(|m| !m.is_writable) {
+            push(m.pubkey);
+        }
+
+        out
+    }
+
     #[tool(description = "Solana: build a (optionally signed) transaction from one or more instructions")]
     async fn solana_tx_build(
         &self,
@@ -2409,10 +2436,21 @@
                 .and_then(|c| c.simulate_accounts.clone())
                 .unwrap_or_default();
 
-            let addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
+            let mut addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
                 .iter()
                 .filter_map(|s| solana_sdk::pubkey::Pubkey::from_str(s.trim()).ok())
                 .collect();
+
+            if addrs.is_empty() {
+                // Auto-sample from tx message keys (max 16)
+                addrs = tx
+                    .message
+                    .account_keys
+                    .iter()
+                    .take(16)
+                    .cloned()
+                    .collect();
+            }
 
             let fees_res = if !addrs.is_empty() {
                 client.get_recent_prioritization_fees(&addrs).await
@@ -2514,6 +2552,8 @@
             });
         }
 
+        let metas_for_fee = metas.clone();
+
         let ix = solana_sdk::instruction::Instruction {
             program_id,
             accounts: metas,
@@ -2612,10 +2652,15 @@
                 .and_then(|c| c.simulate_accounts.clone())
                 .unwrap_or_default();
 
-            let addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
+            let mut addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
                 .iter()
                 .filter_map(|s| solana_sdk::pubkey::Pubkey::from_str(s.trim()).ok())
                 .collect();
+
+            if addrs.is_empty() {
+                // Auto-sample addresses from the instruction metas (max 16)
+                addrs = Self::solana_suggest_fee_sample_addresses_from_metas(&metas_for_fee, 16);
+            }
 
             let fees_res = if !addrs.is_empty() {
                 client.get_recent_prioritization_fees(&addrs).await
@@ -3609,6 +3654,7 @@
         };
 
         let account_metas = Self::solana_json_metas_to_account_metas(&metas_json)?;
+        let account_metas_for_fee = account_metas.clone();
         let ixn = solana_sdk::instruction::Instruction {
             program_id: program_id_pk,
             accounts: account_metas,
@@ -3702,10 +3748,34 @@
         let mut suggested_cu_price: Option<u64> = None;
         let mut price_sample: Option<Value> = None;
         if suggest_price {
-            if let Ok(fees) = client.get_recent_prioritization_fees(&[]).await {
+            let addr_strs: Vec<String> = cfg
+                .as_ref()
+                .and_then(|c| c.simulate_accounts.clone())
+                .unwrap_or_default();
+
+            let mut addrs: Vec<solana_sdk::pubkey::Pubkey> = addr_strs
+                .iter()
+                .filter_map(|s| solana_sdk::pubkey::Pubkey::from_str(s.trim()).ok())
+                .collect();
+
+            if addrs.is_empty() {
+                // Auto-sample addresses from the built instruction metas (max 16)
+                addrs =
+                    Self::solana_suggest_fee_sample_addresses_from_metas(&account_metas_for_fee, 16);
+            }
+
+            let fees_res = if !addrs.is_empty() {
+                client.get_recent_prioritization_fees(&addrs).await
+            } else {
+                client.get_recent_prioritization_fees(&[]).await
+            };
+
+            if let Ok(fees) = fees_res {
                 let vals: Vec<u64> = fees.iter().map(|f| f.prioritization_fee).collect();
                 suggested_cu_price = Self::solana_percentile_u64(vals.clone(), 0.75);
                 price_sample = Some(json!({
+                    "scope": if !addrs.is_empty() { "addresses" } else { "cluster" },
+                    "addresses_count": addrs.len(),
                     "count": fees.len(),
                     "p50": Self::solana_percentile_u64(vals.clone(), 0.50),
                     "p75": Self::solana_percentile_u64(vals.clone(), 0.75),
