@@ -904,6 +904,9 @@
         let rpc_url = Self::solana_rpc_url_for_network(Some(&network_str))?;
         let client = Self::solana_rpc(network)?;
 
+        // For spl_token::state::Mint/Account unpack
+        use solana_program_pack::Pack as _;
+
         let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
         let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
         let delegate = Self::solana_parse_pubkey(request.delegate.trim(), "delegate")?;
@@ -921,6 +924,55 @@
         } else {
             spl_associated_token_account::get_associated_token_address(&owner, &mint)
         };
+
+        let validate_mint_decimals = request.validate_mint_decimals.unwrap_or(true);
+        let mut mint_decimals: Option<u8> = None;
+        if validate_mint_decimals {
+            // Validate mint account can be decoded, and token_account matches (mint, owner).
+            let mint_acc = client
+                .get_account(&mint)
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_approve", e))?;
+            let mint_state = spl_token::state::Mint::unpack(&mint_acc.data).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode mint account: {}", e)),
+                data: Some(json!({"mint": mint.to_string()})),
+            })?;
+            mint_decimals = Some(mint_state.decimals);
+
+            let ta_acc = client
+                .get_account(&token_account)
+                .await
+                .map_err(|e| Self::sdk_error("solana_spl_approve", e))?;
+            let ta_state = spl_token::state::Account::unpack(&ta_acc.data).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to decode token account: {}", e)),
+                data: Some(json!({"token_account": token_account.to_string()})),
+            })?;
+
+            if ta_state.mint != mint {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token_account mint does not match request.mint"),
+                    data: Some(json!({
+                        "token_account": token_account.to_string(),
+                        "token_account_mint": ta_state.mint.to_string(),
+                        "requested_mint": mint.to_string()
+                    })),
+                });
+            }
+            if ta_state.owner != owner {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token_account owner does not match request.owner"),
+                    data: Some(json!({
+                        "token_account": token_account.to_string(),
+                        "token_account_owner": ta_state.owner.to_string(),
+                        "requested_owner": owner.to_string()
+                    })),
+                });
+            }
+        }
 
         let sign = request.sign.unwrap_or(false);
         let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
@@ -1019,6 +1071,8 @@
                 "network": network_str,
                 "rpc_url": rpc_url,
                 "mint": mint.to_string(),
+                "mint_decimals": mint_decimals,
+                "validate_mint_decimals": validate_mint_decimals,
                 "owner": owner.to_string(),
                 "delegate": delegate.to_string(),
                 "amount_raw": amount.to_string(),
@@ -1108,6 +1162,8 @@
             "wait": waited,
             "approve": {
                 "mint": mint.to_string(),
+                "mint_decimals": mint_decimals,
+                "validate_mint_decimals": validate_mint_decimals,
                 "owner": owner.to_string(),
                 "delegate": delegate.to_string(),
                 "amount_raw": amount.to_string(),
