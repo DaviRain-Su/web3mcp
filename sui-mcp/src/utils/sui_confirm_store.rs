@@ -19,6 +19,10 @@ pub struct SuiPendingRow {
     // Human-friendly summary fields
     pub tool_context: Option<String>,
     pub summary_json: Option<String>,
+
+    // Optional confirm-time dry-run capture
+    pub last_dry_run_json: Option<String>,
+    pub last_dry_run_error: Option<String>,
 }
 
 fn now_ms() -> u128 {
@@ -197,7 +201,7 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<SuiPendin
     let mut stmt = conn
         .prepare(
             "SELECT id, tx_bytes_b64, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash,
-                    status, digest, last_error, tool_context, summary_json
+                    status, digest, last_error, tool_context, summary_json, last_dry_run_json, last_dry_run_error
              FROM sui_pending_confirmations
              WHERE id=?1",
         )
@@ -273,6 +277,16 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<SuiPendin
             message: Cow::from(format!("Failed to decode row field 10: {}", e)),
             data: None,
         })?;
+        let last_dry_run_json: Option<String> = r.get(11).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode row field 11: {}", e)),
+            data: None,
+        })?;
+        let last_dry_run_error: Option<String> = r.get(12).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to decode row field 12: {}", e)),
+            data: None,
+        })?;
 
         return Ok(Some(SuiPendingRow {
             id,
@@ -286,6 +300,8 @@ pub fn get_row(conn: &rusqlite::Connection, id: &str) -> Result<Option<SuiPendin
             last_error,
             tool_context,
             summary_json,
+            last_dry_run_json,
+            last_dry_run_error,
         }));
     }
 
@@ -300,6 +316,21 @@ pub fn mark_consumed(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorD
     .map_err(|e| ErrorData {
         code: ErrorCode(-32603),
         message: Cow::from(format!("Failed to mark consumed: {}", e)),
+        data: None,
+    })?;
+    Ok(())
+}
+
+pub fn mark_pending(conn: &rusqlite::Connection, id: &str) -> Result<(), ErrorData> {
+    conn.execute(
+        "UPDATE sui_pending_confirmations
+         SET status='pending', last_error=NULL, updated_at_ms=?2
+         WHERE id=?1",
+        rusqlite::params![id, now_ms() as i64],
+    )
+    .map_err(|e| ErrorData {
+        code: ErrorCode(-32603),
+        message: Cow::from(format!("Failed to mark pending: {}", e)),
         data: None,
     })?;
     Ok(())

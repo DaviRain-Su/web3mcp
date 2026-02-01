@@ -1520,6 +1520,283 @@
         }
     }
 
+    #[tool(description = "Sui: list pending confirmations (sqlite-backed)")]
+    async fn sui_list_pending_confirmations(
+        &self,
+        Parameters(request): Parameters<SuiListPendingConfirmationsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = crate::utils::sui_confirm_store::connect()?;
+        crate::utils::sui_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
+
+        let now_ms = crate::utils::evm_confirm_store::now_ms() as i64;
+        let limit = request.limit.unwrap_or(20).min(200) as i64;
+        let include_tx_bytes = request.include_tx_bytes.unwrap_or(false);
+
+        let status = request.status.as_deref().map(|s| s.trim().to_lowercase());
+        if let Some(st) = status.as_deref() {
+            let allowed = ["pending", "consumed", "sent", "failed"];
+            if !allowed.contains(&st) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("status must be one of: pending|consumed|sent|failed"),
+                    data: None,
+                });
+            }
+        }
+
+        let mut items: Vec<Value> = Vec::new();
+
+        let mut sql = "SELECT id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, digest, last_error, tool_context, summary_json, last_dry_run_error, tx_bytes_b64 FROM sui_pending_confirmations".to_string();
+        let mut params: Vec<rusqlite::types::Value> = Vec::new();
+        if let Some(st) = status {
+            sql.push_str(&format!(" WHERE status = ?{}", params.len() + 1));
+            params.push(rusqlite::types::Value::Text(st));
+        }
+        sql.push_str(" ORDER BY created_at_ms DESC");
+        sql.push_str(&format!(" LIMIT ?{}", params.len() + 1));
+        params.push(rusqlite::types::Value::Integer(limit));
+
+        let mut stmt = conn.prepare(&sql).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to prepare select: {}", e)),
+            data: None,
+        })?;
+
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params), |row| {
+                let id: String = row.get(0)?;
+                let created_at_ms: i64 = row.get(1)?;
+                let updated_at_ms: i64 = row.get(2)?;
+                let expires_at_ms: i64 = row.get(3)?;
+                let tx_summary_hash: String = row.get(4)?;
+                let status: String = row.get(5)?;
+                let digest: Option<String> = row.get(6)?;
+                let last_error: Option<String> = row.get(7)?;
+                let tool_context: Option<String> = row.get(8)?;
+                let summary_json: Option<String> = row.get(9)?;
+                let last_dry_run_error: Option<String> = row.get(10)?;
+                let tx_bytes_b64: Option<String> = row.get(11)?;
+                Ok((
+                    id,
+                    created_at_ms,
+                    updated_at_ms,
+                    expires_at_ms,
+                    tx_summary_hash,
+                    status,
+                    digest,
+                    last_error,
+                    tool_context,
+                    summary_json,
+                    last_dry_run_error,
+                    tx_bytes_b64,
+                ))
+            })
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to query_map: {}", e)),
+                data: None,
+            })?;
+
+        for r in rows.flatten() {
+            let expires_in_ms = (r.3 - now_ms).max(0);
+            items.push(json!({
+                "id": r.0,
+                "created_at_ms": r.1,
+                "updated_at_ms": r.2,
+                "expires_at_ms": r.3,
+                "expires_in_ms": expires_in_ms,
+                "tx_summary_hash": r.4,
+                "status": r.5,
+                "digest": r.6,
+                "last_error": r.7,
+                "tool_context": r.8,
+                "summary": r.9.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+                "last_dry_run_error": r.10,
+                "tx_bytes_b64": if include_tx_bytes { r.11 } else { None },
+            }));
+        }
+
+        let response = Self::pretty_json(&json!({
+            "db_path": crate::utils::evm_confirm_store::pending_db_path_from_cwd()?.to_string_lossy(),
+            "count": items.len(),
+            "items": items
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Sui: get a pending confirmation by id (sqlite-backed)")]
+    async fn sui_get_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<SuiGetPendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = crate::utils::sui_confirm_store::connect()?;
+        crate::utils::sui_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
+
+        let include_tx_bytes = request.include_tx_bytes.unwrap_or(true);
+        let row = crate::utils::sui_confirm_store::get_row(&conn, request.id.trim())?;
+
+        let response = Self::pretty_json(&json!({
+            "db_path": crate::utils::evm_confirm_store::pending_db_path_from_cwd()?.to_string_lossy(),
+            "item": row.map(|r| json!({
+                "id": r.id,
+                "created_at_ms": r.created_at_ms,
+                "updated_at_ms": r.updated_at_ms,
+                "expires_at_ms": r.expires_at_ms,
+                "expires_in_ms": (r.expires_at_ms as i128 - crate::utils::evm_confirm_store::now_ms() as i128).max(0),
+                "tx_summary_hash": r.tx_summary_hash,
+                "status": r.status,
+                "digest": r.digest,
+                "last_error": r.last_error,
+                "tool_context": r.tool_context,
+                "summary": r.summary_json.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+                "last_dry_run_error": r.last_dry_run_error,
+                "last_dry_run": r.last_dry_run_json.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+                "tx_bytes_b64": if include_tx_bytes { Some(r.tx_bytes_b64) } else { None }
+            }))
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Sui: retry executing a pending/failed/consumed confirmation (sqlite-backed). Safe: requires matching tx_summary_hash.")]
+    async fn sui_retry_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<SuiRetryPendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let conn = crate::utils::sui_confirm_store::connect()?;
+        crate::utils::sui_confirm_store::cleanup_expired(
+            &conn,
+            crate::utils::evm_confirm_store::now_ms(),
+        )?;
+
+        let row = crate::utils::sui_confirm_store::get_row(&conn, request.id.trim())?.ok_or_else(|| {
+            ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Unknown or expired confirmation_id"),
+                data: None,
+            }
+        })?;
+
+        if row.tx_summary_hash != request.tx_summary_hash {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("tx_summary_hash mismatch; rebuild and confirm again"),
+                data: Some(json!({
+                    "expected": row.tx_summary_hash,
+                    "provided": request.tx_summary_hash,
+                })),
+            });
+        }
+
+        let allowed = ["pending", "failed", "consumed"];
+        if !allowed.contains(&row.status.as_str()) {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Cannot retry status={}", row.status)),
+                data: Some(json!({
+                    "status": row.status,
+                    "digest": row.digest,
+                    "last_error": row.last_error,
+                })),
+            });
+        }
+
+        // Reset to pending before retry.
+        let _ = crate::utils::sui_confirm_store::mark_pending(&conn, &row.id);
+
+        // Execute using same logic as sui_confirm_execution.
+        let tx_bytes = Self::decode_base64("tx_bytes", &row.tx_bytes_b64)?;
+        let tx_data: TransactionData = bcs::from_bytes(&tx_bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid transaction bytes: {}", e)),
+            data: None,
+        })?;
+
+        let keystore = self.load_file_keystore(request.keystore_path.as_deref())?;
+        let signer = if let Some(s) = request.signer.as_deref() {
+            self.resolve_keystore_signer(&keystore, Some(s))?
+        } else {
+            tx_data.sender()
+        };
+
+        crate::utils::sui_confirm_store::mark_consumed(&conn, &row.id)?;
+
+        let preflight_enabled = request.preflight.unwrap_or(true);
+        let tx_data_for_send = tx_data.clone();
+
+        let sent = self
+            .sign_and_execute_tx_data(
+                &keystore,
+                signer,
+                tx_data_for_send,
+                request.allow_sender_mismatch,
+                Some(preflight_enabled),
+                request.allow_preflight_failure,
+                "sui_retry_pending_confirmation",
+            )
+            .await;
+
+        match sent {
+            Ok((result, preflight)) => {
+                if let Some(ref dr) = preflight {
+                    let err = dr.execution_error_source.as_deref();
+                    let _ = crate::utils::sui_confirm_store::set_last_dry_run(
+                        &conn,
+                        &row.id,
+                        &json!({"dry_run": dr}),
+                        err,
+                    );
+                }
+
+                let digest = result.digest.to_string();
+                let _ = crate::utils::sui_confirm_store::mark_sent(&conn, &row.id, &digest);
+
+                self.write_audit_log(
+                    "sui_retry_pending_confirmation",
+                    json!({
+                        "event": "sent",
+                        "confirmation_id": row.id,
+                        "digest": result.digest,
+                        "signer": signer.to_string(),
+                    }),
+                );
+
+                let summary = Self::summarize_transaction(&result);
+                let response = Self::pretty_json(&json!({
+                    "status": "sent",
+                    "confirmation_id": row.id,
+                    "digest": result.digest,
+                    "dry_run": preflight,
+                    "result": result,
+                    "summary": summary
+                }))?;
+                Ok(CallToolResult::success(vec![Content::text(response)]))
+            }
+            Err(e) => {
+                if preflight_enabled {
+                    if let Ok(dr) = self.preflight_tx_data(&tx_data).await {
+                        let err = dr.execution_error_source.as_deref();
+                        let _ = crate::utils::sui_confirm_store::set_last_dry_run(
+                            &conn,
+                            &row.id,
+                            &json!({"dry_run": dr}),
+                            err,
+                        );
+                    }
+                }
+
+                let _ = crate::utils::sui_confirm_store::mark_failed(&conn, &row.id, &e.message);
+                Err(e)
+            }
+        }
+    }
+
     /// Build a stake transaction
     #[tool(description = "Build a transaction to add stake")]
     async fn build_add_stake(
