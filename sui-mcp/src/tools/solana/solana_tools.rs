@@ -6,6 +6,11 @@
             "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" => Some("Associated Token Account Program"),
             "ComputeBudget111111111111111111111111111111" => Some("Compute Budget Program"),
 
+            // DeFi (common)
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" => Some("Jupiter (V6)"),
+            "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA" => Some("Marginfi"),
+            "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH" => Some("Drift"),
+
             // Metaplex
             "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s" => Some("Metaplex Token Metadata"),
 
