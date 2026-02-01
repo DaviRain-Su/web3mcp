@@ -700,7 +700,7 @@ pub fn extract_confirmation_id(text: &str) -> Option<String> {
 
 pub fn large_value_threshold_wei() -> ethers::types::U256 {
     // default: 0.01 ETH
-    let default = ethers::types::U256::from_dec_str("10000000000000000").unwrap();
+    let default = ethers::types::U256::from(10_000_000_000_000_000u64);
     let Ok(v) = std::env::var("EVM_CONFIRM_LARGE_VALUE_THRESHOLD_WEI") else {
         return default;
     };
