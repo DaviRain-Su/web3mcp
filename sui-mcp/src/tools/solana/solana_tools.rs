@@ -281,6 +281,183 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Solana: get current slot")]
+    async fn solana_get_slot(
+        &self,
+        Parameters(request): Parameters<SolanaGetSlotRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc(request.network.as_deref())?;
+        let commitment = Self::solana_commitment_from_str(request.commitment.as_deref())?;
+        let slot = client
+            .get_slot_with_commitment(commitment)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_slot", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "commitment": request.commitment.unwrap_or("confirmed".to_string()),
+            "slot": slot
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get current block height")]
+    async fn solana_get_block_height(
+        &self,
+        Parameters(request): Parameters<SolanaGetBlockHeightRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc(request.network.as_deref())?;
+        let commitment = Self::solana_commitment_from_str(request.commitment.as_deref())?;
+        let height = client
+            .get_block_height_with_commitment(commitment)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_block_height", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "commitment": request.commitment.unwrap_or("confirmed".to_string()),
+            "block_height": height
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: request airdrop (devnet/testnet only)")]
+    async fn solana_request_airdrop(
+        &self,
+        Parameters(request): Parameters<SolanaRequestAirdropRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let net = request.network.as_deref().unwrap_or("devnet").trim().to_lowercase();
+        if net == "mainnet" || net == "mainnet-beta" || net == "mainnet_beta" {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("airdrop is only supported on devnet/testnet"),
+                data: Some(json!({"network": net})),
+            });
+        }
+
+        let client = Self::solana_rpc(Some(&net))?;
+        let addr = Self::solana_parse_pubkey(request.address.trim(), "address")?;
+        let sig = client
+            .request_airdrop(&addr, request.lamports)
+            .await
+            .map_err(|e| Self::sdk_error("solana_request_airdrop", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url_for_network(Some(&net))?,
+            "network": net,
+            "address": addr.to_string(),
+            "lamports": request.lamports,
+            "signature": sig.to_string(),
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: list SPL token accounts for an owner (optionally filter by mint)")]
+    async fn solana_get_token_accounts(
+        &self,
+        Parameters(request): Parameters<SolanaGetTokenAccountsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc(request.network.as_deref())?;
+        let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
+
+        // Note: solana-client currently fixes encoding=jsonParsed for get_token_accounts_by_owner_with_commitment.
+        // We accept encoding param for API compatibility, but only support jsonParsed here.
+        let encoding = request.encoding.as_deref().unwrap_or("jsonParsed").to_lowercase();
+        if !(encoding == "jsonparsed" || encoding == "json_parsed") {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("encoding must be jsonParsed for this tool"),
+                data: Some(json!({ "provided": encoding })),
+            });
+        }
+
+        let filter = if let Some(m) = request.mint.as_deref() {
+            let mint = Self::solana_parse_pubkey(m.trim(), "mint")?;
+            solana_client::rpc_request::TokenAccountsFilter::Mint(mint)
+        } else {
+            solana_client::rpc_request::TokenAccountsFilter::ProgramId(
+                solana_sdk::pubkey::Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap(),
+            )
+        };
+
+        let commitment = solana_commitment_config::CommitmentConfig::confirmed();
+        let res = client
+            .get_token_accounts_by_owner_with_commitment(&owner, filter, commitment)
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_token_accounts", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "owner": owner.to_string(),
+            "mint": request.mint,
+            "encoding": "jsonParsed",
+            "context": res.context,
+            "value": res.value
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Solana: get SPL token balance for owner+mint (aggregates all token accounts)")]
+    async fn solana_get_token_balance(
+        &self,
+        Parameters(request): Parameters<SolanaGetTokenBalanceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let client = Self::solana_rpc(request.network.as_deref())?;
+        let owner = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
+        let mint = Self::solana_parse_pubkey(request.mint.trim(), "mint")?;
+
+        let commitment = solana_commitment_config::CommitmentConfig::confirmed();
+        let res = client
+            .get_token_accounts_by_owner_with_commitment(
+                &owner,
+                solana_client::rpc_request::TokenAccountsFilter::Mint(mint),
+                commitment,
+            )
+            .await
+            .map_err(|e| Self::sdk_error("solana_get_token_balance", e))?;
+
+        // Best-effort parse jsonParsed layout: value[i].account.data.parsed.info.tokenAmount
+        let mut total_raw: u128 = 0;
+        let mut decimals: Option<u8> = None;
+        let mut accounts: Vec<Value> = Vec::new();
+
+        for keyed in &res.value {
+            let v = serde_json::to_value(keyed).unwrap_or(Value::Null);
+            // Extract tokenAmount fields
+            let ta = v
+                .pointer("/account/data/parsed/info/tokenAmount")
+                .cloned()
+                .unwrap_or(Value::Null);
+            let amount_raw = ta
+                .get("amount")
+                .and_then(|x| x.as_str())
+                .and_then(|s| s.parse::<u128>().ok())
+                .unwrap_or(0);
+            let dec = ta.get("decimals").and_then(|x| x.as_u64()).map(|d| d as u8);
+            if decimals.is_none() {
+                decimals = dec;
+            }
+            total_raw = total_raw.saturating_add(amount_raw);
+            accounts.push(v);
+        }
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": Self::solana_rpc_url_for_network(request.network.as_deref())?,
+            "network": request.network.unwrap_or("mainnet".to_string()),
+            "owner": owner.to_string(),
+            "mint": mint.to_string(),
+            "encoding": "jsonParsed",
+            "decimals": decimals,
+            "total_amount_raw": total_raw.to_string(),
+            "token_accounts_count": accounts.len(),
+            "token_accounts": accounts
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     // ---------------- Solana IDL Registry ----------------
 
     #[tool(description = "Solana IDL Registry: register an IDL JSON under abi_registry/solana/<program_id>/<name>.json")]

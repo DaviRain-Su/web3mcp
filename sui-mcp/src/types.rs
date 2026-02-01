@@ -360,6 +360,54 @@ pub struct SolanaGetTransactionRequest {
     pub max_supported_transaction_version: Option<u8>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetSlotRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetBlockHeightRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Optional commitment: processed|confirmed|finalized")]
+    pub commitment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaRequestAirdropRequest {
+    #[schemars(description = "Network: devnet|testnet (mainnet not supported)")]
+    pub network: Option<String>,
+    #[schemars(description = "Recipient address (base58)")]
+    pub address: String,
+    #[schemars(description = "Lamports amount (e.g., 1000000000 for 1 SOL)")]
+    pub lamports: u64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetTokenAccountsRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Owner address (base58)")]
+    pub owner: String,
+    #[schemars(description = "Optional mint address (base58) to filter")]
+    pub mint: Option<String>,
+    #[schemars(description = "Encoding: base64|jsonParsed (default jsonParsed)")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaGetTokenBalanceRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "Owner address (base58)")]
+    pub owner: String,
+    #[schemars(description = "Mint address (base58)")]
+    pub mint: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EvmTxRequest {
     #[schemars(description = "Chain id")]
