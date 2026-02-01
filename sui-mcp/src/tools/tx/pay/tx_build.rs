@@ -174,6 +174,12 @@
             let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
             let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
 
+            let summary = json!({
+                "sender": request.sender,
+                "recipient": request.recipient,
+                "object_id": request.object_id
+            });
+
             crate::utils::sui_confirm_store::insert_pending(
                 &confirmation_id,
                 &tx_bytes_b64,
@@ -181,17 +187,17 @@
                 expires,
                 &hash,
                 "execute_transfer_object",
-                Some(json!({
-                    "sender": request.sender,
-                    "recipient": request.recipient,
-                    "object_id": request.object_id
-                })),
+                Some(summary.clone()),
             )?;
 
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
+                "tool_context": json!({
+                    "tool": "execute_transfer_object"
+                }),
+                "summary": summary,
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
@@ -279,6 +285,13 @@
             let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
             let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
 
+            let summary = json!({
+                "sender": request.sender,
+                "recipients": request.recipients,
+                "amounts": request.amounts,
+                "input_coins": request.input_coins
+            });
+
             crate::utils::sui_confirm_store::insert_pending(
                 &confirmation_id,
                 &tx_bytes_b64,
@@ -286,18 +299,17 @@
                 expires,
                 &hash,
                 "execute_pay_sui",
-                Some(json!({
-                    "sender": request.sender,
-                    "recipients": request.recipients,
-                    "amounts": request.amounts,
-                    "input_coins": request.input_coins
-                })),
+                Some(summary.clone()),
             )?;
 
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
+                "tool_context": json!({
+                    "tool": "execute_pay_sui"
+                }),
+                "summary": summary,
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
@@ -383,6 +395,13 @@
             let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
             let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
 
+            let summary = json!({
+                "sender": request.sender,
+                "validator": request.validator,
+                "coins": request.coins,
+                "amount": request.amount
+            });
+
             crate::utils::sui_confirm_store::insert_pending(
                 &confirmation_id,
                 &tx_bytes_b64,
@@ -390,18 +409,17 @@
                 expires,
                 &hash,
                 "execute_add_stake",
-                Some(json!({
-                    "sender": request.sender,
-                    "validator": request.validator,
-                    "coins": request.coins,
-                    "amount": request.amount
-                })),
+                Some(summary.clone()),
             )?;
 
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
+                "tool_context": json!({
+                    "tool": "execute_add_stake"
+                }),
+                "summary": summary,
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
@@ -485,6 +503,11 @@
             let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
             let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
 
+            let summary = json!({
+                "sender": request.sender,
+                "staked_sui": request.staked_sui
+            });
+
             crate::utils::sui_confirm_store::insert_pending(
                 &confirmation_id,
                 &tx_bytes_b64,
@@ -492,16 +515,17 @@
                 expires,
                 &hash,
                 "execute_withdraw_stake",
-                Some(json!({
-                    "sender": request.sender,
-                    "staked_sui": request.staked_sui
-                })),
+                Some(summary.clone()),
             )?;
 
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
+                "tool_context": json!({
+                    "tool": "execute_withdraw_stake"
+                }),
+                "summary": summary,
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
@@ -1296,6 +1320,11 @@
             let id_suffix = hex::encode(ethers::utils::keccak256(seed.as_bytes()));
             let confirmation_id = format!("sui_confirm_{}", &id_suffix[..16]);
 
+            let summary = json!({
+                "sender": request.sender,
+                "requests_count": requests_count,
+            });
+
             crate::utils::sui_confirm_store::insert_pending(
                 &confirmation_id,
                 &tx_bytes_b64,
@@ -1303,16 +1332,17 @@
                 expires,
                 &hash,
                 "execute_batch_transaction",
-                Some(json!({
-                    "sender": request.sender,
-                    "requests_count": requests_count,
-                })),
+                Some(summary.clone()),
             )?;
 
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
+                "tool_context": json!({
+                    "tool": "execute_batch_transaction"
+                }),
+                "summary": summary,
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
