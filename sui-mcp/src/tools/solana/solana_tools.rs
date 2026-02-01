@@ -10,6 +10,9 @@
             "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" => Some("Jupiter (V6)"),
             "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA" => Some("Marginfi"),
             "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH" => Some("Drift"),
+            "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc" => Some("Orca Whirlpool"),
+            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8" => Some("Raydium AMM v4"),
+            "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD" => Some("Marinade"),
             // Common swap mints (not programs, but helpful when showing account lists)
             "So11111111111111111111111111111111111111112" => Some("Wrapped SOL mint"),
             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" => Some("USDC mint"),
