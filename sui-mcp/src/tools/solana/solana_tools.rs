@@ -3310,20 +3310,46 @@
                         }
                         // Friendly handling for common Token-2022 extension prefixes / advanced instructions
                         spl_token_2022::instruction::TokenInstruction::TransferFeeExtension => {
-                            summary_lines.push("SPL Token-2022: TransferFee extension instruction".to_string());
+                            // Extension prefix: cannot fully decode without additional parsing.
+                            // Still: surface this clearly for end users.
+                            let src = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            summary_lines.push(format!(
+                                "SPL Token-2022: TransferFee extension (src: {}, mint: {})",
+                                src, mint
+                            ));
                             detail["kind"] = json!("spl_token_2022_transfer_fee_extension");
+                            detail["source"] = json!(src);
+                            detail["mint"] = json!(mint);
                             warnings.push(json!({
                                 "kind": "token2022_transfer_fee",
                                 "severity": "medium",
-                                "note": "Token-2022 TransferFee extension may charge transfer fees."
+                                "source": src,
+                                "mint": mint,
+                                "note": "Token-2022 TransferFee may charge fees on transfers. Verify amounts and expected output."
                             }));
                         }
                         spl_token_2022::instruction::TokenInstruction::TransferHookExtension => {
-                            summary_lines.push("SPL Token-2022: TransferHook extension instruction".to_string());
+                            // Extension prefix: can trigger hooks (extra CPI). Show involved accounts.
+                            let src = key_at(&ci.accounts, 0);
+                            let mint = key_at(&ci.accounts, 1);
+                            let dst = key_at(&ci.accounts, 2);
+                            let authority = key_at(&ci.accounts, 3);
+                            summary_lines.push(format!(
+                                "SPL Token-2022: TransferHook extension ({} -> {}, mint: {})",
+                                src, dst, mint
+                            ));
                             detail["kind"] = json!("spl_token_2022_transfer_hook_extension");
+                            detail["source"] = json!(src);
+                            detail["destination"] = json!(dst);
+                            detail["mint"] = json!(mint);
+                            detail["authority"] = json!(authority);
                             warnings.push(json!({
                                 "kind": "token2022_transfer_hook",
                                 "severity": "high",
+                                "source": src,
+                                "destination": dst,
+                                "mint": mint,
                                 "note": "Token-2022 TransferHook can trigger extra program calls (hook). Review carefully."
                             }));
                         }
