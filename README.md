@@ -33,7 +33,7 @@
 
 ## 📊 项目状态
 
-**当前阶段**: ✅ 调研完成，等待开发启动
+**当前阶段**: ✅ 调研完成；✅ Rust MCP Server（`web3mcp/`）已落地并持续迭代
 
 **调研结果**: **96.5 / 100** ⭐⭐⭐⭐⭐ 强烈推荐立即执行
 
@@ -121,8 +121,11 @@
 ## 📚 文档结构
 
 ```
-web3mpc/
-├── README.md                    # 本文件
+web3mcp_repo/
+├── README.md                    # 本文件（项目总览 / 调研）
+├── web3mcp/                     # ✅ 现行 Rust 多链 MCP Server（binary: web3mcp）
+├── archive/                     # 历史/归档
+│   └── omniweb3-mcp/            # 旧项目归档（保留历史）
 ├── docs/
 │   ├── final/                   # ✅ 最终调研文档
 │   │   ├── 00-README.md         # 文档导航
@@ -152,7 +155,8 @@ web3mpc/
 2. 按顺序阅读所有文档
 
 ### 开发与文档驱动
-- 当前进行中：Rust 版本链上 MCP（`web3mcp/`，逐步扩展为多链）
+- **现行实现**：Rust 多链 MCP Server 在 `web3mcp/`（binary: `web3mcp`）
+- **历史归档**：旧 `omniweb3-mcp/` 已移动到 `archive/omniweb3-mcp/`
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Story: [stories/v0.1.0-mcp-skeleton.md](stories/v0.1.0-mcp-skeleton.md)
 - 设计: [docs/design/mcp-skeleton.md](docs/design/mcp-skeleton.md)
