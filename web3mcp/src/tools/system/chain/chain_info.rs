@@ -68,3 +68,41 @@
         let response = Self::pretty_json(&serde_json::Value::Object(out))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
+
+    /// Report currently configured server network context (Sui rpc_url + mainnet/testnet hints).
+    #[tool(description = "Get server network context (Sui rpc_url and inferred network; plus Solana network notes).")]
+    async fn system_network_context(&self) -> Result<CallToolResult, ErrorData> {
+        let sui_rpc_url = self.rpc_url.clone();
+        let sui_rpc_lc = sui_rpc_url.to_lowercase();
+        let sui_network = if sui_rpc_lc.contains("testnet") {
+            "testnet"
+        } else if sui_rpc_lc.contains("devnet") {
+            "devnet"
+        } else if sui_rpc_lc.contains("mainnet") {
+            "mainnet"
+        } else if sui_rpc_lc.contains("127.0.0.1") || sui_rpc_lc.contains("localhost") {
+            "local"
+        } else {
+            "unknown"
+        };
+
+        // Solana tools accept a `network` param on each call; default is mainnet.
+        let solana_default_network = "mainnet";
+
+        let response = Self::pretty_json(&serde_json::json!({
+            "sui": {
+                "rpc_url": sui_rpc_url,
+                "network": sui_network,
+                "mainnet": sui_network == "mainnet"
+            },
+            "solana": {
+                "default_network": solana_default_network,
+                "note": "Solana tools accept network=mainnet|mainnet-beta|testnet|devnet per call; default is mainnet. Mainnet broadcasts require confirm_token."
+            },
+            "evm": {
+                "note": "EVM tools use chain_id; mainnet chain_ids require confirm_token and will not broadcast from one-step transfer. Use pending confirmations."
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
