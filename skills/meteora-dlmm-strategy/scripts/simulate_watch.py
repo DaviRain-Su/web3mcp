@@ -185,8 +185,21 @@ def main() -> int:
     top_n = args.top_n if args.top_n else args.limit
 
     url = args.base_url.rstrip("/") + "/pair/all"
-    # /pair/all can be large; allow longer timeout than default
-    pairs = http_get_json(url, timeout_s=45)
+    # /pair/all can be large; allow longer timeout than default. Retry a few times.
+    fetch_started = now_ms()
+    last_fetch_error = None
+    pairs = None
+    for attempt in range(1, 4):
+        try:
+            pairs = http_get_json(url, timeout_s=45)
+            last_fetch_error = None
+            break
+        except Exception as e:
+            last_fetch_error = str(e)
+            time.sleep(0.8 * attempt)
+    fetch_duration_ms = now_ms() - fetch_started
+    if pairs is None:
+        raise SystemExit(f"Failed to fetch {url}: {last_fetch_error}")
     if not isinstance(pairs, list):
         raise SystemExit(f"Unexpected /pair/all response (expected array), got: {type(pairs)}")
 
@@ -305,6 +318,9 @@ def main() -> int:
 
     token_cache_ttl_ms = args.token_cache_ttl_min * 60 * 1000
     token_map = resolve_token_map(state, args.token_list_url, token_cache_ttl_ms)
+    token_cache = state.get("token_cache") or {}
+    token_source_url = token_cache.get("url")
+    token_cached_at_ms = token_cache.get("fetched_at_ms")
 
     # Enrich ranked entries with symbols/labels (used by cron summaries)
     for r in ranked:
@@ -322,6 +338,11 @@ def main() -> int:
     cooldown_ms = args.cooldown_min * 60 * 1000
     min_tvl = float(args.min_tvl)
 
+    eligible_after_tvl = 0
+    triggered_before_cooldown = 0
+    suppressed_by_cooldown = 0
+    triggers_count = {"fee_over_tvl_ge_1pct": 0, "top10_volume": 0, "top10_trades": 0}
+
     alerts = []
     for r in ranked:
         addr = r.get("pair_address")
@@ -331,6 +352,8 @@ def main() -> int:
         tvl = r.get("tvl")
         if not isinstance(tvl, (int, float)) or tvl < min_tvl:
             continue
+
+        eligible_after_tvl += 1
 
         fee = r.get("fee_24h")
         vol = r.get("volume_24h")
@@ -347,8 +370,17 @@ def main() -> int:
         if not (trigger_fee_tvl or trigger_vol or trigger_trades):
             continue
 
+        triggered_before_cooldown += 1
+        if trigger_fee_tvl:
+            triggers_count["fee_over_tvl_ge_1pct"] += 1
+        if trigger_vol:
+            triggers_count["top10_volume"] += 1
+        if trigger_trades:
+            triggers_count["top10_trades"] += 1
+
         last = int(last_alert_ms.get(addr, 0) or 0)
         if now_ms() - last < cooldown_ms:
+            suppressed_by_cooldown += 1
             continue
 
         est_fee_share = None
@@ -395,12 +427,26 @@ def main() -> int:
     save_state(args.state, state)
 
     out = {
-        "source": {"url": url, "count": len(pairs)},
+        "source": {
+            "url": url,
+            "count": len(pairs),
+            "fetch_duration_ms": fetch_duration_ms,
+            "fetch_error": last_fetch_error,
+        },
         "ranked": {
             "top_n": top_n,
             "min_tvl": min_tvl,
             "cooldown_min": args.cooldown_min,
             "invest_usd": args.invest_usd,
+            "eligible_after_tvl": eligible_after_tvl,
+            "triggered_before_cooldown": triggered_before_cooldown,
+            "suppressed_by_cooldown": suppressed_by_cooldown,
+            "triggers_count": triggers_count,
+        },
+        "token_list": {
+            "url": token_source_url,
+            "cached_at_ms": token_cached_at_ms,
+            "map_size": len(token_map),
         },
         "field_diagnostics": diag,
         "alerts": alerts,
