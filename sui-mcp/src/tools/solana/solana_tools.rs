@@ -4984,7 +4984,13 @@
             "expires_in_ms": ttl,
             "confirmation": {
                 "tool": "solana_confirm_transaction",
-                "args": { "id": confirmation_id, "hash": hash, "commitment": commitment }
+                "args": {
+                    "id": confirmation_id,
+                    "hash": hash,
+                    "network": network_str,
+                    "commitment": commitment,
+                    "timeout_ms": 60000
+                }
             },
             "transaction_base64": tx_base64,
             "context": sim.context,
