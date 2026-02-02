@@ -2761,3 +2761,15 @@ pub struct IntentExecuteRequest {
     #[schemars(description = "Ephemeral user signature over tx bytes (base64 flag||sig||pubkey)")]
     pub user_signature: Option<String>,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SystemDebugBundleRequest {
+    #[schemars(
+        description = "Optional output path to write the JSON bundle. If omitted, only returns in tool response."
+    )]
+    pub out_path: Option<String>,
+    #[schemars(description = "Include EVM rpc defaults map (may be large). Default true.")]
+    pub include_evm_rpc_defaults: Option<bool>,
+    #[schemars(description = "Include a small sample of pending confirmations. Default true.")]
+    pub include_pending_samples: Option<bool>,
+}

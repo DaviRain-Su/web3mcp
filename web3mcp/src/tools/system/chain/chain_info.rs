@@ -123,6 +123,214 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Write a diagnostic bundle (JSON) with network context and pending confirmation summaries. Optionally writes to out_path.")]
+    async fn system_debug_bundle(
+        &self,
+        Parameters(request): Parameters<SystemDebugBundleRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let include_evm_rpc_defaults = request.include_evm_rpc_defaults.unwrap_or(true);
+        let include_pending_samples = request.include_pending_samples.unwrap_or(true);
+
+        // ---- Network context ----
+        let sui_rpc_url = self.rpc_url.clone();
+        let sui_rpc_lc = sui_rpc_url.to_lowercase();
+        let sui_network = if sui_rpc_lc.contains("testnet") {
+            "testnet"
+        } else if sui_rpc_lc.contains("devnet") {
+            "devnet"
+        } else if sui_rpc_lc.contains("mainnet") {
+            "mainnet"
+        } else if sui_rpc_lc.contains("127.0.0.1") || sui_rpc_lc.contains("localhost") {
+            "local"
+        } else {
+            "unknown"
+        };
+
+        // Solana defaults
+        let solana_networks = serde_json::json!({
+            "mainnet": Self::solana_rpc_url_for_network(Some("mainnet")).ok(),
+            "testnet": Self::solana_rpc_url_for_network(Some("testnet")).ok(),
+            "devnet": Self::solana_rpc_url_for_network(Some("devnet")).ok(),
+        });
+
+        // ---- Pending stores ----
+        // Solana (json file)
+        let solana_pending = crate::utils::solana_confirm_store::list_pending().unwrap_or_default();
+        let solana_pending_count = solana_pending.len();
+        let solana_pending_sample = if include_pending_samples {
+            solana_pending
+                .iter()
+                .take(5)
+                .map(|p| serde_json::json!({
+                    "id": p.id,
+                    "created_ms": p.created_ms,
+                    "expires_ms": p.expires_ms,
+                    "tx_summary_hash": p.tx_summary_hash,
+                    "source_tool": p.source_tool,
+                }))
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+
+        // EVM (sqlite)
+        let evm_db_path = crate::utils::evm_confirm_store::pending_db_path_from_cwd()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string());
+        let (evm_pending_count, evm_pending_sample) = (|| -> Result<(i64, Vec<serde_json::Value>), ErrorData> {
+            let conn = crate::utils::evm_confirm_store::connect()?;
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM evm_pending_confirmations", [], |row| row.get(0))
+                .unwrap_or(0);
+
+            let mut sample: Vec<serde_json::Value> = Vec::new();
+            if include_pending_samples {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, chain_id, status, updated_at_ms, tx_hash FROM evm_pending_confirmations ORDER BY updated_at_ms DESC LIMIT 5",
+                    )
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to prepare EVM pending sample query: {}", e)),
+                        data: None,
+                    })?;
+
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, Option<String>>(2)?,
+                            row.get::<_, Option<i64>>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                        ))
+                    })
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to query EVM pending sample: {}", e)),
+                        data: None,
+                    })?;
+                for r in rows.flatten() {
+                    sample.push(serde_json::json!({
+                        "id": r.0,
+                        "chain_id": r.1,
+                        "status": r.2,
+                        "updated_at_ms": r.3,
+                        "tx_hash": r.4,
+                    }));
+                }
+            }
+
+            Ok((count, sample))
+        })().unwrap_or((0, vec![]));
+
+        // Sui (sqlite). DB lives at cwd/.data/pending.sqlite
+        let sui_db_path = std::env::current_dir()
+            .ok()
+            .map(|cwd| cwd.join(".data").join("pending.sqlite").to_string_lossy().to_string());
+        let (sui_pending_count, sui_pending_sample) = (|| -> Result<(i64, Vec<serde_json::Value>), ErrorData> {
+            let conn = crate::utils::sui_confirm_store::connect()?;
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sui_pending_confirmations", [], |row| row.get(0))
+                .unwrap_or(0);
+
+            let mut sample: Vec<serde_json::Value> = Vec::new();
+            if include_pending_samples {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, status, updated_at_ms, digest FROM sui_pending_confirmations ORDER BY updated_at_ms DESC LIMIT 5",
+                    )
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to prepare Sui pending sample query: {}", e)),
+                        data: None,
+                    })?;
+
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                            row.get::<_, Option<String>>(3)?,
+                        ))
+                    })
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to query Sui pending sample: {}", e)),
+                        data: None,
+                    })?;
+                for r in rows.flatten() {
+                    sample.push(serde_json::json!({
+                        "id": r.0,
+                        "status": r.1,
+                        "updated_at_ms": r.2,
+                        "digest": r.3,
+                    }));
+                }
+            }
+
+            Ok((count, sample))
+        })().unwrap_or((0, vec![]));
+
+        // EVM RPC defaults (optional)
+        let evm_rpc_defaults = if include_evm_rpc_defaults {
+            // Keep this list in sync with `evm_rpc_url()`.
+            let chain_ids: Vec<u64> = vec![
+                1, 11155111, 8453, 84532, 42161, 421614, 10, 11155420, 137, 80002, 56, 97, 43114,
+                43113, 42220, 44787, 2222, 2221, 480, 4801, 143, 10143, 8217, 1001, 998,
+            ];
+            let mut out = serde_json::Map::new();
+            for chain_id in chain_ids {
+                if let Ok(url) = Self::evm_rpc_url(chain_id) {
+                    out.insert(chain_id.to_string(), serde_json::Value::String(url));
+                }
+            }
+            serde_json::Value::Object(out)
+        } else {
+            serde_json::Value::Null
+        };
+
+        let bundle = serde_json::json!({
+            "generated_at_ms": crate::utils::solana_confirm_store::now_ms(),
+            "network": {
+                "sui": { "rpc_url": sui_rpc_url, "network": sui_network, "mainnet": sui_network == "mainnet" },
+                "solana": { "supported": solana_networks },
+            },
+            "stores": {
+                "solana": {
+                    "store_path": crate::utils::solana_confirm_store::store_path().to_string_lossy(),
+                    "pending_count": solana_pending_count,
+                    "pending_sample": solana_pending_sample,
+                },
+                "evm": {
+                    "db_path": evm_db_path,
+                    "pending_count": evm_pending_count,
+                    "pending_sample": evm_pending_sample,
+                },
+                "sui": {
+                    "db_path": sui_db_path,
+                    "pending_count": sui_pending_count,
+                    "pending_sample": sui_pending_sample,
+                }
+            },
+            "evm": {
+                "rpc_defaults": evm_rpc_defaults
+            }
+        });
+
+        if let Some(path) = request.out_path.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            std::fs::write(path, serde_json::to_string_pretty(&bundle).unwrap_or_default()).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to write debug bundle: {}", e)),
+                data: Some(serde_json::json!({"out_path": path})),
+            })?;
+        }
+
+        let response = Self::pretty_json(&bundle)?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     /// Report currently configured server network context (Sui rpc_url + mainnet/testnet hints).
     #[tool(description = "Get server network context (Sui rpc_url and inferred network; plus Solana network notes).")]
     async fn system_network_context(&self) -> Result<CallToolResult, ErrorData> {
