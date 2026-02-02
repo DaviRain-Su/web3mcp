@@ -2264,6 +2264,13 @@
         Ok("https://api.7k.ag".to_string())
     }
 
+    const SEVEN_K_PACKAGE_ID: &'static str =
+        "0x62412b7268c35f3808336aee57a52836501f40b8ba5d936f8ad275e672befd04";
+    const SEVEN_K_CONFIG_ID: &'static str =
+        "0x47442a93f7727d188ba7cb71031170d1786af70013cb7ad5115f3fe877ff0c54";
+    const SEVEN_K_VAULT_ID: &'static str =
+        "0x442ad50389ed5cda6f7a6f5a7ae6361a4c05ef1d9fb2e54fbba5a268d690bfe6";
+
     /// Helper to make 7K quote request with automatic fallback
     async fn make_7k_quote_request(
         &self,
@@ -2364,6 +2371,954 @@
         Ok((parsed, "quote".to_string()))
     }
 
+    fn get_required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, ErrorData> {
+        value
+            .get(key)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("quote.{} is required", key)),
+                data: None,
+            })
+    }
+
+    fn get_required_u64(value: &Value, key: &str) -> Result<u64, ErrorData> {
+        if let Some(v) = value.get(key) {
+            if let Some(n) = v.as_u64() {
+                return Ok(n);
+            }
+            if let Some(s) = v.as_str() {
+                return Self::parse_u64_string(key, s);
+            }
+        }
+        Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("quote.{} is required", key)),
+            data: None,
+        })
+    }
+
+    fn get_required_array(value: &Value, key: &str) -> Result<Vec<Value>, ErrorData> {
+        value
+            .get(key)
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.to_vec())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("quote.{} is required", key)),
+                data: None,
+            })
+    }
+
+    fn parse_u64_string(label: &str, value: &str) -> Result<u64, ErrorData> {
+        value.parse::<u64>().map_err(|_| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid {}: {}", label, value)),
+            data: None,
+        })
+    }
+
+    fn group_7k_swaps(swaps: &[Value]) -> Result<Vec<Vec<Value>>, ErrorData> {
+        if swaps.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut grouped = Vec::new();
+        let mut current = Vec::new();
+        for index in 0..swaps.len() {
+            let swap = &swaps[index];
+            current.push(swap.clone());
+            let next = swaps.get(index + 1);
+            let next_amount = next
+                .and_then(|s| s.get("amount"))
+                .and_then(|v| v.as_str());
+            let should_close = match (next, next_amount) {
+                (None, _) => true,
+                (Some(_), Some(amount)) => Self::parse_u64_string("swap.amount", amount)? > 0,
+                (Some(_), None) => true,
+            };
+            if should_close {
+                grouped.push(current);
+                current = Vec::new();
+            }
+        }
+        if !current.is_empty() {
+            grouped.push(current);
+        }
+        Ok(grouped)
+    }
+
+    fn parse_7k_swap_calls(swap: &Value) -> Result<Vec<Value>, ErrorData> {
+        if let Some(calls) = swap.get("calls").and_then(|v| v.as_array()) {
+            if calls.is_empty() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("swap.calls is empty"),
+                    data: None,
+                });
+            }
+            return Ok(calls.to_vec());
+        }
+        if let Some(call) = swap.get("call") {
+            return Ok(vec![call.clone()]);
+        }
+        if swap.get("target").is_some() || swap.get("functionName").is_some() {
+            return Ok(vec![swap.clone()]);
+        }
+        Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("swap call target is missing (target/functionName)"),
+            data: None,
+        })
+    }
+
+    fn parse_7k_call_target(call: &Value) -> Result<(ObjectID, Identifier, Identifier), ErrorData> {
+        let target = call
+            .get("target")
+            .or_else(|| call.get("functionName"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("call.target is required"),
+                data: None,
+            })?;
+        let mut parts = target.split("::");
+        let package = parts.next().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("call.target package is missing"),
+            data: None,
+        })?;
+        let module = parts.next().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("call.target module is missing"),
+            data: None,
+        })?;
+        let function = parts.next().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("call.target function is missing"),
+            data: None,
+        })?;
+        if parts.next().is_some() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("call.target must be package::module::function"),
+                data: None,
+            });
+        }
+        let package = Self::parse_object_id(package)?;
+        let module = Identifier::from_str(module).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid call.target module: {}", e)),
+            data: None,
+        })?;
+        let function = Identifier::from_str(function).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid call.target function: {}", e)),
+            data: None,
+        })?;
+        Ok((package, module, function))
+    }
+
+    fn parse_7k_call_type_args(call: &Value) -> Result<Vec<TypeTag>, ErrorData> {
+        let type_args = call
+            .get("typeArguments")
+            .or_else(|| call.get("type_args"))
+            .or_else(|| call.get("typeArgs"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        Self::parse_type_args_to_typetag(type_args)
+    }
+
+    fn parse_7k_call_arguments(call: &Value) -> Vec<Value> {
+        call.get("arguments")
+            .or_else(|| call.get("args"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.to_vec())
+            .unwrap_or_default()
+    }
+
+    fn parse_7k_call_return_index(call: &Value) -> Option<u16> {
+        call.get("return_index")
+            .or_else(|| call.get("returnIndex"))
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u16::try_from(v).ok())
+    }
+
+    fn parse_7k_call_returns_coin(call: &Value) -> Option<bool> {
+        call.get("returns_coin")
+            .or_else(|| call.get("returnsCoin"))
+            .and_then(|v| v.as_bool())
+    }
+
+    fn parse_7k_call_argument(
+        builder: &mut ProgrammableTransactionBuilder,
+        value: &Value,
+        input_coin: sui_types::transaction::Argument,
+    ) -> Result<sui_types::transaction::Argument, ErrorData> {
+        match value {
+            Value::String(s) => {
+                if matches!(s.as_str(), "$input" | "$coin" | "$coin_in" | "$input_coin" | "$coinIn") {
+                    return Ok(input_coin);
+                }
+                builder.pure(s.clone()).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure string arg: {}", e)),
+                    data: None,
+                })
+            }
+            Value::Bool(b) => builder.pure(*b).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid pure bool arg: {}", e)),
+                data: None,
+            }),
+            Value::Number(n) => {
+                let value = n.as_u64().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Numeric arg must be an unsigned integer"),
+                    data: None,
+                })?;
+                builder.pure(value).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure number arg: {}", e)),
+                    data: None,
+                })
+            }
+            Value::Object(map) => {
+                if let Some(kind) = map.get("kind").and_then(|v| v.as_str()) {
+                    match kind {
+                        "input" | "input_coin" | "coin" => return Ok(input_coin),
+                        "shared" => {
+                            let object_id = map
+                                .get("object_id")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("shared object_id is required"),
+                                    data: None,
+                                })?;
+                            let initial_shared_version = map
+                                .get("initial_shared_version")
+                                .and_then(|v| v.as_u64())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("shared initial_shared_version is required"),
+                                    data: None,
+                                })?;
+                            let mutable = map
+                                .get("mutable")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let object_id = Self::parse_object_id(object_id)?;
+                            return builder
+                                .obj(ObjectArg::SharedObject {
+                                    id: object_id,
+                                    initial_shared_version: SequenceNumber::from(initial_shared_version),
+                                    mutability: if mutable {
+                                        sui_types::transaction::SharedObjectMutability::Mutable
+                                    } else {
+                                        sui_types::transaction::SharedObjectMutability::Immutable
+                                    },
+                                })
+                                .map_err(|e| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from(format!("Invalid shared object arg: {}", e)),
+                                    data: None,
+                                });
+                        }
+                        "object" | "imm_or_owned" | "owned" => {
+                            let object_id = map
+                                .get("object_id")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("object_id is required"),
+                                    data: None,
+                                })?;
+                            let version = map
+                                .get("version")
+                                .and_then(|v| v.as_u64())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("object version is required"),
+                                    data: None,
+                                })?;
+                            let digest = map
+                                .get("digest")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("object digest is required"),
+                                    data: None,
+                                })?;
+                            let object_id = Self::parse_object_id(object_id)?;
+                            let digest = sui_types::digests::ObjectDigest::from_str(digest).map_err(|e| ErrorData {
+                                code: ErrorCode(-32602),
+                                message: Cow::from(format!("Invalid object digest: {}", e)),
+                                data: None,
+                            })?;
+                            return builder
+                                .obj(ObjectArg::ImmOrOwnedObject((
+                                    object_id,
+                                    SequenceNumber::from(version),
+                                    digest,
+                                )))
+                                .map_err(|e| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from(format!("Invalid object arg: {}", e)),
+                                    data: None,
+                                });
+                        }
+                        "receiving" => {
+                            let object_id = map
+                                .get("object_id")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("receiving object_id is required"),
+                                    data: None,
+                                })?;
+                            let version = map
+                                .get("version")
+                                .and_then(|v| v.as_u64())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("receiving version is required"),
+                                    data: None,
+                                })?;
+                            let digest = map
+                                .get("digest")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("receiving digest is required"),
+                                    data: None,
+                                })?;
+                            let object_id = Self::parse_object_id(object_id)?;
+                            let digest = sui_types::digests::ObjectDigest::from_str(digest).map_err(|e| ErrorData {
+                                code: ErrorCode(-32602),
+                                message: Cow::from(format!("Invalid receiving digest: {}", e)),
+                                data: None,
+                            })?;
+                            return builder
+                                .obj(ObjectArg::Receiving((
+                                    object_id,
+                                    SequenceNumber::from(version),
+                                    digest,
+                                )))
+                                .map_err(|e| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from(format!("Invalid receiving arg: {}", e)),
+                                    data: None,
+                                });
+                        }
+                        "pure" => {
+                            let arg_type = map
+                                .get("type")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| ErrorData {
+                                    code: ErrorCode(-32602),
+                                    message: Cow::from("pure type is required"),
+                                    data: None,
+                                })?;
+                            let arg_value = map.get("value").ok_or_else(|| ErrorData {
+                                code: ErrorCode(-32602),
+                                message: Cow::from("pure value is required"),
+                                data: None,
+                            })?;
+                            return Self::parse_7k_pure_argument(builder, arg_type, arg_value);
+                        }
+                        _ => {}
+                    }
+                }
+                if map.contains_key("object_id") {
+                    let object_id = map
+                        .get("object_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from("object_id is required"),
+                            data: None,
+                        })?;
+                    if let Some(version) = map.get("version").and_then(|v| v.as_u64()) {
+                        let digest = map
+                            .get("digest")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| ErrorData {
+                                code: ErrorCode(-32602),
+                                message: Cow::from("object digest is required"),
+                                data: None,
+                            })?;
+                        let object_id = Self::parse_object_id(object_id)?;
+                        let digest = sui_types::digests::ObjectDigest::from_str(digest).map_err(|e| ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from(format!("Invalid object digest: {}", e)),
+                            data: None,
+                        })?;
+                        return builder
+                            .obj(ObjectArg::ImmOrOwnedObject((
+                                object_id,
+                                SequenceNumber::from(version),
+                                digest,
+                            )))
+                            .map_err(|e| ErrorData {
+                                code: ErrorCode(-32602),
+                                message: Cow::from(format!("Invalid object arg: {}", e)),
+                                data: None,
+                            });
+                    }
+                    if let Some(initial_shared_version) =
+                        map.get("initial_shared_version").and_then(|v| v.as_u64())
+                    {
+                        let mutable = map
+                            .get("mutable")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let object_id = Self::parse_object_id(object_id)?;
+                        return builder
+                            .obj(ObjectArg::SharedObject {
+                                id: object_id,
+                                initial_shared_version: SequenceNumber::from(initial_shared_version),
+                                mutability: if mutable {
+                                    sui_types::transaction::SharedObjectMutability::Mutable
+                                } else {
+                                    sui_types::transaction::SharedObjectMutability::Immutable
+                                },
+                            })
+                            .map_err(|e| ErrorData {
+                                code: ErrorCode(-32602),
+                                message: Cow::from(format!("Invalid shared arg: {}", e)),
+                                data: None,
+                            });
+                    }
+                }
+                if map.contains_key("type") && map.contains_key("value") {
+                    let arg_type = map
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from("pure type is required"),
+                            data: None,
+                        })?;
+                    let arg_value = map.get("value").ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure value is required"),
+                        data: None,
+                    })?;
+                    return Self::parse_7k_pure_argument(builder, arg_type, arg_value);
+                }
+                Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Unsupported call argument object format"),
+                    data: None,
+                })
+            }
+            _ => Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Unsupported call argument format"),
+                data: None,
+            }),
+        }
+    }
+
+    fn parse_7k_pure_argument(
+        builder: &mut ProgrammableTransactionBuilder,
+        arg_type: &str,
+        arg_value: &Value,
+    ) -> Result<sui_types::transaction::Argument, ErrorData> {
+        match arg_type {
+            "u8" | "u16" | "u32" | "u64" => {
+                let value = arg_value
+                    .as_u64()
+                    .or_else(|| arg_value.as_str().and_then(|s| s.parse::<u64>().ok()))
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure integer value is required"),
+                        data: None,
+                    })?;
+                match arg_type {
+                    "u8" => builder.pure(u8::try_from(value).map_err(|_| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure u8 value out of range"),
+                        data: None,
+                    })?),
+                    "u16" => builder.pure(u16::try_from(value).map_err(|_| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure u16 value out of range"),
+                        data: None,
+                    })?),
+                    "u32" => builder.pure(u32::try_from(value).map_err(|_| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure u32 value out of range"),
+                        data: None,
+                    })?),
+                    _ => builder.pure(value),
+                }
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure integer arg: {}", e)),
+                    data: None,
+                })
+            }
+            "u128" => {
+                let value = arg_value
+                    .as_str()
+                    .and_then(|s| s.parse::<u128>().ok())
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure u128 value is required"),
+                        data: None,
+                    })?;
+                builder.pure(value).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure u128 arg: {}", e)),
+                    data: None,
+                })
+            }
+            "bool" => {
+                let value = arg_value.as_bool().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("pure bool value is required"),
+                    data: None,
+                })?;
+                builder.pure(value).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure bool arg: {}", e)),
+                    data: None,
+                })
+            }
+            "address" => {
+                let value = arg_value.as_str().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("pure address value is required"),
+                    data: None,
+                })?;
+                let address = Self::parse_address(value)?;
+                builder.pure(address).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure address arg: {}", e)),
+                    data: None,
+                })
+            }
+            "string" => {
+                let value = arg_value.as_str().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("pure string value is required"),
+                    data: None,
+                })?;
+                builder.pure(value.to_string()).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure string arg: {}", e)),
+                    data: None,
+                })
+            }
+            "bytes" | "vector<u8>" => {
+                let bytes = if let Some(hex) = arg_value.as_str() {
+                    let trimmed = hex.trim_start_matches("0x");
+                    hex::decode(trimmed).map_err(|e| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!("Invalid hex bytes: {}", e)),
+                        data: None,
+                    })?
+                } else if let Some(arr) = arg_value.as_array() {
+                    arr.iter()
+                        .map(|v| v.as_u64().and_then(|b| u8::try_from(b).ok()))
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from("Invalid bytes array"),
+                            data: None,
+                        })?
+                } else {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("pure bytes value is required"),
+                        data: None,
+                    });
+                };
+                builder.pure(bytes).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid pure bytes arg: {}", e)),
+                    data: None,
+                })
+            }
+            _ => Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Unsupported pure arg type: {}", arg_type)),
+                data: None,
+            }),
+        }
+    }
+
+    async fn resolve_shared_object_arg(
+        &self,
+        object_id: &str,
+        mutability: sui_types::transaction::SharedObjectMutability,
+    ) -> Result<ObjectArg, ErrorData> {
+        let object_id = Self::parse_object_id(object_id)?;
+        let object = self
+            .client
+            .read_api()
+            .get_object_with_options(object_id, SuiObjectDataOptions::new().with_owner())
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_build_swap_tx:get_object", e))?;
+        let object = object.object().map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Object not found: {}", e)),
+            data: None,
+        })?;
+        let object_ref = object.object_ref();
+        let owner = object.owner.clone().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Object owner not available"),
+            data: None,
+        })?;
+        Ok(match owner {
+            Owner::Shared {
+                initial_shared_version,
+            }
+            | Owner::ConsensusAddressOwner {
+                start_version: initial_shared_version,
+                ..
+            } => ObjectArg::SharedObject {
+                id: object_id,
+                initial_shared_version,
+                mutability,
+            },
+            Owner::AddressOwner(_) | Owner::ObjectOwner(_) | Owner::Immutable => {
+                ObjectArg::ImmOrOwnedObject(object_ref)
+            }
+        })
+    }
+
+    async fn select_coin_refs_for_amount(
+        &self,
+        sender: SuiAddress,
+        coin_type: &str,
+        amount: u64,
+    ) -> Result<Vec<sui_types::base_types::ObjectRef>, ErrorData> {
+        let coins = self
+            .client
+            .coin_read_api()
+            .get_coins(sender, Some(coin_type.to_string()), None, None)
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_build_swap_tx:get_coins", e))?;
+        let mut coin_list = coins.data;
+        if coin_list.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("No input coins found for tokenIn"),
+                data: None,
+            });
+        }
+        coin_list.sort_by(|a, b| b.balance.cmp(&a.balance));
+        let mut selected = Vec::new();
+        let mut total: u128 = 0;
+        for coin in coin_list {
+            selected.push(coin.object_ref());
+            total += coin.balance as u128;
+            if amount == 0 || total >= amount as u128 {
+                break;
+            }
+        }
+        if amount > 0 && total < amount as u128 {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Insufficient balance for swap amount"),
+                data: None,
+            });
+        }
+        Ok(selected)
+    }
+
+    async fn build_7k_swap_tx_data(
+        &self,
+        sender: SuiAddress,
+        token_in: &str,
+        token_out: &str,
+        swap_amount: u64,
+        return_after_commission: u64,
+        min_received: u64,
+        commission_bps: u64,
+        partner: Option<&str>,
+        grouped_swaps: &[Vec<Value>],
+        route_amounts: &[u64],
+        coin_refs: &[sui_types::base_types::ObjectRef],
+        config_arg: ObjectArg,
+        vault_arg: ObjectArg,
+        gas_price: u64,
+        gas_budget: u64,
+    ) -> Result<TransactionData, ErrorData> {
+        let pt = Self::build_7k_swap_pt(
+            sender,
+            token_in,
+            token_out,
+            swap_amount,
+            return_after_commission,
+            min_received,
+            commission_bps,
+            partner,
+            grouped_swaps,
+            route_amounts,
+            coin_refs,
+            config_arg,
+            vault_arg,
+        )?;
+
+        let input_objects = pt
+            .input_objects()
+            .map_err(|e| Self::sdk_error("sui_7k_build_swap_tx:input_objects", e))?
+            .iter()
+            .flat_map(|obj| match obj {
+                sui_types::transaction::InputObjectKind::ImmOrOwnedMoveObject((id, _, _)) => {
+                    Some(*id)
+                }
+                _ => None,
+            })
+            .collect();
+        let gas = self
+            .client
+            .transaction_builder()
+            .select_gas(sender, None, gas_budget, input_objects, gas_price)
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_build_swap_tx:select_gas", e))?;
+
+        Ok(TransactionData::new(
+            sui_types::transaction::TransactionKind::programmable(pt),
+            sender,
+            gas,
+            gas_budget,
+            gas_price,
+        ))
+    }
+
+    fn build_7k_swap_pt(
+        sender: SuiAddress,
+        token_in: &str,
+        token_out: &str,
+        swap_amount: u64,
+        return_after_commission: u64,
+        min_received: u64,
+        commission_bps: u64,
+        partner: Option<&str>,
+        grouped_swaps: &[Vec<Value>],
+        route_amounts: &[u64],
+        coin_refs: &[sui_types::base_types::ObjectRef],
+        config_arg: ObjectArg,
+        vault_arg: ObjectArg,
+    ) -> Result<sui_types::transaction::ProgrammableTransaction, ErrorData> {
+        if grouped_swaps.len() != route_amounts.len() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("route amount count does not match grouped swaps"),
+                data: None,
+            });
+        }
+        if coin_refs.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("No input coin references available"),
+                data: None,
+            });
+        }
+
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let primary_coin = if coin_refs.len() == 1 {
+            builder
+                .obj(ObjectArg::ImmOrOwnedObject(coin_refs[0]))
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid input coin: {}", e)),
+                    data: None,
+                })?
+        } else {
+            builder
+                .smash_coins(coin_refs.to_vec())
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Failed to merge input coins: {}", e)),
+                    data: None,
+                })?
+        };
+
+        let route_inputs = if route_amounts.len() > 1 {
+            let mut amt_args = Vec::with_capacity(route_amounts.len());
+            for amount in route_amounts {
+                amt_args.push(builder.pure(*amount).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid split amount: {}", e)),
+                    data: None,
+                })?);
+            }
+            let split_result = builder.command(sui_types::transaction::Command::SplitCoins(
+                primary_coin,
+                amt_args,
+            ));
+            let result_index = match split_result {
+                sui_types::transaction::Argument::Result(idx) => idx,
+                _ => {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Unexpected split result"),
+                        data: None,
+                    })
+                }
+            };
+            (0..route_amounts.len())
+                .map(|idx| {
+                    sui_types::transaction::Argument::NestedResult(result_index, idx as u16)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            vec![primary_coin]
+        };
+
+        let mut output_coins: Vec<sui_types::transaction::Argument> = Vec::new();
+        for (route_idx, route) in grouped_swaps.iter().enumerate() {
+            let mut current_coin = *route_inputs
+                .get(route_idx)
+                .ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Missing route input coin"),
+                    data: None,
+                })?;
+
+            for swap in route {
+                let calls = Self::parse_7k_swap_calls(swap)?;
+                for (call_idx, call) in calls.iter().enumerate() {
+                    let (package, module, function) = Self::parse_7k_call_target(call)?;
+                    let type_args = Self::parse_7k_call_type_args(call)?;
+                    let args = Self::parse_7k_call_arguments(call);
+                    let mut resolved_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        resolved_args.push(Self::parse_7k_call_argument(
+                            &mut builder,
+                            &arg,
+                            current_coin,
+                        )?);
+                    }
+                    let call_result = builder.programmable_move_call(
+                        package,
+                        module,
+                        function,
+                        type_args,
+                        resolved_args,
+                    );
+
+                    let returns_coin = Self::parse_7k_call_returns_coin(call)
+                        .unwrap_or(call_idx + 1 == calls.len());
+                    if returns_coin {
+                        current_coin = match (call_result, Self::parse_7k_call_return_index(call)) {
+                            (sui_types::transaction::Argument::Result(idx), Some(return_index)) => {
+                                sui_types::transaction::Argument::NestedResult(idx, return_index)
+                            }
+                            (result, None) => result,
+                            _ => {
+                                return Err(ErrorData {
+                                    code: ErrorCode(-32603),
+                                    message: Cow::from("Unexpected call result for return_index"),
+                                    data: None,
+                                })
+                            }
+                        };
+                    }
+                }
+            }
+            output_coins.push(current_coin);
+        }
+
+        if !output_coins.is_empty() {
+            let merge_coin = if output_coins.len() > 1 {
+                let mut coins = output_coins.clone();
+                let target = coins.remove(0);
+                builder.command(sui_types::transaction::Command::MergeCoins(target, coins));
+                target
+            } else {
+                output_coins[0]
+            };
+
+            let package = Self::parse_object_id(Self::SEVEN_K_PACKAGE_ID)?;
+            let module = Identifier::from_str("settle").map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid settle module: {}", e)),
+                data: None,
+            })?;
+            let function = Identifier::from_str("settle").map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid settle function: {}", e)),
+                data: None,
+            })?;
+            let type_args = Self::parse_type_args_to_typetag(vec![
+                token_in.to_string(),
+                token_out.to_string(),
+            ])?;
+            let partner_addr = match partner {
+                Some(addr) => Some(Self::parse_address(addr)?),
+                None => None,
+            };
+            let settle_args = vec![
+                builder.obj(config_arg).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid config object: {}", e)),
+                    data: None,
+                })?,
+                builder.obj(vault_arg).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid vault object: {}", e)),
+                    data: None,
+                })?,
+                builder.pure(swap_amount).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid swap amount: {}", e)),
+                    data: None,
+                })?,
+                merge_coin,
+                builder.pure(min_received).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid min_received: {}", e)),
+                    data: None,
+                })?,
+                builder.pure(return_after_commission).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid expected return: {}", e)),
+                    data: None,
+                })?,
+                builder.pure(partner_addr).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid partner address: {}", e)),
+                    data: None,
+                })?,
+                builder.pure(commission_bps).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid commission_bps: {}", e)),
+                    data: None,
+                })?,
+                builder.pure(0u64).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid settle padding arg: {}", e)),
+                    data: None,
+                })?,
+            ];
+            builder.programmable_move_call(package, module, function, type_args, settle_args);
+
+            let recipient = builder.pure(sender).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid sender: {}", e)),
+                data: None,
+            })?;
+            builder.command(sui_types::transaction::Command::TransferObjects(
+                vec![merge_coin],
+                recipient,
+            ));
+        }
+
+        Ok(builder.finish())
+    }
+
     #[tool(description = "Sui 7K aggregator: get swap quote for token pair. Returns routing info and expected output amount. Tries /quote first, falls back to /v2/quote with x-request-id if needed.")]
     async fn sui_7k_quote(
         &self,
@@ -2410,155 +3365,125 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Sui 7K aggregator: build swap transaction from quote. Calls the 7K API to build transaction bytes for signing/execution. Returns tx_bytes_b64.")]
+    #[tool(description = "Sui 7K aggregator: build swap transaction from quote locally (no HTTP build endpoint). Returns tx_bytes_b64.")]
     async fn sui_7k_build_swap_tx(
         &self,
         Parameters(request): Parameters<Sui7kBuildSwapTxRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let _sender = Self::parse_address(&request.sender)?;
-        let base_url = Self::get_7k_base_url(request.base_url.as_deref())?;
+        let sender = Self::parse_address(&request.sender)?;
         let slippage_bps = request.slippage_bps.unwrap_or(100);
         let commission_bps = request.commission_bps.unwrap_or(0);
-        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
 
-        let token_in = request
-            .quote
-            .get("tokenIn")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("quote.tokenIn is required"),
-                data: None,
-            })?;
-
-        let token_out = request
-            .quote
-            .get("tokenOut")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("quote.tokenOut is required"),
-                data: None,
-            })?;
-
-        let return_amount = request
-            .quote
-            .get("returnAmountWithDecimal")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("quote.returnAmountWithDecimal is required"),
-                data: None,
-            })?;
-
-        let return_amount_num: u128 = return_amount.parse().map_err(|_| ErrorData {
-            code: ErrorCode(-32602),
-            message: Cow::from("Invalid returnAmountWithDecimal"),
-            data: None,
-        })?;
-
+        let token_in = Self::get_required_str(&request.quote, "tokenIn")?;
+        let token_out = Self::get_required_str(&request.quote, "tokenOut")?;
+        let swap_amount = Self::get_required_u64(&request.quote, "swapAmountWithDecimal")?;
+        let return_amount = Self::get_required_str(&request.quote, "returnAmountWithDecimal")?;
+        let return_amount_num = Self::parse_u64_string("returnAmountWithDecimal", return_amount)?;
         let return_after_commission =
-            return_amount_num * (10000 - commission_bps as u128) / 10000;
-        let slippage_decimal = slippage_bps as f64 / 10000.0;
+            return_amount_num * (10000 - commission_bps) / 10000;
+        let min_received = return_after_commission * (10000 - slippage_bps) / 10000;
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(timeout_ms))
-            .build()
-            .map_err(|e| Self::sdk_error("sui_7k_build_swap_tx:client", e))?;
-
-        let mut build_body = json!({
-            "quoteResponse": request.quote,
-            "accountAddress": request.sender,
-            "slippage": slippage_decimal,
-        });
-
-        if let Some(partner) = request.partner.as_deref() {
-            build_body["commission"] = json!({
-                "partner": partner,
-                "commissionBps": commission_bps,
+        let swaps = Self::get_required_array(&request.quote, "swaps")?;
+        let grouped_swaps = Self::group_7k_swaps(&swaps)?;
+        if grouped_swaps.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("quote.swaps is empty"),
+                data: None,
             });
         }
 
-        let paths_to_try = vec![
-            "/swap/v2/transaction",
-            "/transaction/build",
-            "/build-tx",
-        ];
+        let route_amounts = grouped_swaps
+            .iter()
+            .map(|group| {
+                group
+                    .get(0)
+                    .and_then(|swap| swap.get("amount"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("swap.amount is required for route splits"),
+                        data: None,
+                    })
+                    .and_then(|amount| Self::parse_u64_string("swap.amount", amount))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let mut last_error: Option<(u16, Value)> = None;
-        let mut tx_response: Option<(Value, String)> = None;
+        let coin_refs = self
+            .select_coin_refs_for_amount(sender, token_in, swap_amount)
+            .await?;
 
-        for path in &paths_to_try {
-            let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-            let request_id = uuid::Uuid::new_v4().to_string();
+        let config_arg = self
+            .resolve_shared_object_arg(
+                Self::SEVEN_K_CONFIG_ID,
+                sui_types::transaction::SharedObjectMutability::Immutable,
+            )
+            .await?;
+        let vault_arg = self
+            .resolve_shared_object_arg(
+                Self::SEVEN_K_VAULT_ID,
+                sui_types::transaction::SharedObjectMutability::Mutable,
+            )
+            .await?;
 
-            let resp = client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .header("x-request-id", &request_id)
-                .json(&build_body)
-                .send()
-                .await;
+        let gas_price = self
+            .client
+            .read_api()
+            .get_reference_gas_price()
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_build_swap_tx:gas_price", e))?;
 
-            match resp {
-                Ok(r) => {
-                    let status = r.status();
-                    let text = r.text().await.unwrap_or_default();
-                    let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+        let mut gas_budget = 1_000_000;
+        let tx_data = self
+            .build_7k_swap_tx_data(
+                sender,
+                token_in,
+                token_out,
+                swap_amount,
+                return_after_commission,
+                min_received,
+                commission_bps,
+                request.partner.as_deref(),
+                &grouped_swaps,
+                &route_amounts,
+                &coin_refs,
+                config_arg,
+                vault_arg,
+                gas_price,
+                gas_budget,
+            )
+            .await?;
 
-                    if status.is_success() {
-                        tx_response = Some((parsed, path.to_string()));
-                        break;
-                    }
-
-                    if status == reqwest::StatusCode::NOT_FOUND {
-                        last_error = Some((status.as_u16(), parsed));
-                        continue;
-                    }
-
-                    last_error = Some((status.as_u16(), parsed));
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some((0, json!({ "error": e.to_string() })));
-                    continue;
-                }
-            }
-        }
-
-        let (tx_data, endpoint_used) = match tx_response {
-            Some((data, path)) => (data, path),
-            None => {
-                let (status, body) = last_error.unwrap_or((0, json!({"error": "all paths failed"})));
-                return Err(ErrorData {
-                    code: ErrorCode(if status > 0 { status as i32 } else { -32603 }),
-                    message: Cow::from("Failed to build swap transaction from 7K API"),
-                    data: Some(json!({
-                        "tried_paths": paths_to_try,
-                        "last_status": status,
-                        "last_body": body,
-                        "diagnostics": {
-                            "base_url": base_url,
-                            "quote_token_in": token_in,
-                            "quote_token_out": token_out,
-                            "sender": request.sender
-                        }
-                    })),
-                });
-            }
+        let estimated = self.estimate_gas_budget(&tx_data).await?;
+        gas_budget = Self::gas_budget_with_buffer(estimated);
+        let tx_data = if gas_budget != 1_000_000 {
+                self
+                .build_7k_swap_tx_data(
+                    sender,
+                    token_in,
+                    token_out,
+                    swap_amount,
+                    return_after_commission,
+                    min_received,
+                    commission_bps,
+                    request.partner.as_deref(),
+                    &grouped_swaps,
+                    &route_amounts,
+                    &coin_refs,
+                    config_arg,
+                    vault_arg,
+                    gas_price,
+                    gas_budget,
+                )
+                .await?
+        } else {
+            tx_data
         };
 
-        let tx_bytes_b64 = tx_data
-            .get("tx")
-            .or_else(|| tx_data.get("txBytes"))
-            .or_else(|| tx_data.get("transaction"))
-            .and_then(|v| v.as_str());
-
-        let min_received = return_after_commission * (10000 - slippage_bps as u128) / 10000;
+        let tx_bytes_b64 = Self::encode_tx_bytes(&tx_data)?;
 
         let response = Self::pretty_json(&json!({
             "status": "tx_built",
-            "endpoint_used": endpoint_used,
             "sender": request.sender,
             "token_in": token_in,
             "token_out": token_out,
@@ -2567,12 +3492,7 @@
             "slippage_bps": slippage_bps,
             "commission_bps": commission_bps,
             "tx_bytes_b64": tx_bytes_b64,
-            "raw_response": tx_data,
-            "note": if tx_bytes_b64.is_some() {
-                "Transaction built. Use sui_create_pending_confirmation with tx_bytes_b64 for mainnet safety."
-            } else {
-                "API returned but tx_bytes_b64 not found in expected fields (tx, txBytes, transaction). Check raw_response."
-            }
+            "note": "Transaction built locally. Use sui_create_pending_confirmation with tx_bytes_b64 for mainnet safety."
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
