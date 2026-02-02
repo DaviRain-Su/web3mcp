@@ -5446,9 +5446,15 @@
             let _ = crate::utils::solana_confirm_store::remove_pending(&request.id);
         }
 
+        let status = waited
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
         let response = Self::pretty_json(&json!({
             "ok": true,
             "stage": "confirm",
+            "status": status,
             "rpc_url": rpc_url,
             "network": network,
             "pending_confirmation_id": request.id,
@@ -5457,7 +5463,7 @@
             "skip_preflight": skip_preflight,
             "commitment": commitment,
             "wait": waited,
-            "note": "If wait.status==timeout you can call solana_confirm_transaction again with same id/hash."
+            "note": "If status==timeout you can call solana_confirm_transaction again with same id/hash."
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
