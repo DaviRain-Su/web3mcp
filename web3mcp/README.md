@@ -82,7 +82,8 @@ ERC20 helpers:
 - `evm_erc20_balance_of`
 - `evm_erc20_allowance`
 - `evm_erc20_build_approve`
-- `evm_erc20_approve` / `evm_erc20_transfer` (one-step; uses local signer)
+- `evm_execute_erc20_transfer` / `evm_execute_erc20_approve` (one-step; uses local signer; still respects mainnet safety)
+- Compatibility aliases: `evm_transfer_erc20`, `evm_approve_token_spending`
 
 ## Mainnet safety (Solana / Sui / EVM)
 

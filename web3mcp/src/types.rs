@@ -1510,6 +1510,49 @@ pub struct EvmGetErc20TokenInfoRequest {
     pub chain_id: Option<u64>,
 }
 
+// bnbchain-mcp compatibility aliases (naming only)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmTransferErc20Request {
+    #[schemars(
+        description = "Sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"
+    )]
+    pub sender: String,
+    #[schemars(description = "ERC20 token contract address")]
+    pub token: String,
+    #[schemars(description = "Recipient address")]
+    pub recipient: String,
+    #[schemars(description = "Token amount in base units (raw integer)")]
+    pub amount_raw: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    pub gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    pub allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmApproveTokenSpendingRequest {
+    #[schemars(
+        description = "Owner/sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"
+    )]
+    pub sender: String,
+    #[schemars(description = "ERC20 token contract address")]
+    pub token: String,
+    #[schemars(description = "Spender address")]
+    pub spender: String,
+    #[schemars(
+        description = "Approve amount in base units (raw integer). Use max uint256 for infinite approval."
+    )]
+    pub amount_raw: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    pub gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    pub allow_sender_mismatch: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmExecuteErc20ApproveRequest {
     #[schemars(

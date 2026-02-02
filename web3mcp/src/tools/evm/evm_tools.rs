@@ -1985,6 +1985,42 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM ERC20: transfer token (alias of evm_execute_erc20_transfer)")]
+    async fn evm_transfer_erc20(
+        &self,
+        Parameters(request): Parameters<EvmTransferErc20Request>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // Alias wrapper to match bnbchain-mcp naming.
+        self.evm_execute_erc20_transfer(Parameters(EvmExecuteErc20TransferRequest {
+            sender: request.sender,
+            token: request.token,
+            recipient: request.recipient,
+            amount_raw: request.amount_raw,
+            chain_id: request.chain_id,
+            gas_limit: request.gas_limit,
+            allow_sender_mismatch: request.allow_sender_mismatch,
+        }))
+        .await
+    }
+
+    #[tool(description = "EVM ERC20: approve token spending (alias of evm_execute_erc20_approve)")]
+    async fn evm_approve_token_spending(
+        &self,
+        Parameters(request): Parameters<EvmApproveTokenSpendingRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // Alias wrapper to match bnbchain-mcp naming.
+        self.evm_execute_erc20_approve(Parameters(EvmExecuteErc20ApproveRequest {
+            sender: request.sender,
+            token: request.token,
+            spender: request.spender,
+            amount_raw: request.amount_raw,
+            chain_id: request.chain_id,
+            gas_limit: request.gas_limit,
+            allow_sender_mismatch: request.allow_sender_mismatch,
+        }))
+        .await
+    }
+
     #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]
     async fn evm_get_gas_price(
         &self,
@@ -2468,6 +2504,10 @@
         &self,
         Parameters(request): Parameters<EvmExecuteErc20TransferRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        // Note: despite "one-step" naming, this function uses evm_execute_tx_request,
+        // which enforces mainnet safety by returning a pending confirmation.
+        // Therefore the output follows the shared status contract: sent|pending|needs_confirmation.
+
         let chain_id = request
             .chain_id
             .unwrap_or(Self::evm_default_chain_id()?);
@@ -2543,6 +2583,18 @@
         &self,
         Parameters(request): Parameters<EvmExecuteErc20ApproveRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        // Note: despite "one-step" naming, this function uses evm_execute_tx_request,
+        // which enforces mainnet safety by returning a pending confirmation.
+        // Therefore the output follows the shared status contract: sent|pending|needs_confirmation.
+
+        // Note: despite "one-step" naming, this function uses evm_execute_tx_request,
+        // which enforces mainnet safety by returning a pending confirmation.
+        // Therefore the output follows the shared status contract: sent|pending|needs_confirmation.
+
+        // Note: despite "one-step" naming, this function uses evm_execute_tx_request,
+        // which enforces mainnet safety by returning a pending confirmation.
+        // Therefore the output follows the shared status contract: sent|pending|needs_confirmation.
+
         let chain_id = request
             .chain_id
             .unwrap_or(Self::evm_default_chain_id()?);
