@@ -103,64 +103,21 @@
         //
         // NOTE: Public RPCs vary in reliability and rate-limits. For production usage,
         // set EVM_RPC_URL_<chain_id> explicitly.
-        match chain_id {
-            // Ethereum
-            1 => Ok("https://ethereum-rpc.publicnode.com".to_string()),
-            // Sepolia
-            11155111 => Ok("https://ethereum-sepolia-rpc.publicnode.com".to_string()),
-
-            // Base
-            8453 => Ok("https://mainnet.base.org".to_string()),
-            84532 => Ok("https://sepolia.base.org".to_string()),
-
-            // Arbitrum
-            42161 => Ok("https://arbitrum-one-rpc.publicnode.com".to_string()),
-            421614 => Ok("https://arbitrum-sepolia-rpc.publicnode.com".to_string()),
-
-            // Optimism
-            10 => Ok("https://optimism-rpc.publicnode.com".to_string()),
-            11155420 => Ok("https://optimism-sepolia-rpc.publicnode.com".to_string()),
-
-            // Polygon PoS
-            137 => Ok("https://polygon-bor-rpc.publicnode.com".to_string()),
-            80002 => Ok("https://polygon-amoy-bor-rpc.publicnode.com".to_string()),
-
-            // Avalanche
-            43114 => Ok("https://avalanche-c-chain-rpc.publicnode.com".to_string()),
-            43113 => Ok("https://avalanche-fuji-c-chain-rpc.publicnode.com".to_string()),
-
-            // Celo
-            42220 => Ok("https://forno.celo.org".to_string()),
-            44787 => Ok("https://alfajores-forno.celo-testnet.org".to_string()),
-
-            // Kava
-            2222 => Ok("https://evm.kava.io".to_string()),
-            2221 => Ok("https://evm.testnet.kava.io".to_string()),
-
-            // World Chain
-            480 => Ok("https://worldchain-mainnet.g.alchemy.com/public".to_string()),
-            4801 => Ok("https://worldchain-sepolia.g.alchemy.com/public".to_string()),
-
-            // Monad
-            143 => Ok("https://rpc.monad.xyz".to_string()),
-            10143 => Ok("https://testnet-rpc.monad.xyz".to_string()),
-
-            // Kaia
-            8217 => Ok("https://public-en.node.kaia.io".to_string()),
-            1001 => Ok("https://public-en-kairos.node.kaia.io".to_string()),
-
-            // HyperEVM (Hyperliquid EVM Testnet)
-            998 => Ok("https://api.hyperliquid-testnet.xyz/evm".to_string()),
-
-            _ => Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!(
-                    "Missing RPC URL for chain_id={}. Set {} env var.",
-                    chain_id, key
-                )),
-                data: None,
-            }),
+        if let Some(c) = crate::utils::evm_chain_registry::evm_default_chains()
+            .into_iter()
+            .find(|c| c.chain_id == chain_id)
+        {
+            return Ok(c.default_rpc_url.to_string());
         }
+
+        Err(ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!(
+                "Missing RPC URL for chain_id={}. Set {} env var.",
+                chain_id, key
+            )),
+            data: None,
+        })
     }
 
     async fn evm_provider(
@@ -2255,6 +2212,12 @@
 
         self.evm_execute_tx_request(chain_id, tx_request, request.allow_sender_mismatch.unwrap_or(false))
             .await
+    }
+
+    #[tool(description = "EVM: list built-in supported chains and RPC env overrides")]
+    async fn evm_list_supported_chains(&self) -> Result<CallToolResult, ErrorData> {
+        let response = Self::pretty_json(&crate::utils::evm_chain_registry::evm_chain_list_json())?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
     #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]
