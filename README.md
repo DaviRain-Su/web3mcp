@@ -48,17 +48,20 @@ Binary:
 
 ## Example prompts (copy/paste)
 
+### 0) Sanity check (recommended)
+- "Run `system_network_context` and tell me what networks are active for Sui/Solana/EVM."
+
 ### Sui
-- "Set SUI_RPC_URL to testnet and get the SUI balance of 0x..."
-- "On Sui testnet, list the owned objects for 0x..."
+- "On Sui testnet (set `SUI_RPC_URL=https://fullnode.testnet.sui.io:443`), use `get_balance` for 0x..."
+- "On Sui testnet, use `get_owned_objects` for 0x..."
 
 ### Solana
-- "On Solana devnet, get the SOL balance of <base58_pubkey>."
-- "Load the IDL for program <PROGRAM_ID> (from registry or URL), plan instruction <IX_NAME>, then simulate it (do not send)."
+- "Use `solana_list_networks`, then on devnet use `solana_rpc_call` to getBalance for <base58_pubkey>."
+- "(No send) Load an IDL via `solana_idl_load`, then run `solana_idl_plan_instruction` and `solana_idl_simulate_instruction` for program <PROGRAM_ID> instruction <IX_NAME>."
 
 ### EVM
-- "On Base Sepolia (chain_id 84532), get the ETH balance of 0x..."
-- "Build a native transfer tx on Base Sepolia from 0xSENDER to 0xRECIPIENT for 0.001 ETH, preflight it, and show me the tx_summary_hash (do not broadcast)."
+- "Use `evm_list_rpc_defaults`, then on Base Sepolia (`chain_id=84532`) run `evm_get_balance` for 0x..."
+- "(No broadcast) On Base Sepolia, run `evm_build_transfer_native` then `evm_preflight` and show me the resulting tx summary."
 
 ## Docs
 
