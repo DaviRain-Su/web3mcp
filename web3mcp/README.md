@@ -134,12 +134,59 @@ Example (Base mainnet `chain_id=8453`):
 ```
 
 Solana (mainnet):
-1) `solana_send_transaction` with `confirm=false` (returns `pending_confirmation_id` + `tx_summary_hash`)
-2) `solana_confirm_transaction` with `id`, `hash`, `confirm_token`
+
+0) Check networks
+```json
+{ "tool": "solana_list_networks", "args": {} }
+```
+
+1) Create a pending confirmation (safe; does not broadcast)
+```json
+{
+  "tool": "solana_send_transaction",
+  "args": {
+    "network": "mainnet",
+    "transaction_base64": "<TX_BASE64>",
+    "confirm": false
+  }
+}
+```
+
+2) Broadcast (mainnet requires confirm_token)
+```json
+{
+  "tool": "solana_confirm_transaction",
+  "args": {
+    "id": "<pending_confirmation_id>",
+    "hash": "<tx_summary_hash>",
+    "confirm_token": "<confirm_token>",
+    "commitment": "confirmed"
+  }
+}
+```
 
 Sui (mainnet):
-1) Run a safe-default tx tool that returns a `confirmation_id` / `tx_summary_hash`
-2) `sui_confirm_execution` with `id`, `tx_summary_hash`, `confirm_token`, `keystore_path`
+
+0) Check networks
+```json
+{ "tool": "sui_list_networks", "args": {} }
+```
+
+1) Create a pending confirmation using a safe-default Sui tx tool (does not broadcast)
+- Run the tool with `confirm=false` (it will return `confirmation_id` + `tx_summary_hash`).
+
+2) Broadcast (mainnet requires confirm_token)
+```json
+{
+  "tool": "sui_confirm_execution",
+  "args": {
+    "id": "<confirmation_id>",
+    "tx_summary_hash": "<tx_summary_hash>",
+    "confirm_token": "<confirm_token>",
+    "keystore_path": "<PATH_TO_SUI_KEYSTORE>"
+  }
+}
+```
 
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
 
