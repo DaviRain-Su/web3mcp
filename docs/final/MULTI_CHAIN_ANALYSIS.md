@@ -416,7 +416,7 @@ Enterprise ($99/月):
 **复杂度**: ⭐⭐ (低)
 
 - 完全 EVM 兼容 ✅
-- 与 Avalanche 共享大部分代码
+- 与其他 EVM 样例链可共享大部分代码
 - 协议接口标准化
 
 **总结**: 选择 Avalanche 和 BNB Chain 作为样例链，主要是为了说明：扩展更多 EVM 链时可以复用同一套 EVM 工具链，因此总体复杂度可控。
@@ -520,7 +520,7 @@ import { VenusProtocol } from '@venusprotocol/venus-sdk';
 
 1. **市场规模翻倍**
    - Solana: 135k DAU
-   - Avalanche: 50k DAU
+   - Avalanche: 50k DAU（EVM 样例链）
    - BNB Chain: 300k DAU（EVM 样例链）
    - **总计: 500k+ DAU**
 
@@ -561,7 +561,7 @@ AI Agent:
 2. 比较 DEX 汇率
 3. 选择最优链执行
 
-结果: Avalanche gas 费低，Trader Joe 汇率好 → 执行
+结果: （样例）Avalanche gas 费低，Trader Joe 汇率好 → 执行
 ```
 
 ---

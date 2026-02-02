@@ -8,7 +8,7 @@
 
 **结论**: 多链版本在各方面都显著优于单链版本
 
-| 指标 | 单链 (Solana) | 多链 (Sol+Avax+BNB) | 提升 |
+| 指标 | 单链 (Solana) | 多链（Sui + Solana + EVM） | 提升 |
 |------|---------------|---------------------|------|
 | **市场规模** | 135k DAU | **500k+ DAU** | +270% |
 | **TVL** | $6B | **$15B+** | +150% |
@@ -152,8 +152,8 @@ AI Agent:
 
 AI Agent:
 1. 比较三条链的汇率和 gas 费
-2. 发现 Avalanche 最优（Trader Joe 汇率好，gas 低）
-3. 自动选择 Avalanche 执行
+2. （样例）发现 Avalanche 最优（Trader Joe 汇率好，gas 低）
+3. （样例）自动选择 Avalanche 执行
 
 结果: 为用户节省 2-5% 费用
 ```
@@ -165,7 +165,7 @@ AI Agent:
 AI Agent:
 1. 扫描三条链的 DEX 汇率
 2. （样例）发现 BNB Chain USDC/USDT = 0.998
-3. 发现 Avalanche USDC/USDT = 1.002
+3. （样例）发现 Avalanche USDC/USDT = 1.002
 4. 提示套利机会（0.4% 利润）
 
 结果: 用户可以手动或自动执行跨链套利
@@ -277,7 +277,7 @@ Week 7-8: EVM 样例链（BNB）协议接入（Venus / PancakeSwap）
 **结论**: 开发成本**几乎相同**！
 
 **关键洞察**:
-- EVM 链可以复用代码（Avalanche ↔ BNB）
+- EVM 链可以复用代码（样例：Avalanche ↔ BNB）
 - 协议集成时间相似（AAVE ≈ Marginfi）
 - 多链管理增加的复杂度可忽略
 
