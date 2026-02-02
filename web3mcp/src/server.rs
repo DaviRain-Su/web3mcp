@@ -29,6 +29,23 @@ impl Web3McpServer {
         })
     }
 
+    /// Best-effort network kind, used for safety gates (e.g., require pending confirmation on mainnet).
+    ///
+    /// If the server was constructed with `network`, `rpc_url` will usually contain it.
+    pub fn resolve_network_kind(&self) -> String {
+        let u = self.rpc_url.to_lowercase();
+        if u.contains("testnet") {
+            return "testnet".to_string();
+        }
+        if u.contains("devnet") {
+            return "devnet".to_string();
+        }
+        if u.contains("local") || u.contains("127.0.0.1") || u.contains("localhost") {
+            return "localnet".to_string();
+        }
+        "mainnet".to_string()
+    }
+
     pub fn resolve_rpc_url(rpc_url: Option<String>, network: Option<String>) -> Result<String> {
         if let Some(url) = rpc_url {
             return Ok(url);

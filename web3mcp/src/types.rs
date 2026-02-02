@@ -645,6 +645,28 @@ pub struct SolanaMeteoraDlmmGetPairRequest {
     pub timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaMeteoraDlmmRankPairsRequest {
+    #[schemars(description = "Base URL override (optional)")]
+    pub base_url: Option<String>,
+
+    #[schemars(description = "Timeout ms (default 15000)")]
+    pub timeout_ms: Option<u64>,
+
+    #[schemars(description = "Max results to return (default 20)")]
+    pub limit: Option<usize>,
+
+    #[schemars(
+        description = "Filter mode: all|sol_usdc (default all). When sol_usdc, attempt to keep only SOL/USDC pools."
+    )]
+    pub filter: Option<String>,
+
+    #[schemars(
+        description = "If true, include a short list of which field names were detected (fee/volume/tvl/address/mints). Default true."
+    )]
+    pub include_field_diagnostics: Option<bool>,
+}
+
 // ---------------- Sui aggregator (off-chain) ----------------
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -671,6 +693,116 @@ pub struct SuiAggregatorCallRequest {
 
     #[schemars(description = "If true, return only parsed json; else include status/url/body")]
     pub result_only: Option<bool>,
+}
+
+// ---------------- Sui 7K aggregator ----------------
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct Sui7kQuoteRequest {
+    #[schemars(description = "Input coin type (e.g. 0x2::sui::SUI)")]
+    pub from_coin_type: String,
+
+    #[schemars(description = "Output coin type")]
+    pub to_coin_type: String,
+
+    #[schemars(description = "Amount in smallest unit (string to handle large numbers)")]
+    pub amount_in: String,
+
+    #[schemars(
+        description = "Slippage tolerance in basis points (100 = 1%). Optional, default 100."
+    )]
+    pub slippage_bps: Option<u64>,
+
+    #[schemars(description = "Sender address (optional, used for simulation)")]
+    pub sender: Option<String>,
+
+    #[schemars(
+        description = "Comma-separated DEX sources to use (optional). Default uses all available."
+    )]
+    pub sources: Option<String>,
+
+    #[schemars(
+        description = "Base URL override (optional). If absent, uses env SUI_7K_BASE_URL or SUI_AGGREGATOR_BASE_URL."
+    )]
+    pub base_url: Option<String>,
+
+    #[schemars(description = "Timeout ms (default 15000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct Sui7kBuildSwapTxRequest {
+    #[schemars(description = "The quote response JSON from sui_7k_quote")]
+    pub quote: Value,
+
+    #[schemars(description = "Sender/signer address")]
+    pub sender: String,
+
+    #[schemars(
+        description = "Slippage tolerance in basis points (100 = 1%). Optional, default 100."
+    )]
+    pub slippage_bps: Option<u64>,
+
+    #[schemars(description = "Partner address for commission (optional)")]
+    pub partner: Option<String>,
+
+    #[schemars(description = "Partner commission in basis points (optional, default 0)")]
+    pub commission_bps: Option<u64>,
+
+    #[schemars(
+        description = "Base URL override (optional). If absent, uses env SUI_7K_BASE_URL or SUI_AGGREGATOR_BASE_URL."
+    )]
+    pub base_url: Option<String>,
+
+    #[schemars(description = "Timeout ms (default 15000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct Sui7kSwapExactInRequest {
+    #[schemars(description = "Input coin type (e.g. 0x2::sui::SUI)")]
+    pub from_coin_type: String,
+
+    #[schemars(description = "Output coin type")]
+    pub to_coin_type: String,
+
+    #[schemars(description = "Amount in smallest unit (string to handle large numbers)")]
+    pub amount_in: String,
+
+    #[schemars(description = "Sender/signer address")]
+    pub sender: String,
+
+    #[schemars(
+        description = "Slippage tolerance in basis points (100 = 1%). Optional, default 100."
+    )]
+    pub slippage_bps: Option<u64>,
+
+    #[schemars(description = "Partner address for commission (optional)")]
+    pub partner: Option<String>,
+
+    #[schemars(description = "Partner commission in basis points (optional, default 0)")]
+    pub commission_bps: Option<u64>,
+
+    #[schemars(
+        description = "Comma-separated DEX sources to use (optional). Default uses all available."
+    )]
+    pub sources: Option<String>,
+
+    #[schemars(
+        description = "Base URL override (optional). If absent, uses env SUI_7K_BASE_URL or SUI_AGGREGATOR_BASE_URL."
+    )]
+    pub base_url: Option<String>,
+
+    #[schemars(description = "Timeout ms (default 15000)")]
+    pub timeout_ms: Option<u64>,
+
+    #[schemars(
+        description = "If true, execute immediately without creating pending confirmation (default false for mainnet safety)"
+    )]
+    pub skip_confirmation: Option<bool>,
+
+    #[schemars(description = "Optional keystore path for signing")]
+    pub keystore_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

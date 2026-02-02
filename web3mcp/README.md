@@ -62,6 +62,13 @@ Add this to your Claude Desktop configuration file:
 Sui:
 - `SUI_RPC_URL` - Sui RPC endpoint (defaults to `https://fullnode.mainnet.sui.io:443`)
 
+Sui 7K Aggregator:
+- `SUI_7K_BASE_URL` - 7K aggregator API base URL (preferred, defaults to `https://api.7k.ag`)
+- `SUI_AGGREGATOR_BASE_URL` - Fallback aggregator URL if `SUI_7K_BASE_URL` is not set
+
+Solana (off-chain APIs):
+- `SOLANA_METEORA_DLMM_API_BASE_URL` - Meteora DLMM API base URL (defaults to `https://dlmm-api.meteora.ag`)
+
 EVM:
 - `EVM_DEFAULT_CHAIN_ID` - Default EVM chain id (defaults to Base Sepolia `84532`)
 - `EVM_RPC_URL_<chain_id>` - Override the RPC URL for an EVM chain (e.g. `EVM_RPC_URL_8453=https://mainnet.base.org`).
@@ -240,6 +247,58 @@ Sui (mainnet):
 - Option B: run a safe-default Sui tx tool with `confirm=false`
 
 2) Broadcast (mainnet requires confirm_token)
+```json
+{
+  "tool": "sui_confirm_execution",
+  "args": {
+    "id": "<confirmation_id>",
+    "tx_summary_hash": "<tx_summary_hash>",
+    "confirm_token": "<confirm_token>",
+    "keystore_path": "<PATH_TO_SUI_KEYSTORE>"
+  }
+}
+```
+
+### Sui 7K Aggregator (DEX swap)
+
+The 7K aggregator enables token swaps across multiple Sui DEXes with optimal routing.
+
+Tools:
+- `sui_7k_quote` - Get swap quote with routing info
+- `sui_7k_build_swap_tx` - Process quote for swap execution
+- `sui_7k_swap_exact_in` - Full swap flow with pending confirmation (mainnet safety)
+- `sui_aggregator_call` - Generic HTTP call to any aggregator API
+
+Example flow (Sui mainnet swap):
+
+1) Get quote
+```json
+{
+  "tool": "sui_7k_quote",
+  "args": {
+    "from_coin_type": "0x2::sui::SUI",
+    "to_coin_type": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+    "amount_in": "1000000000",
+    "slippage_bps": 100
+  }
+}
+```
+
+2) Execute swap (creates pending confirmation on mainnet)
+```json
+{
+  "tool": "sui_7k_swap_exact_in",
+  "args": {
+    "from_coin_type": "0x2::sui::SUI",
+    "to_coin_type": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+    "amount_in": "1000000000",
+    "sender": "0xYOUR_ADDRESS...",
+    "slippage_bps": 100
+  }
+}
+```
+
+3) Confirm execution (mainnet requires confirm_token)
 ```json
 {
   "tool": "sui_confirm_execution",

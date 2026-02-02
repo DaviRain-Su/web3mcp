@@ -546,6 +546,270 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn meteora_first_number(v: &Value, keys: &[&str]) -> Option<(f64, String)> {
+        let obj = v.as_object()?;
+        for k in keys {
+            if let Some(val) = obj.get(*k) {
+                // Some APIs return numeric-as-string
+                if let Some(n) = val.as_f64() {
+                    return Some((n, (*k).to_string()));
+                }
+                if let Some(s) = val.as_str() {
+                    if let Ok(n) = s.trim().parse::<f64>() {
+                        return Some((n, (*k).to_string()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn meteora_first_string(v: &Value, keys: &[&str]) -> Option<(String, String)> {
+        let obj = v.as_object()?;
+        for k in keys {
+            if let Some(val) = obj.get(*k) {
+                if let Some(s) = val.as_str() {
+                    let ss = s.trim();
+                    if !ss.is_empty() {
+                        return Some((ss.to_string(), (*k).to_string()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn meteora_pair_has_mints(pair: &Value, mints: &[&str]) -> bool {
+        let obj = match pair.as_object() {
+            Some(o) => o,
+            None => return false,
+        };
+        let mut found = 0;
+        for key in [
+            "mint_x",
+            "mint_y",
+            "mintX",
+            "mintY",
+            "tokenXMint",
+            "tokenYMint",
+            "token_x_mint",
+            "token_y_mint",
+        ] {
+            if let Some(v) = obj.get(key).and_then(|v| v.as_str()) {
+                let vv = v.trim();
+                if mints.iter().any(|m| m.eq_ignore_ascii_case(vv)) {
+                    found += 1;
+                }
+            }
+        }
+        found >= 2
+    }
+
+    #[tool(description = "Meteora DLMM API: rank DLMM pairs by recent fees (adaptive fields). Outputs a top-N list and simple risk tags.")]
+    async fn solana_meteora_dlmm_rank_pairs(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraDlmmRankPairsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = request
+            .base_url
+            .unwrap_or_else(Self::solana_meteora_dlmm_api_base_url);
+        let url = format!("{}/pair/all", base_url.trim_end_matches('/'));
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+        let (status, parsed) = Self::solana_http_get_json(&url, timeout_ms).await?;
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from Meteora DLMM API"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+            });
+        }
+
+        let pairs = parsed.as_array().ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Unexpected response: expected JSON array from /pair/all"),
+            data: Some(json!({"url": url, "body": parsed})),
+        })?;
+
+        let filter = request.filter.as_deref().unwrap_or("all").trim().to_lowercase();
+        let limit = request.limit.unwrap_or(20).min(200);
+
+        // Mainnet canonical mints
+        // wSOL: So11111111111111111111111111111111111111112
+        // USDC: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+        let wsol = "So11111111111111111111111111111111111111112";
+        let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+        let mut items: Vec<Value> = Vec::new();
+
+        // Try to adaptively find these fields across versions.
+        let fee_keys = ["fee24h", "fees24h", "fees_24h", "fee_24h", "fee_24_hours", "fees_24_hours"];
+        let volume_keys = ["volume24h", "volume_24h", "volume_24_hours", "volume24H"];
+        let tvl_keys = ["tvl", "liquidity", "liquidity_usd", "tvl_usd", "tvlUsd", "liquidityUsd"];
+        let trades_keys = ["trade24h", "trades24h", "trades_24h", "txn24h", "txns24h", "txCount24h"];
+
+        let addr_keys = [
+            "address",
+            "pair_address",
+            "pairAddress",
+            "lbPair",
+            "poolAddress",
+            "pool_address",
+        ];
+        let mintx_keys = ["mint_x", "mintX", "tokenXMint", "token_x_mint"];
+        let minty_keys = ["mint_y", "mintY", "tokenYMint", "token_y_mint"];
+
+        // Diagnostics (first observed key names)
+        let mut diag_fee: Option<String> = None;
+        let mut diag_volume: Option<String> = None;
+        let mut diag_tvl: Option<String> = None;
+        let mut diag_trades: Option<String> = None;
+        let mut diag_addr: Option<String> = None;
+        let mut diag_mintx: Option<String> = None;
+        let mut diag_minty: Option<String> = None;
+
+        for p in pairs.iter() {
+            if filter == "sol_usdc" {
+                if !Self::meteora_pair_has_mints(p, &[wsol, usdc]) {
+                    continue;
+                }
+            }
+
+            let (pair_address, addr_key) = match Self::meteora_first_string(p, &addr_keys) {
+                Some((s, k)) => (s, k),
+                None => (String::new(), String::new()),
+            };
+
+            let (mint_x, mx_key) = match Self::meteora_first_string(p, &mintx_keys) {
+                Some((s, k)) => (Some(s), Some(k)),
+                None => (None, None),
+            };
+            let (mint_y, my_key) = match Self::meteora_first_string(p, &minty_keys) {
+                Some((s, k)) => (Some(s), Some(k)),
+                None => (None, None),
+            };
+
+            let fee = Self::meteora_first_number(p, &fee_keys);
+            let volume = Self::meteora_first_number(p, &volume_keys);
+            let tvl = Self::meteora_first_number(p, &tvl_keys);
+            let trades = Self::meteora_first_number(p, &trades_keys);
+
+            if diag_addr.is_none() && !addr_key.is_empty() {
+                diag_addr = Some(addr_key);
+            }
+            if diag_mintx.is_none() {
+                if let Some(k) = mx_key.clone() {
+                    diag_mintx = Some(k);
+                }
+            }
+            if diag_minty.is_none() {
+                if let Some(k) = my_key.clone() {
+                    diag_minty = Some(k);
+                }
+            }
+            if diag_fee.is_none() {
+                if let Some((_, k)) = fee.as_ref() {
+                    diag_fee = Some(k.clone());
+                }
+            }
+            if diag_volume.is_none() {
+                if let Some((_, k)) = volume.as_ref() {
+                    diag_volume = Some(k.clone());
+                }
+            }
+            if diag_tvl.is_none() {
+                if let Some((_, k)) = tvl.as_ref() {
+                    diag_tvl = Some(k.clone());
+                }
+            }
+            if diag_trades.is_none() {
+                if let Some((_, k)) = trades.as_ref() {
+                    diag_trades = Some(k.clone());
+                }
+            }
+
+            let fee_v = fee.as_ref().map(|(n, _)| *n);
+            let volume_v = volume.as_ref().map(|(n, _)| *n);
+            let tvl_v = tvl.as_ref().map(|(n, _)| *n);
+            let trades_v = trades.as_ref().map(|(n, _)| *n);
+
+            // Ranking score: prefer fee24h; fall back to volume, then trades, then tvl.
+            let score = fee_v
+                .or(volume_v)
+                .or(trades_v)
+                .or(tvl_v)
+                .unwrap_or(0.0);
+
+            // Risk tags (very heuristic)
+            let mut tags: Vec<String> = Vec::new();
+            if let (Some(fee24), Some(tvl_usd)) = (fee_v, tvl_v) {
+                if tvl_usd > 0.0 && fee24 / tvl_usd > 0.05 {
+                    tags.push("high_fee_vs_tvl".to_string());
+                }
+                if tvl_usd < 50_000.0 && fee24 > 1_000.0 {
+                    tags.push("low_tvl".to_string());
+                }
+            }
+            if let (Some(fee24), Some(vol24)) = (fee_v, volume_v) {
+                if vol24 > 0.0 && fee24 / vol24 > 0.01 {
+                    tags.push("high_fee_rate".to_string());
+                }
+            }
+            if tvl_v.unwrap_or(0.0) < 20_000.0 {
+                tags.push("very_low_liquidity".to_string());
+            }
+
+            items.push(json!({
+                "pair_address": if pair_address.is_empty() { Value::Null } else { Value::String(pair_address) },
+                "mint_x": mint_x,
+                "mint_y": mint_y,
+                "fee_24h": fee_v,
+                "volume_24h": volume_v,
+                "tvl": tvl_v,
+                "trades_24h": trades_v,
+                "score": score,
+                "risk_tags": tags,
+            }));
+        }
+
+        items.sort_by(|a, b| {
+            let sa = a.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let sb = b.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        items.truncate(limit);
+
+        let include_diag = request.include_field_diagnostics.unwrap_or(true);
+        let out = if include_diag {
+            json!({
+                "base_url": base_url,
+                "filter": filter,
+                "limit": limit,
+                "source": {"url": url, "count": pairs.len()},
+                "field_diagnostics": {
+                    "pair_address": diag_addr,
+                    "mint_x": diag_mintx,
+                    "mint_y": diag_minty,
+                    "fee_24h": diag_fee,
+                    "volume_24h": diag_volume,
+                    "tvl": diag_tvl,
+                    "trades_24h": diag_trades
+                },
+                "pairs": items
+            })
+        } else {
+            json!({
+                "base_url": base_url,
+                "filter": filter,
+                "limit": limit,
+                "pairs": items
+            })
+        };
+
+        let response = Self::pretty_json(&out)?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     // ---------------- Solana common RPC tools ----------------
 
     #[tool(description = "Solana: raw JSON-RPC call (method+params). Useful to avoid tool explosion in Claude Desktop.")]
