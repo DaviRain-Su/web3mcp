@@ -635,10 +635,14 @@
         }
 
         if crate::utils::evm_confirm_store::now_ms() > row.expires_at_ms {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Pending confirmation expired; re-run dry-run."),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "Pending confirmation expired; re-run dry-run.",
+                "evm_retry_pending_confirmation",
+                "PENDING_EXPIRED",
+                false,
+                Some("Rebuild the transaction and create a new pending confirmation"),
+                None,
+                Some(json!({
                     "confirmation_id": row.id,
                     "chain_id": row.chain_id,
                     "tx_summary_hash": row.tx_summary_hash,
@@ -646,17 +650,18 @@
                     "tool_context": tool_context,
                     "status": row.status,
                 })),
-            });
+            ));
         }
 
         if row.tx_summary_hash.to_lowercase() != provided_hash {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!(
-                    "tx_summary_hash mismatch: expected={} got={}",
-                    row.tx_summary_hash, provided_hash
-                )),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "tx_summary_hash mismatch",
+                "evm_retry_pending_confirmation",
+                "TX_SUMMARY_HASH_MISMATCH",
+                false,
+                Some("Rebuild the transaction and retry with the new tx_summary_hash"),
+                None,
+                Some(json!({
                     "confirmation_id": row.id,
                     "chain_id": row.chain_id,
                     "expected": row.tx_summary_hash,
@@ -664,7 +669,7 @@
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
                 })),
-            });
+            ));
         }
 
         // Only allow retry when status is pending/failed/consumed.

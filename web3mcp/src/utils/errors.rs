@@ -23,6 +23,41 @@ impl Web3McpServer {
         }
     }
 
+    pub fn structured_error(
+        message: &str,
+        context: &str,
+        error_class: &str,
+        retryable: bool,
+        suggest_fix: Option<&str>,
+        raw_error: Option<&str>,
+        extra: Option<serde_json::Value>,
+    ) -> ErrorData {
+        let mut data = Self::classify_error(context, raw_error.unwrap_or(""));
+        if let serde_json::Value::Object(ref mut m) = data {
+            m.insert(
+                "error_class".to_string(),
+                serde_json::Value::String(error_class.to_string()),
+            );
+            m.insert("retryable".to_string(), serde_json::Value::Bool(retryable));
+            m.insert(
+                "suggest_fix".to_string(),
+                match suggest_fix {
+                    Some(s) => serde_json::Value::String(s.to_string()),
+                    None => serde_json::Value::Null,
+                },
+            );
+            if let Some(e) = extra {
+                m.insert("extra".to_string(), e);
+            }
+        }
+
+        ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(message.to_string()),
+            data: Some(data),
+        }
+    }
+
     pub fn classify_error(context: &str, error: &str) -> serde_json::Value {
         let lower = error.to_lowercase();
         let ctx = context.to_lowercase();

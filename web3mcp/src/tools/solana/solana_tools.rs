@@ -5553,15 +5553,19 @@
 
         let pending = crate::utils::solana_confirm_store::get_pending(&request.id)?;
         if pending.tx_summary_hash != request.hash {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Hash mismatch for confirmation id"),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "Hash mismatch for confirmation id",
+                "solana_confirm_transaction",
+                "TX_SUMMARY_HASH_MISMATCH",
+                false,
+                Some("Use the tx_summary_hash returned by solana_send_transaction for this confirmation id"),
+                None,
+                Some(json!({
                     "id": request.id,
                     "expected": pending.tx_summary_hash,
                     "provided": request.hash
                 })),
-            });
+            ));
         }
 
         let network = request
@@ -5574,16 +5578,23 @@
         if Self::solana_is_mainnet_network(Some(&network)) {
             let expected = crate::utils::solana_confirm_store::make_confirm_token(&request.id, &request.hash);
             if request.confirm_token.as_deref() != Some(expected.as_str()) {
-                return Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("Mainnet confirmation requires confirm_token"),
-                    data: Some(json!({
+                return Err(Self::structured_error(
+                    "Mainnet confirmation requires confirm_token",
+                    "solana_confirm_transaction",
+                    "CONFIRM_TOKEN_REQUIRED",
+                    false,
+                    Some("Re-run solana_confirm_transaction with the expected confirm_token"),
+                    None,
+                    Some(json!({
                         "id": request.id,
                         "tx_summary_hash": request.hash,
                         "expected_confirm_token": expected,
-                        "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{} confirm_token:{}", request.id, request.hash, expected)
+                        "how_to_confirm": format!(
+                            "solana_confirm_transaction id:{} hash:{} confirm_token:{}",
+                            request.id, request.hash, expected
+                        )
                     })),
-                });
+                ));
             }
         }
 

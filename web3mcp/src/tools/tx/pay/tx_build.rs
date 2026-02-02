@@ -1502,14 +1502,18 @@
         }
 
         if row.tx_summary_hash != request.tx_summary_hash {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("tx_summary_hash mismatch; rebuild and confirm again"),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "tx_summary_hash mismatch; rebuild and confirm again",
+                "sui_confirm_execution",
+                "TX_SUMMARY_HASH_MISMATCH",
+                false,
+                Some("Rebuild the transaction and create a new pending confirmation"),
+                None,
+                Some(json!({
                     "expected": row.tx_summary_hash,
                     "provided": request.tx_summary_hash,
                 })),
-            });
+            ));
         }
 
         // Mainnet safety: require confirm_token.
@@ -1519,10 +1523,14 @@
                 &request.tx_summary_hash,
             );
             if request.confirm_token.as_deref() != Some(expected.as_str()) {
-                return Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("Mainnet confirmation requires confirm_token"),
-                    data: Some(json!({
+                return Err(Self::structured_error(
+                    "Mainnet confirmation requires confirm_token",
+                    "sui_confirm_execution",
+                    "CONFIRM_TOKEN_REQUIRED",
+                    false,
+                    Some("Re-run sui_confirm_execution with the expected confirm_token"),
+                    None,
+                    Some(json!({
                         "id": request.id,
                         "tx_summary_hash": request.tx_summary_hash,
                         "expected_confirm_token": expected,
@@ -1531,7 +1539,7 @@
                             request.id, request.tx_summary_hash, expected
                         )
                     })),
-                });
+                ));
             }
         }
 
@@ -1816,14 +1824,18 @@
         })?;
 
         if row.tx_summary_hash != request.tx_summary_hash {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("tx_summary_hash mismatch; rebuild and confirm again"),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "tx_summary_hash mismatch; rebuild and confirm again",
+                "sui_retry_pending_confirmation",
+                "TX_SUMMARY_HASH_MISMATCH",
+                false,
+                Some("Rebuild the transaction and create a new pending confirmation"),
+                None,
+                Some(json!({
                     "expected": row.tx_summary_hash,
                     "provided": request.tx_summary_hash,
                 })),
-            });
+            ));
         }
 
         // Mainnet safety: require confirm_token.
@@ -1833,10 +1845,14 @@
                 request.tx_summary_hash.trim(),
             );
             if request.confirm_token.as_deref() != Some(expected.as_str()) {
-                return Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("Mainnet retry requires confirm_token"),
-                    data: Some(json!({
+                return Err(Self::structured_error(
+                    "Mainnet retry requires confirm_token",
+                    "sui_retry_pending_confirmation",
+                    "CONFIRM_TOKEN_REQUIRED",
+                    false,
+                    Some("Re-run sui_retry_pending_confirmation with the expected confirm_token"),
+                    None,
+                    Some(json!({
                         "id": request.id,
                         "tx_summary_hash": request.tx_summary_hash,
                         "expected_confirm_token": expected,
@@ -1845,7 +1861,7 @@
                             request.id, request.tx_summary_hash, expected
                         )
                     })),
-                });
+                ));
             }
         }
 
