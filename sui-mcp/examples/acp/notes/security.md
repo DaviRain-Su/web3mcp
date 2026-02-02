@@ -87,3 +87,7 @@ Executor agent should enforce:
 ## Rollout
 
 See `examples/acp/notes/rollout.md`.
+
+## Prompt injection
+
+See `examples/acp/notes/prompt-injection.md`.
