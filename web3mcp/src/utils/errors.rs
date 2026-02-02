@@ -338,14 +338,23 @@ mod tests {
             v.get("context").and_then(|x| x.as_str()),
             Some("test_context")
         );
+        assert_eq!(v.get("reason").and_then(|x| x.as_str()), Some("blocked"));
 
         let guard = v.get("guard").expect("guard object");
         assert_eq!(
             guard.get("guard_class").and_then(|x| x.as_str()),
             Some("SAFETY_GUARD_BLOCKED")
         );
+        assert_eq!(
+            guard.get("retryable").and_then(|x| x.as_bool()),
+            Some(false)
+        );
 
-        // `next` is included when provided.
-        assert!(guard.get("next").is_some());
+        // links must exist and be an array
+        assert!(guard.get("links").and_then(|x| x.as_array()).is_some());
+
+        // `next` is included when provided, and normalized to an object.
+        let next = guard.get("next").expect("next object");
+        assert!(next.is_object());
     }
 }
