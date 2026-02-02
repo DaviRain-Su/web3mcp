@@ -25,6 +25,23 @@ from typing import Any, Dict, Optional, Tuple, List
 
 TOKEN_LIST_DEFAULT_URL = "https://token.jup.ag/all"
 
+
+def human_usd(x: Optional[float]) -> str:
+    if x is None:
+        return "n/a"
+    try:
+        v = float(x)
+    except Exception:
+        return "n/a"
+    av = abs(v)
+    if av >= 1_000_000_000:
+        return f"${v/1_000_000_000:.2f}B"
+    if av >= 1_000_000:
+        return f"${v/1_000_000:.2f}M"
+    if av >= 1_000:
+        return f"${v/1_000:.2f}K"
+    return f"${v:.2f}"
+
 try:
     import requests  # type: ignore
 except Exception:
@@ -174,14 +191,38 @@ def main() -> int:
         raise SystemExit(f"Unexpected /pair/all response (expected array), got: {type(pairs)}")
 
     fee_keys = ["fee24h", "fees24h", "fees_24h", "fee_24h", "fee_24_hours", "fees_24_hours"]
-    volume_keys = ["volume24h", "volume_24h", "volume_24_hours", "volume24H"]
+    volume_keys = [
+        "volume24h",
+        "volume_24h",
+        "volume_24_hours",
+        "volume24H",
+        "volume",
+        "volume_usd",
+        "volumeUsd",
+    ]
+    trades_keys = [
+        "trade24h",
+        "trades24h",
+        "trades_24h",
+        "txn24h",
+        "txns24h",
+        "txCount24h",
+    ]
     tvl_keys = ["tvl", "liquidity", "liquidity_usd", "tvl_usd", "tvlUsd", "liquidityUsd"]
     addr_keys = ["address", "pair_address", "pairAddress", "lbPair", "poolAddress", "pool_address"]
     mintx_keys = ["mint_x", "mintX", "tokenXMint", "token_x_mint", "token0Mint", "token0_mint"]
     minty_keys = ["mint_y", "mintY", "tokenYMint", "token_y_mint", "token1Mint", "token1_mint"]
 
     rows = []
-    diag = {"fee": None, "volume": None, "tvl": None, "addr": None, "mint_x": None, "mint_y": None}
+    diag = {
+        "fee": None,
+        "volume": None,
+        "trades": None,
+        "tvl": None,
+        "addr": None,
+        "mint_x": None,
+        "mint_y": None,
+    }
 
     for p in pairs:
         if not isinstance(p, dict):
@@ -192,6 +233,7 @@ def main() -> int:
         mint_y = first_string(p, minty_keys)
         fee = first_number(p, fee_keys)
         vol = first_number(p, volume_keys)
+        trades = first_number(p, trades_keys)
         tvl = first_number(p, tvl_keys)
 
         if diag["addr"] is None and addr:
@@ -204,14 +246,26 @@ def main() -> int:
             diag["fee"] = fee[1]
         if diag["volume"] is None and vol:
             diag["volume"] = vol[1]
+        if diag["trades"] is None and trades:
+            diag["trades"] = trades[1]
         if diag["tvl"] is None and tvl:
             diag["tvl"] = tvl[1]
 
         fee_v = fee[0] if fee else None
         vol_v = vol[0] if vol else None
+        trades_v = trades[0] if trades else None
         tvl_v = tvl[0] if tvl else None
 
-        score = fee_v if fee_v is not None else (vol_v if vol_v is not None else (tvl_v if tvl_v is not None else 0.0))
+        # Score preference: fee_24h, else volume_24h, else trades_24h, else tvl
+        score = (
+            fee_v
+            if fee_v is not None
+            else (
+                vol_v
+                if vol_v is not None
+                else (trades_v if trades_v is not None else (tvl_v if tvl_v is not None else 0.0))
+            )
+        )
 
         rows.append({
             "pair_address": addr[0] if addr else None,
@@ -219,6 +273,7 @@ def main() -> int:
             "mint_y": mint_y[0] if mint_y else None,
             "fee_24h": fee_v,
             "volume_24h": vol_v,
+            "trades_24h": trades_v,
             "tvl": tvl_v,
             "score": score,
         })
@@ -226,13 +281,24 @@ def main() -> int:
     rows.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
     ranked = rows[:top_n]
 
-    # Volume top 10 among the ranked list
+    # Volume top 10 among the ranked list (fallback: trades_24h if volume missing)
     vol_sorted = sorted(
         [r for r in ranked if isinstance(r.get("volume_24h"), (int, float))],
         key=lambda r: r.get("volume_24h") or 0.0,
         reverse=True,
     )
-    top10_vol_addrs = set([r.get("pair_address") for r in vol_sorted[:10] if r.get("pair_address")])
+    trades_sorted = sorted(
+        [r for r in ranked if isinstance(r.get("trades_24h"), (int, float))],
+        key=lambda r: r.get("trades_24h") or 0.0,
+        reverse=True,
+    )
+
+    top10_vol_addrs = set(
+        [r.get("pair_address") for r in vol_sorted[:10] if r.get("pair_address")]
+    )
+    top10_trades_addrs = set(
+        [r.get("pair_address") for r in trades_sorted[:10] if r.get("pair_address")]
+    )
 
     state = load_state(args.state)
     last_alert_ms = state.get("last_alert_ms", {})
@@ -249,6 +315,9 @@ def main() -> int:
         r["mint_x_symbol"] = mx_sym
         r["mint_y_symbol"] = my_sym
         r["pair_label"] = f"{mx_sym}/{my_sym}" if mx_sym and my_sym else None
+        r["tvl_display"] = human_usd(r.get("tvl") if isinstance(r.get("tvl"), (int, float)) else None)
+        r["fee_24h_display"] = human_usd(r.get("fee_24h") if isinstance(r.get("fee_24h"), (int, float)) else None)
+        r["volume_24h_display"] = human_usd(r.get("volume_24h") if isinstance(r.get("volume_24h"), (int, float)) else None)
 
     cooldown_ms = args.cooldown_min * 60 * 1000
     min_tvl = float(args.min_tvl)
@@ -265,6 +334,7 @@ def main() -> int:
 
         fee = r.get("fee_24h")
         vol = r.get("volume_24h")
+        trades = r.get("trades_24h")
 
         fee_tvl = None
         if isinstance(fee, (int, float)) and tvl > 0:
@@ -272,8 +342,9 @@ def main() -> int:
 
         trigger_fee_tvl = fee_tvl is not None and fee_tvl >= 0.01
         trigger_vol = addr in top10_vol_addrs
+        trigger_trades = addr in top10_trades_addrs
 
-        if not (trigger_fee_tvl or trigger_vol):
+        if not (trigger_fee_tvl or trigger_vol or trigger_trades):
             continue
 
         last = int(last_alert_ms.get(addr, 0) or 0)
@@ -301,15 +372,21 @@ def main() -> int:
             "mint_y_symbol": my_sym,
             "pair_label": pair_label,
             "fee_24h": fee,
+            "fee_24h_display": human_usd(fee if isinstance(fee, (int, float)) else None),
             "volume_24h": vol,
+            "volume_24h_display": human_usd(vol if isinstance(vol, (int, float)) else None),
+            "trades_24h": trades,
             "tvl": tvl,
+            "tvl_display": human_usd(tvl if isinstance(tvl, (int, float)) else None),
             "fee_over_tvl": fee_tvl,
             "trigger": {
                 "fee_over_tvl_ge_1pct": trigger_fee_tvl,
                 "top10_volume": trigger_vol,
+                "top10_trades": trigger_trades,
             },
             "invest_usd": args.invest_usd,
             "est_fee_share_24h_usd": est_fee_share,
+            "est_fee_share_24h_display": human_usd(est_fee_share),
         })
 
         last_alert_ms[addr] = now_ms()
