@@ -263,10 +263,20 @@ Sui (mainnet):
 
 The 7K aggregator enables token swaps across multiple Sui DEXes with optimal routing.
 
+**API Endpoints** (auto-selected by the tools):
+- Quote: `GET {base}/quote` with query params: `amount`, `from` (tokenIn), `to` (tokenOut), `sources` (comma-separated), `taker` (optional sender)
+- Quote fallback: `GET {base}/v2/quote` with header `x-request-id: <uuid>` (used when primary returns 404)
+- Build transaction: `POST {base}/swap/v2/transaction` with JSON body (tries multiple paths adaptively)
+
+**Base URL selection** (in order of preference):
+1. `SUI_7K_BASE_URL` env var
+2. `SUI_AGGREGATOR_BASE_URL` env var (fallback)
+3. `https://api.7k.ag` (final fallback)
+
 Tools:
-- `sui_7k_quote` - Get swap quote with routing info
-- `sui_7k_build_swap_tx` - Process quote for swap execution
-- `sui_7k_swap_exact_in` - Full swap flow with pending confirmation (mainnet safety)
+- `sui_7k_quote` - Get swap quote with routing info (auto-fallback to /v2/quote)
+- `sui_7k_build_swap_tx` - Build transaction from quote (calls API with adaptive path detection)
+- `sui_7k_swap_exact_in` - Full swap flow: quote → build tx → pending confirmation (mainnet safety)
 - `sui_aggregator_call` - Generic HTTP call to any aggregator API
 
 Example flow (Sui mainnet swap):
