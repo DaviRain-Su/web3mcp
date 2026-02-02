@@ -518,6 +518,11 @@ pub struct SolanaRpcCallRequest {
         description = "If true, return only response.result (or response.error) instead of a wrapped object (default false)"
     )]
     pub result_only: Option<bool>,
+
+    #[schemars(
+        description = "Optional JSON Pointer to extract from the response (or from result if result_only=true). Example: /value/0."
+    )]
+    pub result_path: Option<String>,
 }
 
 

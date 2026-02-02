@@ -360,24 +360,42 @@
         }
 
         let result_only = request.result_only.unwrap_or(false);
-        let output = if result_only {
+
+        // Base value to return.
+        let mut v = if result_only {
             // Prefer returning response.result; if missing, return the whole parsed response.
-            let v = parsed
+            parsed
                 .get("result")
                 .cloned()
-                .unwrap_or(parsed.clone());
-            Self::pretty_json(&v)?
+                .unwrap_or(parsed.clone())
         } else {
-            Self::pretty_json(&json!({
+            json!({
                 "rpc_url": rpc_url,
                 "network": network,
                 "method": method,
                 "id": id,
                 "status": status.as_u16(),
                 "response": parsed
-            }))?
+            })
         };
 
+        // Optional extraction via JSON Pointer.
+        if let Some(ptr) = request.result_path.as_deref() {
+            let ptr = ptr.trim();
+            if !ptr.is_empty() {
+                if let Some(extracted) = v.pointer(ptr).cloned() {
+                    v = extracted;
+                } else {
+                    return Err(ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("result_path not found in response"),
+                        data: Some(json!({ "result_path": ptr })),
+                    });
+                }
+            }
+        }
+
+        let output = Self::pretty_json(&v)?;
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }
 
