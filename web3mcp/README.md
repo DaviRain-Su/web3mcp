@@ -78,6 +78,15 @@ For **mainnet** transactions, the server enforces a stricter workflow:
 
 This is designed to reduce accidental mainnet sends.
 
+### Status contract (for agents / integrations)
+
+Write-capable tools follow a consistent contract. Prefer branching on `status`:
+- `sent`: broadcast completed
+- `pending`: pending confirmation created (no broadcast)
+- `needs_confirmation`: safety guard blocked the action (not a hard error). Follow `guard.next`.
+
+Hard failures are returned as `ErrorData` (treat as errors / retry / switch RPC).
+
 ### Quick flows (copy/paste)
 
 EVM (mainnet):

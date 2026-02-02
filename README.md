@@ -33,6 +33,13 @@
 - **Mainnet safety** ✅ (pending confirmation + `confirm_token`)
 - **Two-phase templates** ✅ (see `web3mcp/docs/acp-*` and examples)
 
+### Integration contract (important)
+Write-capable tools follow a consistent **status contract**:
+- `sent`: broadcast completed
+- `pending`: pending confirmation created (no broadcast)
+- `needs_confirmation`: safety guard blocked the action (not a hard error). Follow `guard.next`.
+- Hard failures are returned as `ErrorData` (treat as errors/retry).
+
 ## Quickstart (5 minutes)
 
 See the server README:
