@@ -684,6 +684,20 @@
                 data: None,
             })?;
 
+        // Simulation (best-effort) on confirm-time to surface revert reason before signing.
+        let sim = self
+            .evm_simulate_transaction(Parameters(EvmSimulateTransactionRequest {
+                chain_id: Some(row.chain_id),
+                from: tx.from.clone(),
+                to: tx.to.clone(),
+                data: tx.data_hex.clone(),
+                value_wei: Some(tx.value_wei.clone()),
+                gas_limit: tx.gas_limit,
+            }))
+            .await
+            .ok();
+        let sim_json = sim.as_ref().and_then(Self::evm_extract_first_json);
+
         let new_hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
         if new_hash != provided_hash {
             let new_expires = crate::utils::evm_confirm_store::now_ms()
@@ -795,14 +809,22 @@
                     }
                 }
 
+                let required_confirmations = crate::utils::evm_chain_registry::confirmations_for_chain(row.chain_id);
+
                 let response = Self::pretty_json(&json!({
                     "status": "sent",
                     "confirmation_id": id,
                     "chain_id": row.chain_id,
                     "tx_hash": tx_hash,
+                    "explorer_url": tx_hash.as_ref().and_then(|h| Self::evm_explorer_tx_url(row.chain_id, h)),
                     "tx_summary_hash": provided_hash,
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                     "tool_context": tool_context.clone(),
+                    "simulation": sim_json,
+                    "confirmations_required_default": required_confirmations,
+                    "next": {
+                        "how_to_wait": tx_hash.as_ref().map(|h| format!("Call evm_wait_for_confirmations chain_id:{} tx_hash:{} confirmations:{}", row.chain_id, h, required_confirmations.unwrap_or(2)))
+                    },
                     "send_result": send_result
                 }))?;
 
@@ -2250,6 +2272,98 @@
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: wait for a transaction to reach N confirmations")]
+    async fn evm_wait_for_confirmations(
+        &self,
+        Parameters(request): Parameters<EvmWaitForConfirmationsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let required = request
+            .confirmations
+            .or_else(|| crate::utils::evm_chain_registry::confirmations_for_chain(chain_id))
+            .unwrap_or(2);
+        let timeout_ms = request.timeout_ms.unwrap_or(120_000);
+        let poll_ms = request.poll_interval_ms.unwrap_or(1_500).max(200);
+
+        let provider = self.evm_provider(chain_id).await?;
+        let tx_hash = Self::parse_evm_h256(&request.tx_hash)?;
+
+        let start = std::time::Instant::now();
+        let mut last: Option<Value> = None;
+
+        loop {
+            if start.elapsed().as_millis() as u64 > timeout_ms {
+                return Err(Self::structured_error(
+                    "Timed out waiting for confirmations",
+                    "evm_wait_for_confirmations",
+                    "CONFIRMATION_TIMEOUT",
+                    true,
+                    Some("Try again later or increase timeout_ms"),
+                    None,
+                    last,
+                ));
+            }
+
+            let receipt = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_transaction_receipt(
+                &provider,
+                tx_hash,
+            )
+            .await
+            .map_err(|e| Self::sdk_error("evm_wait_for_confirmations:get_receipt", e))?;
+
+            let tip = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_block_number(&provider)
+                .await
+                .map_err(|e| Self::sdk_error("evm_wait_for_confirmations:get_block_number", e))?;
+
+            if let Some(r) = &receipt {
+                let included = r.block_number.unwrap_or_else(|| ethers::types::U64::from(0));
+                let confs = if tip >= included {
+                    tip.as_u64().saturating_sub(included.as_u64()) + 1
+                } else {
+                    0
+                };
+
+                let status_ok = r.status.map(|s| s.as_u64() == 1);
+
+                last = Some(json!({
+                    "chain_id": chain_id,
+                    "tx_hash": request.tx_hash,
+                    "tip_block": tip.as_u64(),
+                    "included_block": included.as_u64(),
+                    "confirmations": confs,
+                    "required_confirmations": required,
+                    "status": status_ok
+                }));
+
+                if confs >= required {
+                    let explorer_url = Self::evm_explorer_tx_url(chain_id, &request.tx_hash);
+                    let response = Self::pretty_json(&json!({
+                        "chain_id": chain_id,
+                        "tx_hash": request.tx_hash,
+                        "explorer_url": explorer_url,
+                        "required_confirmations": required,
+                        "confirmations": confs,
+                        "tip_block": tip.as_u64(),
+                        "included_block": included.as_u64(),
+                        "status": status_ok,
+                        "receipt": r
+                    }))?;
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+            } else {
+                last = Some(json!({
+                    "chain_id": chain_id,
+                    "tx_hash": request.tx_hash,
+                    "tip_block": tip.as_u64(),
+                    "state": "not_mined_yet",
+                    "required_confirmations": required
+                }));
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
+        }
     }
 
     #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]
@@ -4898,18 +5012,7 @@ fn abi_entry_json(
     }
 
     fn evm_explorer_tx_url(chain_id: u64, tx_hash: &str) -> Option<String> {
-        let base = match chain_id {
-            8453 => "https://basescan.org/tx/",
-            84532 => "https://sepolia.basescan.org/tx/",
-            1 => "https://etherscan.io/tx/",
-            11155111 => "https://sepolia.etherscan.io/tx/",
-            42161 => "https://arbiscan.io/tx/",
-            421614 => "https://sepolia.arbiscan.io/tx/",
-            56 => "https://bscscan.com/tx/",
-            97 => "https://testnet.bscscan.com/tx/",
-            _ => return None,
-        };
-        Some(format!("{}{}", base, tx_hash))
+        crate::utils::evm_chain_registry::explorer_tx_url(chain_id, tx_hash)
     }
 
     #[tool(description = "EVM: broadcast a raw signed transaction")]
@@ -4971,6 +5074,20 @@ fn abi_entry_json(
             .evm_preflight(Parameters(EvmPreflightRequest { tx: tx.clone() }))
             .await?;
 
+        // Simulation (best-effort) for consistent UX: try to capture revert reason / fee suggestions.
+        let sim = self
+            .evm_simulate_transaction(Parameters(EvmSimulateTransactionRequest {
+                chain_id: Some(chain_id),
+                from: tx.from.clone(),
+                to: tx.to.clone(),
+                data: tx.data_hex.clone(),
+                value_wei: Some(tx.value_wei.clone()),
+                gas_limit: tx.gas_limit,
+            }))
+            .await
+            .ok();
+        let sim_json = sim.as_ref().and_then(Self::evm_extract_first_json);
+
         let pre_json = Self::evm_extract_first_json(&preflight).ok_or_else(|| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from("Failed to parse evm_preflight result"),
@@ -5003,15 +5120,19 @@ fn abi_entry_json(
 
             let token = crate::utils::evm_confirm_store::make_confirm_token(&confirmation_id, &hash);
 
+            let required_confirmations = crate::utils::evm_chain_registry::confirmations_for_chain(chain_id);
+
             let response = Self::pretty_json(&json!({
                 "status": "pending",
                 "chain_id": chain_id,
                 "confirmation_id": confirmation_id,
                 "tx_built": built_json_for_return,
                 "tx_preflight": pre_json_for_return,
+                "simulation": sim_json,
                 "tx_summary_hash": hash,
                 "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                 "note": "Mainnet tx created. Broadcast requires explicit retry with confirm_token.",
+                "confirmations_required_default": required_confirmations,
                 "next": {
                     "how_to_send": format!("Call evm_retry_pending_confirmation with id='{}' and tx_summary_hash='{}' and confirm_token='{}'", confirmation_id, hash, token)
                 }

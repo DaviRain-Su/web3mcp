@@ -201,6 +201,13 @@ pub fn explorer_address_url(chain_id: u64, address: &str) -> Option<String> {
     ))
 }
 
+pub fn confirmations_for_chain(chain_id: u64) -> Option<u64> {
+    evm_default_chains()
+        .into_iter()
+        .find(|c| c.chain_id == chain_id)
+        .map(|c| c.confirmations)
+}
+
 pub fn evm_chain_list_json() -> serde_json::Value {
     let items = evm_default_chains()
         .into_iter()

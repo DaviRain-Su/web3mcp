@@ -1753,6 +1753,24 @@ pub struct EvmGetExplorerUrlRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmWaitForConfirmationsRequest {
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+
+    #[schemars(description = "Transaction hash (0x...)")]
+    pub tx_hash: String,
+
+    #[schemars(description = "Confirmations required (default: from chain registry)")]
+    pub confirmations: Option<u64>,
+
+    #[schemars(description = "Timeout in milliseconds (default 120000)")]
+    pub timeout_ms: Option<u64>,
+
+    #[schemars(description = "Poll interval in milliseconds (default 1500)")]
+    pub poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmSimulateTransactionRequest {
     #[schemars(description = "Optional chain id")]
     pub chain_id: Option<u64>,
