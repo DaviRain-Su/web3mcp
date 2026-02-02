@@ -56,6 +56,20 @@ pub fn evm_default_chains() -> Vec<EvmChainInfo> {
             confirmations: 2,
         },
         EvmChainInfo {
+            chain_id: 56,
+            name: "bsc",
+            default_rpc_url: "https://bsc-rpc.publicnode.com",
+            explorer_base: Some("https://bscscan.com"),
+            confirmations: 3,
+        },
+        EvmChainInfo {
+            chain_id: 97,
+            name: "bsc-testnet",
+            default_rpc_url: "https://bsc-testnet-rpc.publicnode.com",
+            explorer_base: Some("https://testnet.bscscan.com"),
+            confirmations: 2,
+        },
+        EvmChainInfo {
             chain_id: 10,
             name: "optimism",
             default_rpc_url: "https://optimism-rpc.publicnode.com",

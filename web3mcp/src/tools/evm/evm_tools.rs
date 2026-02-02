@@ -5041,11 +5041,16 @@ fn abi_entry_json(
 
         let tx_hash = format!("0x{}", hex::encode(pending.tx_hash().as_bytes()));
         let explorer_url = Self::evm_explorer_tx_url(chain_id, &tx_hash);
+        let required_confirmations = crate::utils::evm_chain_registry::confirmations_for_chain(chain_id);
 
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
             "tx_hash": tx_hash,
-            "explorer_url": explorer_url
+            "explorer_url": explorer_url,
+            "confirmations_required_default": required_confirmations,
+            "next": {
+                "how_to_wait": required_confirmations.map(|c| format!("Call evm_wait_for_confirmations chain_id:{} tx_hash:{} confirmations:{}", chain_id, tx_hash, c))
+            }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
