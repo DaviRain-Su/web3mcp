@@ -557,7 +557,7 @@
         serde_json::from_str(s).unwrap_or_else(|_| json!({ "raw": s }))
     }
 
-    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Meteora DLMM (IDL): build a transaction for a single DLMM instruction (default add_liquidity). Safe: returns tx_base64 and creates a pending confirmation by default (no broadcast)."))]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Meteora DLMM (IDL): plan an instruction (default add_liquidity). Returns args/accounts plus fill-me templates."))]
     async fn solana_meteora_dlmm_plan(
         &self,
         Parameters(request): Parameters<SolanaMeteoraDlmmPlanRequest>,
@@ -670,6 +670,234 @@
             };
 
             let response = Self::pretty_json(&out)?;
+            Ok(CallToolResult::success(vec![Content::text(response)]))
+        }
+    }
+
+    fn meteora_pair_first_string(v: &Value, keys: &[&str]) -> Option<String> {
+        let obj = v.as_object()?;
+        for k in keys {
+            if let Some(val) = obj.get(*k) {
+                if let Some(s) = val.as_str() {
+                    let ss = s.trim();
+                    if !ss.is_empty() {
+                        return Some(ss.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Meteora DLMM (IDL): fetch pair metadata and produce a best-effort filled args/accounts template for add_liquidity. This is heuristic and may require manual edits."))]
+    async fn solana_meteora_dlmm_fill_template(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraDlmmFillTemplateRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        #[cfg(not(feature = "solana-extended-tools"))]
+        {
+            let _ = request;
+            return Err(ErrorData {
+                code: ErrorCode(-32601),
+                message: Cow::from(
+                    "Tool not available: built without feature solana-extended-tools (rebuild with --features solana-extended-tools)",
+                ),
+                data: None,
+            });
+        }
+
+        #[cfg(feature = "solana-extended-tools")]
+        {
+            let program_id = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
+            let idl = Self::solana_meteora_dlmm_idl_json();
+
+            let instruction_name = request
+                .instruction
+                .as_deref()
+                .unwrap_or("add_liquidity")
+                .trim();
+            if instruction_name.is_empty() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("instruction is required"),
+                    data: None,
+                });
+            }
+
+            // 1) Fetch pair metadata from Meteora DLMM API
+            let base_url = request
+                .base_url
+                .unwrap_or_else(Self::solana_meteora_dlmm_api_base_url);
+            let addr = request.pair_address.trim();
+            let url = format!("{}/pair/{}", base_url.trim_end_matches('/'), addr);
+            let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+            let (status, pair) = Self::solana_http_get_json(&url, timeout_ms).await?;
+            if !status.is_success() {
+                return Err(ErrorData {
+                    code: ErrorCode(i32::from(status.as_u16())),
+                    message: Cow::from("HTTP error from Meteora DLMM API"),
+                    data: Some(json!({"url": url, "status": status.as_u16(), "body": pair})),
+                });
+            }
+
+            // Attempt to detect mint fields
+            let mint_x = Self::meteora_pair_first_string(
+                &pair,
+                &[
+                    "mint_x",
+                    "mintX",
+                    "tokenXMint",
+                    "token_x_mint",
+                    "token0Mint",
+                    "token0_mint",
+                ],
+            );
+            let mint_y = Self::meteora_pair_first_string(
+                &pair,
+                &[
+                    "mint_y",
+                    "mintY",
+                    "tokenYMint",
+                    "token_y_mint",
+                    "token1Mint",
+                    "token1_mint",
+                ],
+            );
+
+            let owner_pk = Self::solana_parse_pubkey(request.owner.trim(), "owner")?;
+            let fee_payer_pk = if let Some(fp) = request.fee_payer.as_deref() {
+                Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+            } else {
+                owner_pk
+            };
+
+            let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, instruction_name)
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "Unknown instruction in Meteora DLMM IDL: {}",
+                        e
+                    )),
+                    data: Some(json!({
+                        "program_id": program_id,
+                        "instruction": instruction_name
+                    })),
+                })?;
+
+            // 2) Fill accounts template heuristically
+            let mut accounts_template = serde_json::Map::new();
+            let mut filled: Vec<Value> = Vec::new();
+
+            for a in ix.accounts.iter() {
+                let n = a.name.to_lowercase();
+
+                let mut val: Option<String> = None;
+                let mut reason: Option<String> = None;
+
+                if n.contains("lb_pair") || n == "pair" || n.ends_with("_pair") {
+                    val = Some(addr.to_string());
+                    reason = Some("pair_address".to_string());
+                } else if n.contains("mint_x") || n.contains("token_x_mint") || n.contains("token0_mint") {
+                    if let Some(ref mx) = mint_x {
+                        val = Some(mx.clone());
+                        reason = Some("pair.mint_x".to_string());
+                    }
+                } else if n.contains("mint_y") || n.contains("token_y_mint") || n.contains("token1_mint") {
+                    if let Some(ref my) = mint_y {
+                        val = Some(my.clone());
+                        reason = Some("pair.mint_y".to_string());
+                    }
+                } else if n.contains("fee_payer") || n == "payer" {
+                    val = Some(fee_payer_pk.to_string());
+                    reason = Some("fee_payer".to_string());
+                } else if n.contains("owner") || n.contains("user") || n.contains("authority") {
+                    val = Some(owner_pk.to_string());
+                    reason = Some("owner".to_string());
+                } else if (n.contains("token") || n.contains("ata")) && (n.contains("user") || n.contains("owner")) {
+                    // Attempt ATA derivation for token accounts
+                    if (n.contains("x") || n.contains("0")) && mint_x.is_some() {
+                        let mx = Self::solana_parse_pubkey(mint_x.as_ref().unwrap(), "mint_x")?;
+                        let ata = spl_associated_token_account::get_associated_token_address(&owner_pk, &mx);
+                        val = Some(ata.to_string());
+                        reason = Some("derived_ata(owner,mint_x)".to_string());
+                    } else if (n.contains("y") || n.contains("1")) && mint_y.is_some() {
+                        let my = Self::solana_parse_pubkey(mint_y.as_ref().unwrap(), "mint_y")?;
+                        let ata = spl_associated_token_account::get_associated_token_address(&owner_pk, &my);
+                        val = Some(ata.to_string());
+                        reason = Some("derived_ata(owner,mint_y)".to_string());
+                    }
+                }
+
+                let out_val = val.clone().unwrap_or_else(|| "__FILL_ME__".to_string());
+                accounts_template.insert(a.name.clone(), Value::String(out_val));
+
+                if let (Some(v), Some(r)) = (val, reason) {
+                    filled.push(json!({"account": a.name, "value": v, "reason": r}));
+                }
+            }
+
+            // 3) Fill args template heuristically
+            let mut args_template = serde_json::Map::new();
+            let mut args_filled: Vec<Value> = Vec::new();
+
+            for a in ix.args.iter() {
+                let n = a.name.to_lowercase();
+                let mut val: Option<Value> = None;
+                let mut reason: Option<String> = None;
+
+                if (n.contains("amount") || n.contains("liquidity")) && (n.contains("x") || n.contains("0")) {
+                    if let Some(ref s) = request.amount_x_raw {
+                        val = Some(Value::String(s.clone()));
+                        reason = Some("amount_x_raw".to_string());
+                    }
+                } else if (n.contains("amount") || n.contains("liquidity")) && (n.contains("y") || n.contains("1")) {
+                    if let Some(ref s) = request.amount_y_raw {
+                        val = Some(Value::String(s.clone()));
+                        reason = Some("amount_y_raw".to_string());
+                    }
+                }
+
+                args_template.insert(
+                    a.name.clone(),
+                    val.clone().unwrap_or_else(|| Value::String("__FILL_ME__".to_string())),
+                );
+
+                if let (Some(v), Some(r)) = (val, reason) {
+                    args_filled.push(json!({"arg": a.name, "value": v, "reason": r}));
+                }
+            }
+
+            let response = Self::pretty_json(&json!({
+                "ok": true,
+                "program_id": program_id,
+                "instruction": ix.name,
+                "pair_api": {
+                    "base_url": base_url,
+                    "url": url
+                },
+                "pair_detected": {
+                    "pair_address": addr,
+                    "mint_x": mint_x,
+                    "mint_y": mint_y
+                },
+                "filled_accounts": filled,
+                "filled_args": args_filled,
+                "accounts_template": Value::Object(accounts_template),
+                "args_template": Value::Object(args_template),
+                "next": {
+                    "tool": "solana_meteora_dlmm_build_tx",
+                    "args": {
+                        "network": request.network,
+                        "instruction": ix.name,
+                        "args": Value::Object(args_template),
+                        "accounts": Value::Object(accounts_template),
+                        "sign": true,
+                        "create_pending": true
+                    }
+                },
+                "note": "Heuristic fill only. You will likely need to replace __FILL_ME__ fields (especially PDAs/position accounts)."
+            }))?;
+
             Ok(CallToolResult::success(vec![Content::text(response)]))
         }
     }

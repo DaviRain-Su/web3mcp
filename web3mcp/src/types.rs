@@ -1407,6 +1407,40 @@ pub struct SolanaMeteoraDlmmPlanRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaMeteoraDlmmFillTemplateRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "DLMM pair/pool address (base58)")]
+    pub pair_address: String,
+
+    #[schemars(description = "Instruction name (default add_liquidity)")]
+    pub instruction: Option<String>,
+
+    #[schemars(description = "User/owner pubkey (base58). Used for ATA derivation.")]
+    pub owner: String,
+
+    #[schemars(description = "Optional fee payer pubkey (base58). If omitted, uses owner")]
+    pub fee_payer: Option<String>,
+
+    #[schemars(
+        description = "Optional amount X (raw integer string, base units). If provided, may populate arg placeholders."
+    )]
+    pub amount_x_raw: Option<String>,
+
+    #[schemars(
+        description = "Optional amount Y (raw integer string, base units). If provided, may populate arg placeholders."
+    )]
+    pub amount_y_raw: Option<String>,
+
+    #[schemars(description = "Meteora DLMM API base URL override (optional)")]
+    pub base_url: Option<String>,
+
+    #[schemars(description = "Timeout ms (default 15000)")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaBuildTransferRequest {
     #[schemars(
         description = "Network: mainnet|mainnet-beta|testnet|devnet (optional; default mainnet)"
