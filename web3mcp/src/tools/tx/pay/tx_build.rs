@@ -1483,7 +1483,7 @@
                     false,
                     Some("Re-run the build step to create a new pending confirmation"),
                     Some(json!({
-                        "next": "Re-run your build tool with confirm=false (or sui_create_pending_confirmation) to get a new confirmation_id"
+                        "how_to": "Re-run your build tool with confirm=false (or sui_create_pending_confirmation) to get a new confirmation_id"
                     })),
                     Some(json!({"id": request.id})),
                 );
@@ -1498,7 +1498,7 @@
                 false,
                 Some("This confirmation is not pending; create a new pending confirmation if you need to execute again"),
                 Some(json!({
-                    "next": "If you want to send again, rebuild and create a new pending confirmation_id"
+                    "how_to": "If you want to send again, rebuild and create a new pending confirmation_id"
                 })),
                 Some(json!({
                     "status": row.status,
@@ -1856,7 +1856,7 @@
                     false,
                     Some("Re-run the build step to create a new pending confirmation"),
                     Some(json!({
-                        "next": "Re-run your build tool with confirm=false (or sui_create_pending_confirmation) to get a new confirmation_id"
+                        "how_to": "Re-run your build tool with confirm=false (or sui_create_pending_confirmation) to get a new confirmation_id"
                     })),
                     Some(json!({"id": request.id})),
                 );
@@ -1927,7 +1927,7 @@
                 false,
                 Some("Create a new pending confirmation (rebuild) instead of retrying"),
                 Some(json!({
-                    "next": "Rebuild and create a new pending confirmation_id"
+                    "how_to": "Rebuild and create a new pending confirmation_id"
                 })),
                 Some(json!({
                     "status": row.status,

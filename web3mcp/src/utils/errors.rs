@@ -82,7 +82,30 @@ impl Web3McpServer {
                 },
             );
             if let Some(n) = next {
-                m.insert("next".to_string(), n);
+                // Normalize next into an object for stable integrations.
+                // - string -> {"how_to": "..."}
+                // - {"next": "..."} -> {"how_to": "..."}
+                // - object -> keep as-is
+                let normalized = match n {
+                    serde_json::Value::String(s) => serde_json::json!({"how_to": s}),
+                    serde_json::Value::Object(mut o) => {
+                        if let Some(v) = o.remove("next") {
+                            if let serde_json::Value::String(s) = v {
+                                serde_json::json!({"how_to": s})
+                            } else {
+                                // keep original object if it's not a string
+                                let mut o2 = serde_json::Map::new();
+                                o2.insert("next".to_string(), v);
+                                serde_json::Value::Object(o2)
+                            }
+                        } else {
+                            serde_json::Value::Object(o)
+                        }
+                    }
+                    other => serde_json::json!({"how_to": format!("{}", other)}),
+                };
+
+                m.insert("next".to_string(), normalized);
             }
             if let Some(e) = extra {
                 m.insert("extra".to_string(), e);

@@ -642,7 +642,7 @@
                 false,
                 Some("Rebuild the transaction and create a new pending confirmation"),
                 Some(json!({
-                    "next": "Re-run the build tool (or create pending confirmation) to get a fresh confirmation_id"
+                    "how_to": "Re-run the build tool (or create pending confirmation) to get a fresh confirmation_id"
                 })),
                 Some(json!({
                     "confirmation_id": row.id,
@@ -690,7 +690,7 @@
                 false,
                 Some("Create a new pending confirmation (rebuild) instead of retrying"),
                 Some(json!({
-                    "next": "Rebuild and create a new pending confirmation_id"
+                    "how_to": "Rebuild and create a new pending confirmation_id"
                 })),
                 Some(json!({
                     "confirmation_id": row.id,
