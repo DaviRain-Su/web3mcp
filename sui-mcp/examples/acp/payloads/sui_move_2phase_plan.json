@@ -1,0 +1,18 @@
+{
+  "kind": "sui_move_2phase",
+  "network": "mainnet",
+  "mode": "plan",
+  "action": {
+    "type": "move_call",
+    "package_id": "0x<PACKAGE_ID>",
+    "module": "<MODULE_NAME>",
+    "function": "<FUNCTION_NAME>",
+    "type_args": [],
+    "args": []
+  },
+  "safety": {
+    "require_simulate_ok": true,
+    "send": false,
+    "confirm": false
+  }
+}

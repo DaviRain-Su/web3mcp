@@ -147,4 +147,6 @@ For RPC reads and lightweight queries, use:
 See:
 - `examples/acp/README.md`
 - `examples/acp/payloads/` (sample job payloads)
-- `docs/acp-executor-prompt.md` (executor agent system prompt)
+- `docs/acp-executor-prompt.md` (Solana executor prompt)
+- `docs/acp-executor-prompt.sui_move_2phase.md` (Sui executor prompt)
+- `docs/acp-executor-prompt.evm_call_2phase.md` (EVM executor prompt)

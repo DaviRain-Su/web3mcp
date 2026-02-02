@@ -1,0 +1,18 @@
+{
+  "kind": "evm_call_2phase",
+  "chain_id": 8453,
+  "mode": "plan",
+  "action": {
+    "type": "contract_call",
+    "to": "0x<CONTRACT_ADDRESS>",
+    "from": "0x<SENDER_ADDRESS>",
+    "abi": "<ABI_JSON_OR_ABI_REF>",
+    "method": "<METHOD_NAME>",
+    "args": []
+  },
+  "safety": {
+    "require_simulate_ok": true,
+    "send": false,
+    "confirm": false
+  }
+}

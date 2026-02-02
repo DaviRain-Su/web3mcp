@@ -84,6 +84,8 @@ Copy/paste and adapt:
 
 See:
 - `docs/acp-integration.md`
-- `docs/acp-executor-prompt.md`
+- `docs/acp-executor-prompt.md` (Solana)
+- `docs/acp-executor-prompt.sui_move_2phase.md` (Sui)
+- `docs/acp-executor-prompt.evm_call_2phase.md` (EVM)
 - `examples/acp/payloads/`
 for more detail.
