@@ -163,6 +163,13 @@ Chinese version: `docs/intent-router.zh.md`.
 
 See `docs/claude-prompts.md` for ready-to-use prompts.
 
+## Troubleshooting
+
+- Quick check: `system_network_context`
+- Full diagnostics bundle: `system_debug_bundle` (optionally `out_path=./debug_bundle.json`)
+
+See `docs/troubleshooting.md`.
+
 ## Multi-chain adapters
 
 Adapters live at `src/intent/adapters.rs`.

@@ -50,6 +50,7 @@ Binary:
 
 ### 0) Sanity check (recommended)
 - "Run `system_network_context` and tell me what networks are active for Sui/Solana/EVM."
+- "If anything looks wrong, run `system_debug_bundle` and show me the JSON output (no secrets)."
 
 ### Sui
 - "On Sui testnet (set `SUI_RPC_URL=https://fullnode.testnet.sui.io:443`), use `get_balance` for 0x..."
