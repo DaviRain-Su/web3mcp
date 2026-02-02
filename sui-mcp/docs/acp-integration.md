@@ -144,4 +144,7 @@ For RPC reads and lightweight queries, use:
 
 ## Next: full integration example repo
 
-See `examples/acp/README.md` for a runnable example structure you can adapt.
+See:
+- `examples/acp/README.md`
+- `examples/acp/payloads/` (sample job payloads)
+- `docs/acp-executor-prompt.md` (executor agent system prompt)

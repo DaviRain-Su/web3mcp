@@ -1,0 +1,24 @@
+{
+  "kind": "solana_idl_2phase",
+  "network": "mainnet",
+  "mode": "send",
+  "action": {
+    "type": "idl_instruction",
+    "program_id": "<BASE58_PROGRAM_ID>",
+    "idl": { "source": "registry", "name": "<IDL_NAME>" },
+    "instruction": "<INSTRUCTION_NAME>",
+    "args": {
+      "amount_in": "1000000",
+      "min_out": "990000"
+    },
+    "accounts": {
+      "user": "<BASE58_USER_PUBKEY>",
+      "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    }
+  },
+  "safety": {
+    "require_simulate_ok": true,
+    "send": true,
+    "confirm": false
+  }
+}

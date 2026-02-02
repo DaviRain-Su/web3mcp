@@ -1,0 +1,22 @@
+{
+  "kind": "solana_idl_2phase",
+  "network": "mainnet",
+  "mode": "plan",
+  "action": {
+    "type": "idl_instruction",
+    "program_id": "<BASE58_PROGRAM_ID>",
+    "idl": { "source": "registry", "name": "<IDL_NAME>" },
+    "instruction": "<INSTRUCTION_NAME>",
+    "args": {
+      "amount_in": "1000000"
+    },
+    "accounts": {
+      "user": "<BASE58_USER_PUBKEY>"
+    }
+  },
+  "safety": {
+    "require_simulate_ok": true,
+    "send": false,
+    "confirm": false
+  }
+}

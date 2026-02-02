@@ -1,0 +1,12 @@
+{
+  "kind": "solana_idl_2phase",
+  "network": "mainnet",
+  "mode": "confirm",
+  "action": {
+    "type": "pending_confirmation",
+    "pending_confirmation_id": "<PENDING_CONFIRMATION_ID>"
+  },
+  "safety": {
+    "confirm": true
+  }
+}

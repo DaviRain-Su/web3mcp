@@ -82,4 +82,8 @@ Copy/paste and adapt:
 - Never invent addresses. Always return missing fields.
 - All u64/u128 amounts must be strings.
 
-See `docs/acp-integration.md` for more detail.
+See:
+- `docs/acp-integration.md`
+- `docs/acp-executor-prompt.md`
+- `examples/acp/payloads/`
+for more detail.
