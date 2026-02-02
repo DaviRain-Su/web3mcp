@@ -37,3 +37,6 @@ test-*/
 
 # rust
 target
+
+# Strategy skill state (runtime)
+skills/**/state/
