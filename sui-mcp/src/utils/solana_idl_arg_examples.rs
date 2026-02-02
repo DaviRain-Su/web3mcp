@@ -18,7 +18,7 @@ pub fn example_for_type(idl: &Value, ty: &Value) -> Option<Value> {
             "i128" => Some(json!("-123")),
             "string" => Some(json!("...")),
             "publicKey" | "pubkey" => Some(json!("<BASE58_PUBKEY>")),
-            "bytes" => Some(json!("0x")),
+            "bytes" => Some(json!({"_bytes": {"hex": "0x...", "base64": "..."}})),
             _ => None,
         };
     }
@@ -77,14 +77,26 @@ fn example_for_defined(idl: &Value, name: &str) -> Option<Value> {
         }
         "enum" => {
             let variants = ty.get("variants")?.as_array()?;
-            let first = variants.get(0)?;
-            let vname = first.get("name")?.as_str()?;
-            // Provide both common encodings.
+            let names: Vec<String> = variants
+                .iter()
+                .filter_map(|v| v.get("name").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                .collect();
+
+            let shown: Vec<String> = names.into_iter().take(3).collect();
+            if shown.is_empty() {
+                return None;
+            }
+
+            let primary = &shown[0];
+            let other = if shown.len() > 1 { Some(&shown[1..]) } else { None };
+
             Some(json!({
                 "_enum": {
-                    "as_string_for_unit": vname,
-                    "as_object": { vname: null },
-                    "as_tagged": { "variant": vname, "value": null }
+                    "variants": shown,
+                    "as_string_for_unit": primary,
+                    "as_object": { primary: null },
+                    "as_tagged": { "variant": primary, "value": null },
+                    "other_variants": other
                 }
             }))
         }
