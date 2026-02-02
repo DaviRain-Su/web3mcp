@@ -24,6 +24,18 @@ import time
 from typing import Any, Dict, Optional, Tuple, List
 
 TOKEN_LIST_DEFAULT_URL = "https://token.jup.ag/all"
+TOKEN_LIST_FALLBACK_URLS = [
+    # Jupiter token list (fast, usually enough)
+    "https://token.jup.ag/all",
+    # solana-labs token list (fallback)
+    "https://raw.githubusercontent.com/solana-labs/token-list/main/src/tokens/solana.tokenlist.json",
+]
+
+# Common stable mints (mainnet)
+STABLE_MINTS = {
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
+}
 
 
 def human_usd(x: Optional[float]) -> str:
@@ -116,43 +128,86 @@ def resolve_token_map(
     token_cache_ttl_ms: int,
     timeout_s: int = 45,
 ) -> Dict[str, Dict[str, str]]:
-    """Return mapping mint-> {symbol,name}. Cached in state."""
+    """Return mapping mint-> {symbol,name}. Cached in state.
+
+    Behavior:
+    - Use cached map if fresh.
+    - If stale but present, keep using it when refresh fails (better UX than dropping to 2 tokens).
+    - Try multiple token list sources.
+    """
 
     cache = state.get("token_cache") or {}
     cached_at = int(cache.get("fetched_at_ms", 0) or 0)
     by_mint = cache.get("by_mint")
 
-    if isinstance(by_mint, dict) and now_ms() - cached_at < token_cache_ttl_ms:
+    if isinstance(by_mint, dict) and by_mint and now_ms() - cached_at < token_cache_ttl_ms:
         return by_mint
 
-    try:
-        data = http_get_json(token_list_url, timeout_s=timeout_s)
-        if isinstance(data, list):
-            m: Dict[str, Dict[str, str]] = {}
-            for t in data:
-                if not isinstance(t, dict):
-                    continue
-                addr = t.get("address")
-                sym = t.get("symbol")
-                name = t.get("name")
-                if isinstance(addr, str) and addr and isinstance(sym, str) and sym:
-                    m[addr] = {"symbol": sym, "name": name if isinstance(name, str) else sym}
-            state["token_cache"] = {
-                "fetched_at_ms": now_ms(),
-                "url": token_list_url,
-                "by_mint": m,
-            }
-            return m
-    except Exception:
-        pass
+    urls = [token_list_url] + [u for u in TOKEN_LIST_FALLBACK_URLS if u != token_list_url]
 
-    # fallback: minimal map for common mints (still improves readability)
-    return {
-        # SOL (wSOL)
-        "So11111111111111111111111111111111111111112": {"symbol": "SOL", "name": "Wrapped SOL"},
-        # USDC
-        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": {"symbol": "USDC", "name": "USD Coin"},
-    }
+    def minimal_fallback() -> Dict[str, Dict[str, str]]:
+        return {
+            "So11111111111111111111111111111111111111112": {
+                "symbol": "SOL",
+                "name": "Wrapped SOL",
+            },
+            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": {
+                "symbol": "USDC",
+                "name": "USD Coin",
+            },
+            "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": {
+                "symbol": "USDT",
+                "name": "Tether USD",
+            },
+        }
+
+    for u in urls:
+        try:
+            data = http_get_json(u, timeout_s=timeout_s)
+
+            m: Dict[str, Dict[str, str]] = {}
+            if isinstance(data, list):
+                # Jupiter format
+                for t in data:
+                    if not isinstance(t, dict):
+                        continue
+                    addr = t.get("address")
+                    sym = t.get("symbol")
+                    name = t.get("name")
+                    if isinstance(addr, str) and addr and isinstance(sym, str) and sym:
+                        m[addr] = {
+                            "symbol": sym,
+                            "name": name if isinstance(name, str) else sym,
+                        }
+            elif isinstance(data, dict) and isinstance(data.get("tokens"), list):
+                # solana-labs token-list format
+                for t in data.get("tokens"):
+                    if not isinstance(t, dict):
+                        continue
+                    addr = t.get("address")
+                    sym = t.get("symbol")
+                    name = t.get("name")
+                    if isinstance(addr, str) and addr and isinstance(sym, str) and sym:
+                        m[addr] = {
+                            "symbol": sym,
+                            "name": name if isinstance(name, str) else sym,
+                        }
+
+            if m:
+                state["token_cache"] = {
+                    "fetched_at_ms": now_ms(),
+                    "url": u,
+                    "by_mint": m,
+                }
+                return m
+        except Exception:
+            continue
+
+    # If refresh failed but we have an old cache, keep using it.
+    if isinstance(by_mint, dict) and by_mint:
+        return by_mint
+
+    return minimal_fallback()
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -173,6 +228,12 @@ def main() -> int:
         "--token-list-url",
         default=TOKEN_LIST_DEFAULT_URL,
         help="token list URL (mint->symbol/name), default: https://token.jup.ag/all",
+    )
+    ap.add_argument(
+        "--focus",
+        default="all",
+        choices=["all", "meme"],
+        help="pool focus: all (default) or meme (exclude stable pairs like SOL/USDC)",
     )
     ap.add_argument(
         "--token-cache-ttl-min",
@@ -321,6 +382,24 @@ def main() -> int:
     token_cache = state.get("token_cache") or {}
     token_source_url = token_cache.get("url")
     token_cached_at_ms = token_cache.get("fetched_at_ms")
+
+    # Apply focus filter (e.g. meme) AFTER ranking, but before trigger evaluation.
+    if args.focus == "meme":
+        def is_meme_pair(r: Dict[str, Any]) -> bool:
+            mx = r.get("mint_x")
+            my = r.get("mint_y")
+            if not isinstance(mx, str) or not isinstance(my, str):
+                return True
+            # Exclude stablecoin pairs
+            if mx in STABLE_MINTS or my in STABLE_MINTS:
+                return False
+            # Prefer pump.fun-style mints
+            if mx.lower().endswith("pump") or my.lower().endswith("pump"):
+                return True
+            # Otherwise treat as non-stable alt pair = acceptable meme-ish universe
+            return True
+
+        ranked = [r for r in ranked if is_meme_pair(r)]
 
     # Enrich ranked entries with symbols/labels (used by cron summaries)
     for r in ranked:
