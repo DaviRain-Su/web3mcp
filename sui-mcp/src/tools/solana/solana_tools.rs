@@ -1,8 +1,16 @@
+    #[cfg(feature = "solana-extended-tools")]
+    const SOLANA_ERROR_OK: &str = "Ok";
+    const SOLANA_ERROR_MISSING_ACCOUNT: &str = "MissingAccount";
+    const SOLANA_ERROR_TYPE: &str = "TypeError";
+    #[cfg(feature = "solana-extended-tools")]
+    const SOLANA_ERROR_ANCHOR: &str = "AnchorConstraint";
+    const SOLANA_ERROR_PROGRAM: &str = "ProgramError";
+
     fn solana_classify_send_error(msg: &str) -> (String, Option<String>) {
         let m = msg.to_lowercase();
         if m.contains("blockhash") {
             return (
-                "ProgramError".to_string(),
+                Self::SOLANA_ERROR_PROGRAM.to_string(),
                 Some(
                     "Blockhash not found/expired. Rebuild the tx with a fresh recentBlockhash."
                         .to_string(),
@@ -11,13 +19,13 @@
         }
         if m.contains("insufficient") {
             return (
-                "ProgramError".to_string(),
+                Self::SOLANA_ERROR_PROGRAM.to_string(),
                 Some("Insufficient funds for fees or rent. Top up fee payer and retry.".to_string()),
             );
         }
         if m.contains("signature") && (m.contains("verify") || m.contains("missing")) {
             return (
-                "TypeError".to_string(),
+                Self::SOLANA_ERROR_TYPE.to_string(),
                 Some(
                     "Transaction appears unsigned or has invalid signatures. Ensure SOLANA_KEYPAIR_PATH is set or provide a fully signed tx."
                         .to_string(),
@@ -26,14 +34,14 @@
         }
         if m.contains("account not found") || m.contains("could not find account") {
             return (
-                "MissingAccount".to_string(),
+                Self::SOLANA_ERROR_MISSING_ACCOUNT.to_string(),
                 Some(
                     "One or more accounts were missing on-chain. Ensure all accounts exist (ATA/PDA creation may be required)."
                         .to_string(),
                 ),
             );
         }
-        ("ProgramError".to_string(), None)
+        (Self::SOLANA_ERROR_PROGRAM.to_string(), None)
     }
 
     #[cfg(feature = "solana-extended-tools")]
@@ -47,22 +55,22 @@
 
         // Intentionally heuristic.
         let err_s = err.to_string();
-        let mut error_class = "ProgramError".to_string();
+        let mut error_class = Self::SOLANA_ERROR_PROGRAM.to_string();
 
         if err_s.contains("AccountNotFound") || err_s.contains("MissingAccount") {
-            error_class = "MissingAccount".to_string();
+            error_class = Self::SOLANA_ERROR_MISSING_ACCOUNT.to_string();
         } else if err_s.contains("InvalidArgument")
             || err_s.contains("InvalidInstructionData")
             || err_s.contains("InvalidAccountData")
         {
-            error_class = "TypeError".to_string();
+            error_class = Self::SOLANA_ERROR_TYPE.to_string();
         }
 
         if logs
             .iter()
             .any(|l| l.contains("AnchorError") || l.contains("AnchorError occurred"))
         {
-            error_class = "AnchorConstraint".to_string();
+            error_class = Self::SOLANA_ERROR_ANCHOR.to_string();
         }
 
         let suggest_fix = if error_class == "MissingAccount" {
@@ -6609,7 +6617,7 @@
             let v = serde_json::to_value(err).unwrap_or_else(|_| json!({ "err": err.to_string() }));
             Self::solana_classify_simulation(&v, &logs)
         } else {
-            ("Ok".to_string(), None)
+            (Self::SOLANA_ERROR_OK.to_string(), None)
         };
 
         let suggest_price = cfg
