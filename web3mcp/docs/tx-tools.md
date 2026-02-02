@@ -26,7 +26,9 @@ When using write-capable tools, prefer branching on **`status`** in the tool out
 - `needs_confirmation`: a **safety guard** blocked the action. This is **not a hard error**.
   - Read `guard.guard_class` and follow `guard.next`.
   - Common guard classes: `CONFIRM_TOKEN_REQUIRED`, `SECOND_CONFIRM_REQUIRED`, `SAFETY_GUARD_BLOCKED`, `SIGNED_TX_REQUIRED`, `TX_SUMMARY_HASH_MISMATCH`, `PENDING_EXPIRED`, `UNKNOWN_CONFIRMATION_ID`.
-- If the tool call fails with an RPC error (`ErrorData`), treat it as an actual error and consider retrying / switching RPC.
+- If the tool call returns `status="needs_confirmation"`, treat it as a **flow guard** and follow `guard.next`.
+- If the tool call fails with an RPC / runtime error (`ErrorData`), treat it as an actual error and consider retrying / switching RPC.
+- If the tool call fails with `ErrorCode(-32602)` **without** `status="needs_confirmation"`, treat it as an **input/validation error** (bad base64, invalid pubkey, wrong amount format, etc.).
 
 ## Pending stores
 
