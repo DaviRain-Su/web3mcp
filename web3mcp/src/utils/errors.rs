@@ -209,12 +209,22 @@ impl Web3McpServer {
             if lower.contains("execution reverted") || lower.contains("reverted") {
                 error_class = "EXECUTION_REVERTED";
                 retryable = false;
-                suggest_fix = Some("Simulate/preview the call to extract the revert reason, verify parameters and balances/allowances, then rebuild and retry");
+                suggest_fix = Some("Simulate/preview the call to extract the revert reason; verify parameters and contract state; for ERC20/swap check balances + allowance_target/approval; then rebuild and retry");
             }
             if lower.contains("call exception") || lower.contains("call_exception") {
                 error_class = "CALL_EXCEPTION";
                 retryable = false;
-                suggest_fix = Some("Simulate/preview the call to extract the revert reason, verify contract state and parameters, then rebuild and retry");
+                suggest_fix = Some("Simulate/preview the call to extract the revert reason; verify contract state and parameters; then rebuild and retry");
+            }
+
+            // Common allowance / approval issues (best-effort)
+            if lower.contains("insufficient allowance")
+                || lower.contains("allowance") && lower.contains("insufficient")
+                || lower.contains("transfer amount exceeds allowance")
+            {
+                error_class = "INSUFFICIENT_ALLOWANCE";
+                retryable = false;
+                suggest_fix = Some("Approve the required allowance (ERC20 approve) for the spender/allowance_target, then retry the original transaction");
             }
 
             // Funds
@@ -223,7 +233,7 @@ impl Web3McpServer {
             {
                 error_class = "INSUFFICIENT_FUNDS_FOR_GAS";
                 retryable = false;
-                suggest_fix = Some("Ensure the sender/fee payer has enough native token to cover gas fees; reduce gas limit or amount if needed");
+                suggest_fix = Some("Ensure the sender/fee payer has enough native token to cover gas fees; reduce amount or gas limit if needed");
             }
 
             // Fee / nonce
@@ -233,10 +243,25 @@ impl Web3McpServer {
                 suggest_fix =
                     Some("Refetch nonce (pending), rebuild the tx with updated nonce, then retry");
             }
+            if lower.contains("nonce too high") {
+                error_class = "NONCE_TOO_HIGH";
+                retryable = true;
+                suggest_fix = Some("Wait for pending transactions to confirm or rebuild using the correct pending nonce");
+            }
             if lower.contains("replacement transaction underpriced") {
                 error_class = "REPLACEMENT_UNDERPRICED";
                 retryable = true;
                 suggest_fix = Some("Increase maxFeePerGas/maxPriorityFeePerGas and retry");
+            }
+            if lower.contains("transaction underpriced") || lower.contains("underpriced") {
+                error_class = "FEE_TOO_LOW";
+                retryable = true;
+                suggest_fix = Some("Increase maxFeePerGas/maxPriorityFeePerGas (or gasPrice for legacy tx) and retry");
+            }
+            if lower.contains("chainid") && lower.contains("mismatch") {
+                error_class = "CHAIN_ID_MISMATCH";
+                retryable = false;
+                suggest_fix = Some("Ensure you are signing for the correct chain_id and broadcasting to the matching network RPC");
             }
 
             // Mempool / known
@@ -453,6 +478,37 @@ mod tests {
         assert_eq!(
             v.get("error_class").and_then(|x| x.as_str()),
             Some("UNPREDICTABLE_GAS_LIMIT")
+        );
+    }
+
+    #[test]
+    fn evm_nonce_too_high_is_classified() {
+        let v = Web3McpServer::classify_error("evm_send_raw_transaction", "nonce too high");
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("NONCE_TOO_HIGH")
+        );
+    }
+
+    #[test]
+    fn evm_fee_too_low_is_classified() {
+        let v =
+            Web3McpServer::classify_error("evm_send_raw_transaction", "transaction underpriced");
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("FEE_TOO_LOW")
+        );
+    }
+
+    #[test]
+    fn evm_insufficient_allowance_is_classified() {
+        let v = Web3McpServer::classify_error(
+            "evm_send_raw_transaction",
+            "ERC20: insufficient allowance",
+        );
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("INSUFFICIENT_ALLOWANCE")
         );
     }
 }

@@ -37,3 +37,19 @@ What to do:
   - Attempting direct broadcast without allowing it (e.g. Solana `allow_direct_send=false`)
   - `tx_summary_hash` mismatch (use the one from the pending record)
   - Pending confirmation expired (rebuild to get a fresh confirmation)
+
+## Interpreting structured EVM errors (`error_class`)
+
+When an EVM tool fails with an RPC/runtime error, `ErrorData.data` may include:
+- `error_class`: a coarse error category
+- `retryable`: whether an automatic retry is reasonable
+- `suggest_fix`: a next-step suggestion
+- (best-effort) `revert_reason` for `EXECUTION_REVERTED`
+
+Common EVM classes:
+- `EXECUTION_REVERTED` / `CALL_EXCEPTION`: simulate/preview to extract reason; check params/state; for ERC20/swap check allowance/approval
+- `INSUFFICIENT_FUNDS_FOR_GAS`: add native token for gas
+- `INSUFFICIENT_ALLOWANCE`: approve allowance_target/spender, then retry
+- `NONCE_TOO_LOW` / `NONCE_TOO_HIGH`: rebuild with correct pending nonce
+- `FEE_TOO_LOW` / `REPLACEMENT_UNDERPRICED`: increase maxFeePerGas/maxPriorityFeePerGas
+- `UNPREDICTABLE_GAS_LIMIT`: simulate to find revert; then set explicit gas limit if appropriate
