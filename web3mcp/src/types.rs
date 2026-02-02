@@ -1573,6 +1573,86 @@ pub struct EvmExecuteErc20ApproveRequest {
     pub allow_sender_mismatch: Option<bool>,
 }
 
+// NFT / ERC1155 helpers (bnbchain-mcp parity)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetNftInfoRequest {
+    #[schemars(description = "NFT contract address (ERC721)")]
+    pub contract: String,
+    #[schemars(description = "Token id (u256 as string)")]
+    pub token_id: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmCheckNftOwnershipRequest {
+    #[schemars(description = "NFT contract address (ERC721)")]
+    pub contract: String,
+    #[schemars(description = "Token id (u256 as string)")]
+    pub token_id: String,
+    #[schemars(description = "Owner address")]
+    pub owner: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmTransferNftRequest {
+    #[schemars(
+        description = "Sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"
+    )]
+    pub sender: String,
+    #[schemars(description = "NFT contract address (ERC721)")]
+    pub contract: String,
+    #[schemars(description = "Recipient address")]
+    pub recipient: String,
+    #[schemars(description = "Token id (u256 as string)")]
+    pub token_id: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    pub gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    pub allow_sender_mismatch: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetErc1155BalanceRequest {
+    #[schemars(description = "ERC1155 contract address")]
+    pub contract: String,
+    #[schemars(description = "Owner address")]
+    pub owner: String,
+    #[schemars(description = "Token id (u256 as string)")]
+    pub token_id: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmTransferErc1155Request {
+    #[schemars(
+        description = "Sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"
+    )]
+    pub sender: String,
+    #[schemars(description = "ERC1155 contract address")]
+    pub contract: String,
+    #[schemars(description = "Recipient address")]
+    pub recipient: String,
+    #[schemars(description = "Token id (u256 as string)")]
+    pub token_id: String,
+    #[schemars(description = "Amount (u256 as string)")]
+    pub amount_raw: String,
+    #[schemars(
+        description = "Optional data (hex 0x...) passed to safeTransferFrom; default empty"
+    )]
+    pub data: Option<String>,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Optional gas limit override")]
+    pub gas_limit: Option<u64>,
+    #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
+    pub allow_sender_mismatch: Option<bool>,
+}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmBuildErc20ApproveTxRequest {
     #[schemars(description = "Owner/sender address")]

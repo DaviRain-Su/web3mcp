@@ -216,6 +216,10 @@
     }
 
     fn encode_erc20_call(sig: &str, args: Vec<ethers::abi::Token>) -> ethers::types::Bytes {
+        Self::encode_evm_call(sig, args)
+    }
+
+    fn encode_evm_call(sig: &str, args: Vec<ethers::abi::Token>) -> ethers::types::Bytes {
         let selector = &ethers::utils::keccak256(sig)[0..4];
         let mut out = Vec::with_capacity(4 + 32 * args.len());
         out.extend_from_slice(selector);
@@ -2019,6 +2023,238 @@
             allow_sender_mismatch: request.allow_sender_mismatch,
         }))
         .await
+    }
+
+    #[tool(description = "EVM NFT (ERC721): get NFT info (ownerOf + tokenURI if available)")]
+    async fn evm_get_nft_info(
+        &self,
+        Parameters(request): Parameters<EvmGetNftInfoRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+        let contract = Self::parse_evm_address(&request.contract)?;
+        let token_id = Self::parse_evm_u256("token_id", &request.token_id)?;
+
+        // ownerOf(uint256)
+        let owner_data = Self::encode_evm_call(
+            "ownerOf(uint256)",
+            vec![ethers::abi::Token::Uint(token_id)],
+        );
+        let owner_call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            data: Some(owner_data),
+            ..Default::default()
+        };
+        let owner_typed: ethers::types::transaction::eip2718::TypedTransaction = owner_call.into();
+        let owner_raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &owner_typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_get_nft_info:ownerOf", e))?;
+        let owner_tokens = ethers::abi::decode(&[ethers::abi::ParamType::Address], owner_raw.as_ref())
+            .map_err(|e| Self::sdk_error("evm_get_nft_info:decode_ownerOf", e))?;
+        let owner = owner_tokens
+            .get(0)
+            .and_then(|t| t.clone().into_address())
+            .map(|a| format!("0x{}", hex::encode(a.as_bytes())));
+
+        // tokenURI(uint256) (optional)
+        let uri_data = Self::encode_evm_call(
+            "tokenURI(uint256)",
+            vec![ethers::abi::Token::Uint(token_id)],
+        );
+        let uri_call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            data: Some(uri_data),
+            ..Default::default()
+        };
+        let uri_typed: ethers::types::transaction::eip2718::TypedTransaction = uri_call.into();
+        let uri_raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &uri_typed,
+            None,
+        )
+        .await;
+        let token_uri = uri_raw
+            .ok()
+            .and_then(|b| ethers::abi::decode(&[ethers::abi::ParamType::String], b.as_ref()).ok())
+            .and_then(|toks| toks.get(0).and_then(|t| t.clone().into_string()));
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "contract": request.contract,
+            "token_id": request.token_id,
+            "owner": owner,
+            "token_uri": token_uri
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM NFT (ERC721): check if owner owns token_id")]
+    async fn evm_check_nft_ownership(
+        &self,
+        Parameters(request): Parameters<EvmCheckNftOwnershipRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let info = self
+            .evm_get_nft_info(Parameters(EvmGetNftInfoRequest {
+                contract: request.contract.clone(),
+                token_id: request.token_id.clone(),
+                chain_id: request.chain_id,
+            }))
+            .await?;
+
+        let v = Self::evm_extract_first_json(&info).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_get_nft_info result"),
+            data: None,
+        })?;
+
+        let owner = v.get("owner").and_then(|x| x.as_str()).unwrap_or("");
+        let is_owner = owner.eq_ignore_ascii_case(request.owner.trim());
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": request.chain_id.unwrap_or(Self::evm_default_chain_id()?),
+            "contract": request.contract,
+            "token_id": request.token_id,
+            "owner": owner,
+            "expected_owner": request.owner,
+            "is_owner": is_owner
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM NFT (ERC721): transfer NFT via transferFrom (alias of transfer_nft)")]
+    async fn evm_transfer_nft(
+        &self,
+        Parameters(request): Parameters<EvmTransferNftRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let from = Self::parse_evm_address(&request.sender)?;
+        let contract = Self::parse_evm_address(&request.contract)?;
+        let to = Self::parse_evm_address(&request.recipient)?;
+        let token_id = Self::parse_evm_u256("token_id", &request.token_id)?;
+
+        let data = Self::encode_evm_call(
+            "transferFrom(address,address,uint256)",
+            vec![
+                ethers::abi::Token::Address(from),
+                ethers::abi::Token::Address(to),
+                ethers::abi::Token::Uint(token_id),
+            ],
+        );
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(from),
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            value: Some(ethers::types::U256::from(0)),
+            data: Some(data),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        self.evm_execute_tx_request(chain_id, tx_request, request.allow_sender_mismatch.unwrap_or(false))
+            .await
+    }
+
+    #[tool(description = "EVM NFT (ERC1155): balanceOf(contract, owner, token_id)")]
+    async fn evm_get_erc1155_balance(
+        &self,
+        Parameters(request): Parameters<EvmGetErc1155BalanceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+        let contract = Self::parse_evm_address(&request.contract)?;
+        let owner = Self::parse_evm_address(&request.owner)?;
+        let token_id = Self::parse_evm_u256("token_id", &request.token_id)?;
+
+        let data = Self::encode_evm_call(
+            "balanceOf(address,uint256)",
+            vec![ethers::abi::Token::Address(owner), ethers::abi::Token::Uint(token_id)],
+        );
+
+        let call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            data: Some(data),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call.into();
+
+        let raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_get_erc1155_balance:eth_call", e))?;
+
+        let bytes: Vec<u8> = raw.to_vec();
+        if bytes.len() < 32 {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("ERC1155 balanceOf returned unexpected length"),
+                data: None,
+            });
+        }
+        let bal = ethers::types::U256::from_big_endian(&bytes[bytes.len() - 32..]);
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "contract": request.contract,
+            "owner": request.owner,
+            "token_id": request.token_id,
+            "balance_raw": bal.to_string()
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM NFT (ERC1155): transfer via safeTransferFrom")]
+    async fn evm_transfer_erc1155(
+        &self,
+        Parameters(request): Parameters<EvmTransferErc1155Request>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let from = Self::parse_evm_address(&request.sender)?;
+        let contract = Self::parse_evm_address(&request.contract)?;
+        let to = Self::parse_evm_address(&request.recipient)?;
+        let token_id = Self::parse_evm_u256("token_id", &request.token_id)?;
+        let amount = Self::parse_evm_u256("amount_raw", &request.amount_raw)?;
+
+        let data_bytes = request
+            .data
+            .as_deref()
+            .unwrap_or("0x")
+            .strip_prefix("0x")
+            .unwrap_or("");
+        let extra = hex::decode(data_bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid data hex: {}", e)),
+            data: None,
+        })?;
+
+        let data = Self::encode_evm_call(
+            "safeTransferFrom(address,address,uint256,uint256,bytes)",
+            vec![
+                ethers::abi::Token::Address(from),
+                ethers::abi::Token::Address(to),
+                ethers::abi::Token::Uint(token_id),
+                ethers::abi::Token::Uint(amount),
+                ethers::abi::Token::Bytes(extra),
+            ],
+        );
+
+        let tx_request = ethers::types::TransactionRequest {
+            from: Some(from),
+            to: Some(ethers::types::NameOrAddress::Address(contract)),
+            value: Some(ethers::types::U256::from(0)),
+            data: Some(data),
+            gas: request.gas_limit.map(Self::u256_from_u64),
+            ..Default::default()
+        };
+
+        self.evm_execute_tx_request(chain_id, tx_request, request.allow_sender_mismatch.unwrap_or(false))
+            .await
     }
 
     #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]

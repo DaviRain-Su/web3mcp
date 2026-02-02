@@ -87,6 +87,13 @@ ERC20 helpers:
 
 ## Mainnet safety (Solana / Sui / EVM)
 
+NFT helpers (EVM):
+- `evm_get_nft_info`
+- `evm_check_nft_ownership`
+- `evm_transfer_nft` (ERC721)
+- `evm_get_erc1155_balance`
+- `evm_transfer_erc1155`
+
 For **mainnet** transactions, the server enforces a stricter workflow:
 - Tools that would broadcast a tx will return a **pending confirmation** instead.
 - Broadcasting requires a second step with an explicit `confirm_token`.
