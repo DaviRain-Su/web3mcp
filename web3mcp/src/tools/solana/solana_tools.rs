@@ -5326,17 +5326,20 @@
         }
 
         if request.confirm.unwrap_or(false) && !request.allow_direct_send.unwrap_or(false) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "Direct broadcast is blocked by default. Use solana_tx_preview (or confirm=false) to create a confirmation token, then call solana_confirm_transaction; or set allow_direct_send=true if you know what you are doing.",
-                ),
-                data: Some(json!({
-                    "hint": "Call solana_send_transaction with confirm=false (safe) or use solana_tx_preview, then solana_confirm_transaction",
+            return Err(Self::structured_error(
+                "Direct broadcast is blocked by default",
+                "solana_send_transaction",
+                "SAFETY_GUARD_BLOCKED",
+                false,
+                Some("Use confirm=false to create a pending confirmation, then solana_confirm_transaction (mainnet requires confirm_token); or set allow_direct_send=true only if you understand the risks"),
+                None,
+                Some(json!({
+                    "hint": "Call solana_send_transaction(confirm=false) (safe) or use solana_tx_preview, then solana_confirm_transaction",
                     "tool_preview": "solana_tx_preview",
-                    "tool_confirm": "solana_confirm_transaction"
+                    "tool_confirm": "solana_confirm_transaction",
+                    "param": "allow_direct_send"
                 })),
-            });
+            ));
         }
 
         if !request.confirm.unwrap_or(false) {
