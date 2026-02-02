@@ -1,3 +1,4 @@
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_known_program_label(pid: &str) -> Option<&'static str> {
         match pid {
             // Core
@@ -46,6 +47,7 @@
         }
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_is_known_safe_address(addr: &str) -> bool {
         // Addresses that are safe/expected to show up in txs and should not trigger unknown-program alarms.
         // Note: we intentionally treat "known labels" (including mints) as safe here.
@@ -60,6 +62,7 @@
             || Self::solana_known_program_label(addr).is_some()
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_jup_swap_dex_label(swap_dbg: &str) -> Option<&'static str> {
         // Best-effort mapping from carbon-jupiter Swap debug output to a human label.
         // Example debug strings:
@@ -99,6 +102,7 @@
         }
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_jup_swap_direction(swap_dbg: &str) -> Option<String> {
         // Extract direction-like booleans from the Debug string.
         // We keep this intentionally lightweight (string contains checks).
@@ -121,6 +125,7 @@
         }
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_jup_swap_side(swap_dbg: &str) -> Option<&'static str> {
         // For orderbook-style swaps (Serum/OpenBook/Phoenix), Carbon's Debug includes side.
         if swap_dbg.contains("side: Bid") {
@@ -196,6 +201,7 @@
         })
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_parse_pubkey(value: &str, label: &str) -> Result<solana_sdk::pubkey::Pubkey, ErrorData> {
         solana_sdk::pubkey::Pubkey::from_str(value).map_err(|e| ErrorData {
             code: ErrorCode(-32602),
@@ -204,6 +210,7 @@
         })
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_parse_program_id(program_id: &str) -> Result<solana_sdk::pubkey::Pubkey, ErrorData> {
         Self::solana_parse_pubkey(program_id, "program_id")
     }
@@ -2392,6 +2399,7 @@
         }
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_ui_account_encoding_from_str(
         encoding: &str,
     ) -> Result<solana_rpc_client_api::response::UiAccountEncoding, ErrorData> {
@@ -2413,6 +2421,7 @@
         Ok(enc)
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_suggest_compute_unit_limit(units_consumed: Option<u64>) -> Option<u32> {
         // Best-effort heuristic: 20% headroom + fixed 10k buffer.
         // Clamp to a reasonable range.
@@ -2425,6 +2434,7 @@
         Some(suggested as u32)
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_percentile_u64(mut xs: Vec<u64>, p: f64) -> Option<u64> {
         if xs.is_empty() {
             return None;
@@ -2435,6 +2445,7 @@
         xs.get(idx).copied()
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_suggest_fee_sample_addresses_from_metas(
         metas: &[solana_sdk::instruction::AccountMeta],
         max: usize,
@@ -2462,7 +2473,8 @@
         out
     }
 
-    #[tool(description = "Solana: build a (optionally signed) transaction from one or more instructions")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: build a (optionally signed) transaction from one or more instructions"))]
     async fn solana_tx_build(
         &self,
         Parameters(request): Parameters<SolanaTxBuildRequest>,
@@ -2606,7 +2618,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: simulate a transaction (no broadcast)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: simulate a transaction (no broadcast)"))]
     async fn solana_simulate_transaction(
         &self,
         Parameters(request): Parameters<SolanaSimulateTransactionRequest>,
@@ -2788,7 +2801,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: simulate a single instruction by internally building a tx (no broadcast)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: simulate a single instruction by internally building a tx (no broadcast)"))]
     async fn solana_simulate_instruction(
         &self,
         Parameters(request): Parameters<SolanaSimulateInstructionRequest>,
@@ -3005,7 +3019,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: preview+simulate a transaction, return a short-lived confirmation token (id/hash) (safe default: does not broadcast)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: preview+simulate a transaction, return a short-lived confirmation token (id/hash) (safe default: does not broadcast)"))]
     async fn solana_tx_preview(
         &self,
         Parameters(request): Parameters<SolanaTxPreviewRequest>,
@@ -5294,7 +5309,8 @@
 
     // ---------------- Solana IDL (Dynamic + Registry) ----------------
 
-    #[tool(description = "Solana IDL: load an IDL dynamically (json/base64/url/path) into an in-memory cache. Optionally persist to abi_registry.")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: load an IDL dynamically (json/base64/url/path) into an in-memory cache. Optionally persist to abi_registry."))]
     async fn solana_idl_load(
         &self,
         Parameters(request): Parameters<SolanaIdlLoadRequest>,
@@ -5406,7 +5422,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: unload an in-memory IDL handle")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: unload an in-memory IDL handle"))]
     async fn solana_idl_unload(
         &self,
         Parameters(request): Parameters<SolanaIdlUnloadRequest>,
@@ -5421,7 +5438,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: list currently loaded in-memory IDL handles")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: list currently loaded in-memory IDL handles"))]
     async fn solana_idl_cache_list(&self) -> Result<CallToolResult, ErrorData> {
         let items = self.solana_idl_cache.list();
         let response = Self::pretty_json(&json!({
@@ -5432,7 +5450,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: clear all in-memory loaded IDLs")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: clear all in-memory loaded IDLs"))]
     async fn solana_idl_cache_clear(&self) -> Result<CallToolResult, ErrorData> {
         self.solana_idl_cache.clear();
         let response = Self::pretty_json(&json!({
@@ -5442,7 +5461,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: list instructions for an in-memory IDL handle")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: list instructions for an in-memory IDL handle"))]
     async fn solana_idl_list_instructions(
         &self,
         Parameters(request): Parameters<SolanaIdlListInstructionsRequest>,
@@ -5496,7 +5516,8 @@
 
     // ---------------- Solana IDL Registry ----------------
 
-    #[tool(description = "Solana IDL Registry: register an IDL JSON under abi_registry/solana/<program_id>/<name>.json")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL Registry: register an IDL JSON under abi_registry/solana/<program_id>/<name>.json"))]
     async fn solana_idl_register(
         &self,
         Parameters(request): Parameters<SolanaIdlRegisterRequest>,
@@ -5534,7 +5555,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL Registry: register an IDL JSON from a local file path")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL Registry: register an IDL JSON from a local file path"))]
     async fn solana_idl_register_file(
         &self,
         Parameters(request): Parameters<SolanaIdlRegisterFileRequest>,
@@ -5573,7 +5595,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL Registry: list registered programs and names")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL Registry: list registered programs and names"))]
     async fn solana_idl_list(
         &self,
         Parameters(request): Parameters<SolanaIdlListRequest>,
@@ -5607,7 +5630,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL Registry: get a registered IDL")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL Registry: get a registered IDL"))]
     async fn solana_idl_get(
         &self,
         Parameters(request): Parameters<SolanaIdlGetRequest>,
@@ -5631,7 +5655,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL Registry: search registered IDLs by program_id or name")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL Registry: search registered IDLs by program_id or name"))]
     async fn solana_idl_search(
         &self,
         Parameters(request): Parameters<SolanaIdlSearchRequest>,
@@ -5678,7 +5703,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: plan an instruction from registered IDL (offline; optional on-chain validation)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: plan an instruction from registered IDL (offline; optional on-chain validation)"))]
     async fn solana_idl_plan_instruction(
         &self,
         Parameters(request): Parameters<SolanaIdlPlanInstructionRequest>,
@@ -5975,6 +6001,7 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_json_metas_to_account_metas(
         metas: &[Value],
     ) -> Result<Vec<solana_sdk::instruction::AccountMeta>, ErrorData> {
@@ -6006,7 +6033,8 @@
         Ok(out)
     }
 
-    #[tool(description = "Solana IDL: build an instruction (program_id + accounts metas + data_base64) from registered IDL")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: build an instruction (program_id + accounts metas + data_base64) from registered IDL"))]
     async fn solana_idl_build_instruction(
         &self,
         Parameters(request): Parameters<SolanaIdlBuildInstructionRequest>,
@@ -6135,7 +6163,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: build instruction+tx and simulate (no broadcast)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: build instruction+tx and simulate (no broadcast)"))]
     async fn solana_idl_simulate_instruction(
         &self,
         Parameters(request): Parameters<SolanaIdlSimulateInstructionRequest>,
@@ -6432,7 +6461,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana IDL: build tx and (optionally) send it. Safe default: creates pending confirmation unless confirm=true")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana IDL: build tx and (optionally) send it. Safe default: creates pending confirmation unless confirm=true"))]
     async fn solana_idl_execute(
         &self,
         Parameters(request): Parameters<SolanaIdlExecuteRequest>,

@@ -9,7 +9,9 @@ pub mod evm_tx_replace;
 pub mod json;
 pub mod network;
 pub mod solana_confirm_store;
+#[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl;
+#[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl_registry;
 pub mod solana_idl_cache;
 pub mod sui_confirm_store;
