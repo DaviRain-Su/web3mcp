@@ -1491,13 +1491,16 @@
         };
 
         if row.status != "pending" {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!(
-                    "Confirmation not pending (status={})",
-                    row.status
-                )),
-                data: Some(json!({
+            return Self::guard_result(
+                "sui_confirm_execution",
+                "UNSUPPORTED_STATUS",
+                "Confirmation not pending",
+                false,
+                Some("This confirmation is not pending; create a new pending confirmation if you need to execute again"),
+                Some(json!({
+                    "next": "If you want to send again, rebuild and create a new pending confirmation_id"
+                })),
+                Some(json!({
                     "status": row.status,
                     "digest": row.digest,
                     "last_error": row.last_error,
@@ -1507,7 +1510,7 @@
                         .as_deref()
                         .and_then(|s| serde_json::from_str::<Value>(s).ok()),
                 })),
-            });
+            );
         }
 
         if row.tx_summary_hash != request.tx_summary_hash {

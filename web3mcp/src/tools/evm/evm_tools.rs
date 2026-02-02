@@ -683,13 +683,15 @@
 
         // Only allow retry when status is pending/failed/consumed.
         if !matches!(row.status.as_str(), "pending" | "failed" | "consumed") {
-            return Err(Self::structured_error(
-                "Unsupported status for retry",
+            return Self::guard_result(
                 "evm_retry_pending_confirmation",
                 "UNSUPPORTED_STATUS",
+                "Unsupported status for retry",
                 false,
                 Some("Create a new pending confirmation (rebuild) instead of retrying"),
-                None,
+                Some(json!({
+                    "next": "Rebuild and create a new pending confirmation_id"
+                })),
                 Some(json!({
                     "confirmation_id": row.id,
                     "chain_id": row.chain_id,
@@ -700,7 +702,7 @@
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
                 })),
-            ));
+            );
         }
 
         let mut tx = row.tx;
