@@ -403,9 +403,22 @@
 
         // By default, JSON-RPC params should be an array. However, we accept an object and pass it
         // through as-is to support edge cases / future methods.
-        let params = request
+        //
+        // UX: LLMs sometimes send params as a JSON-encoded string (e.g. "[\"abc\"]").
+        // If so, we try to parse it into real JSON.
+        let mut params = request
             .params
             .unwrap_or_else(|| Value::Array(Vec::new()));
+        if let Value::String(s) = &params {
+            let ss = s.trim();
+            if (ss.starts_with('[') && ss.ends_with(']')) || (ss.starts_with('{') && ss.ends_with('}')) {
+                params = serde_json::from_str(ss).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("params looks like JSON but failed to parse: {}", e)),
+                    data: Some(json!({"params_raw": s})),
+                })?;
+            }
+        }
 
         let body = json!({
             "jsonrpc": "2.0",
