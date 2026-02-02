@@ -359,16 +359,26 @@
             });
         }
 
-        let response = Self::pretty_json(&json!({
-            "rpc_url": rpc_url,
-            "network": network,
-            "method": method,
-            "id": id,
-            "status": status.as_u16(),
-            "response": parsed
-        }))?;
+        let result_only = request.result_only.unwrap_or(false);
+        let output = if result_only {
+            // Prefer returning response.result; if missing, return the whole parsed response.
+            let v = parsed
+                .get("result")
+                .cloned()
+                .unwrap_or(parsed.clone());
+            Self::pretty_json(&v)?
+        } else {
+            Self::pretty_json(&json!({
+                "rpc_url": rpc_url,
+                "network": network,
+                "method": method,
+                "id": id,
+                "status": status.as_u16(),
+                "response": parsed
+            }))?
+        };
 
-        Ok(CallToolResult::success(vec![Content::text(response)]))
+        Ok(CallToolResult::success(vec![Content::text(output)]))
     }
 
     #[cfg(feature = "solana-extended-tools")]

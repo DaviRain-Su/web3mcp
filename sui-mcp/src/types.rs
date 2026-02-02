@@ -513,6 +513,11 @@ pub struct SolanaRpcCallRequest {
         description = "If true (default), convert JSON-RPC 'error' responses into tool errors (-32000 style)"
     )]
     pub fail_on_rpc_error: Option<bool>,
+
+    #[schemars(
+        description = "If true, return only response.result (or response.error) instead of a wrapped object (default false)"
+    )]
+    pub result_only: Option<bool>,
 }
 
 
