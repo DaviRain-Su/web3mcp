@@ -69,6 +69,32 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "List supported Solana networks and their RPC URLs (mainnet-beta/testnet/devnet).")]
+    async fn solana_list_networks(&self) -> Result<CallToolResult, ErrorData> {
+        let response = Self::pretty_json(&serde_json::json!({
+            "mainnet": {
+                "network": "mainnet",
+                "aliases": ["mainnet", "mainnet-beta"],
+                "rpc_url": Self::solana_rpc_url_for_network(Some("mainnet"))?,
+                "mainnet": true
+            },
+            "testnet": {
+                "network": "testnet",
+                "aliases": ["testnet"],
+                "rpc_url": Self::solana_rpc_url_for_network(Some("testnet"))?,
+                "mainnet": false
+            },
+            "devnet": {
+                "network": "devnet",
+                "aliases": ["devnet"],
+                "rpc_url": Self::solana_rpc_url_for_network(Some("devnet"))?,
+                "mainnet": false
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     /// Report currently configured server network context (Sui rpc_url + mainnet/testnet hints).
     #[tool(description = "Get server network context (Sui rpc_url and inferred network; plus Solana network notes).")]
     async fn system_network_context(&self) -> Result<CallToolResult, ErrorData> {
