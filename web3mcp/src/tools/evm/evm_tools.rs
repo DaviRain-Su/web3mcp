@@ -521,6 +521,56 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM: create a pending confirmation record from a tx (recommended: pass output from evm_preflight).")]
+    async fn evm_create_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<EvmCreatePendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tx = request.tx;
+        let chain_id = tx.chain_id;
+
+        let confirmation_id = format!(
+            "evm_pending_{}_{}",
+            crate::utils::evm_confirm_store::now_ms(),
+            request
+                .label
+                .unwrap_or_else(|| "tx".to_string())
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .take(16)
+                .collect::<String>()
+        );
+
+        let ttl = crate::utils::evm_confirm_store::default_ttl_ms();
+        let now_ms = crate::utils::evm_confirm_store::now_ms();
+        let expires = now_ms + ttl;
+        let hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
+
+        crate::utils::evm_confirm_store::insert_pending(&confirmation_id, &tx, now_ms, expires, &hash)?;
+
+        // Always provide the token; it will be required on mainnet (and for large-value txs).
+        let token = crate::utils::evm_confirm_store::make_confirm_token(&confirmation_id, &hash);
+
+        let response = Self::pretty_json(&json!({
+            "status": "pending",
+            "chain_id": chain_id,
+            "confirmation_id": confirmation_id,
+            "tx_summary_hash": hash,
+            "confirm_token": token,
+            "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+            "expires_in_ms": ttl,
+            "note": "Not broadcast. Call evm_retry_pending_confirmation to sign+send (mainnet requires confirm_token).",
+            "next": {
+                "how_to_send": format!(
+                    "evm_retry_pending_confirmation id:{} tx_summary_hash:{} confirm_token:{}",
+                    confirmation_id, hash, token
+                )
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: retry executing a pending/failed intent confirmation (sqlite-backed). Safe: requires matching tx_summary_hash; may request re-confirm if preflight changes tx.")]
     async fn evm_retry_pending_confirmation(
         &self,

@@ -123,10 +123,18 @@ pub struct EvmRetryPendingConfirmationRequest {
     pub id: String,
     #[schemars(description = "tx_summary_hash from the pending record (0x...)")]
     pub tx_summary_hash: String,
-    #[schemars(description = "Optional second-confirm token for large-value tx (token:...)")]
+    #[schemars(description = "Optional confirm_token; required for mainnet and large-value txs")]
     pub confirm_token: Option<String>,
     #[schemars(description = "Optional chain id sanity check")]
     pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmCreatePendingConfirmationRequest {
+    #[schemars(description = "Transaction request (recommended: pass output from evm_preflight)")]
+    pub tx: EvmTxRequest,
+    #[schemars(description = "Optional label for debugging")]
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

@@ -82,12 +82,13 @@ This is designed to reduce accidental mainnet sends.
 
 EVM (mainnet):
 1) Build + preflight (safe)
-2) Confirm (requires token on mainnet)
+2) Create pending confirmation (safe; returns `confirm_token`)
+3) Send via retry (requires token on mainnet)
 
 Example (Base mainnet `chain_id=8453`):
 - Build: `evm_build_transfer_native`
 - Preflight: `evm_preflight`
-- Create pending: use a safe-default flow (or any tool that returns a `confirmation_id`)
+- Create pending: `evm_create_pending_confirmation`
 - Send: `evm_retry_pending_confirmation` with `id`, `tx_summary_hash`, `confirm_token`
 
 Solana (mainnet):
