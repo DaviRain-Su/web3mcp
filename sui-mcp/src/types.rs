@@ -494,6 +494,17 @@ pub struct SolanaIdlSearchRequest {
 // ---------------- Solana common RPC tools ----------------
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaRpcCallRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+    #[schemars(description = "JSON-RPC method name (e.g. getBalance)")]
+    pub method: String,
+    #[schemars(description = "JSON-RPC params array (optional; default [])")]
+    pub params: Option<Vec<serde_json::Value>>,
+}
+
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetBalanceRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,

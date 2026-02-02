@@ -275,7 +275,59 @@
 
     // ---------------- Solana common RPC tools ----------------
 
-    #[tool(description = "Solana: get balance (lamports) for an address")]
+    #[tool(description = "Solana: raw JSON-RPC call (method+params). Useful to avoid tool explosion in Claude Desktop.")]
+    async fn solana_rpc_call(
+        &self,
+        Parameters(request): Parameters<SolanaRpcCallRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref().unwrap_or("mainnet");
+        let rpc_url = Self::solana_rpc_url_for_network(Some(network))?;
+
+        let method = request.method.trim();
+        if method.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("method is required"),
+                data: None,
+            });
+        }
+
+        let params = request.params.unwrap_or_default();
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params
+        });
+
+        let resp = reqwest::Client::new()
+            .post(&rpc_url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| Self::sdk_error("solana_rpc_call", e))?;
+
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| Self::sdk_error("solana_rpc_call", e))?;
+
+        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({"raw": text}));
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": network,
+            "method": method,
+            "status": status.as_u16(),
+            "response": parsed
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get balance (lamports) for an address"))]
     async fn solana_get_balance(
         &self,
         Parameters(request): Parameters<SolanaGetBalanceRequest>,
@@ -296,7 +348,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get account info (optionally with encoding)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get account info (optionally with encoding)"))]
     async fn solana_get_account_info(
         &self,
         Parameters(request): Parameters<SolanaGetAccountInfoRequest>,
@@ -339,7 +392,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get latest blockhash")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get latest blockhash"))]
     async fn solana_get_latest_blockhash(
         &self,
         Parameters(request): Parameters<SolanaGetLatestBlockhashRequest>,
@@ -362,7 +416,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get signature status")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get signature status"))]
     async fn solana_get_signature_status(
         &self,
         Parameters(request): Parameters<SolanaGetSignatureStatusRequest>,
@@ -398,7 +453,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get transaction by signature")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get transaction by signature"))]
     async fn solana_get_transaction(
         &self,
         Parameters(request): Parameters<SolanaGetTransactionRequest>,
@@ -444,7 +500,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get current slot")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get current slot"))]
     async fn solana_get_slot(
         &self,
         Parameters(request): Parameters<SolanaGetSlotRequest>,
@@ -465,7 +522,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get current block height")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get current block height"))]
     async fn solana_get_block_height(
         &self,
         Parameters(request): Parameters<SolanaGetBlockHeightRequest>,
@@ -486,7 +544,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: request airdrop (devnet/testnet only)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: request airdrop (devnet/testnet only)"))]
     async fn solana_request_airdrop(
         &self,
         Parameters(request): Parameters<SolanaRequestAirdropRequest>,
@@ -517,7 +576,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: list SPL token accounts for an owner (optionally filter by mint)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: list SPL token accounts for an owner (optionally filter by mint)"))]
     async fn solana_get_token_accounts(
         &self,
         Parameters(request): Parameters<SolanaGetTokenAccountsRequest>,
@@ -563,7 +623,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana: get SPL token balance for owner+mint (aggregates all token accounts)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: get SPL token balance for owner+mint (aggregates all token accounts)"))]
     async fn solana_get_token_balance(
         &self,
         Parameters(request): Parameters<SolanaGetTokenBalanceRequest>,
@@ -621,7 +682,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana SPL: one-step token transfer (build tx; safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: one-step token transfer (build tx; safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_transfer(
         &self,
         Parameters(request): Parameters<SolanaSplTransferRequest>,
@@ -932,7 +994,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana SPL: one-step token transfer using UI amount (decimal string) (safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: one-step token transfer using UI amount (decimal string) (safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_transfer_ui_amount(
         &self,
         Parameters(request): Parameters<SolanaSplTransferUiAmountRequest>,
@@ -1054,7 +1117,8 @@
         self.solana_spl_transfer(Parameters(req2)).await
     }
 
-    #[tool(description = "Solana SPL: create an associated token account (ATA) (safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: create an associated token account (ATA) (safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_create_ata(
         &self,
         Parameters(request): Parameters<SolanaSplCreateAtaRequest>,
@@ -1269,7 +1333,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana SPL: revoke token delegate (safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: revoke token delegate (safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_revoke(
         &self,
         Parameters(request): Parameters<SolanaSplRevokeRequest>,
@@ -1519,7 +1584,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana SPL: close a token account (safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: close a token account (safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_close_account(
         &self,
         Parameters(request): Parameters<SolanaSplCloseAccountRequest>,
@@ -1778,7 +1844,8 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "Solana SPL: one-step token approve using UI amount (decimal string) (safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: one-step token approve using UI amount (decimal string) (safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_approve_ui_amount(
         &self,
         Parameters(request): Parameters<SolanaSplApproveUiAmountRequest>,
@@ -1897,7 +1964,8 @@
         self.solana_spl_approve(Parameters(req2)).await
     }
 
-    #[tool(description = "Solana SPL: one-step token approve (build tx; safe default: creates pending confirmation unless confirm=true)")]
+    #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana SPL: one-step token approve (build tx; safe default: creates pending confirmation unless confirm=true)"))]
     async fn solana_spl_approve(
         &self,
         Parameters(request): Parameters<SolanaSplApproveRequest>,
