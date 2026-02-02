@@ -1741,6 +1741,18 @@ pub struct EvmDecodeTransactionInputRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetExplorerUrlRequest {
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+
+    #[schemars(description = "Kind: 'tx' or 'address'")]
+    pub kind: String,
+
+    #[schemars(description = "Value: tx hash (0x...) or address (0x...)")]
+    pub value: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmSimulateTransactionRequest {
     #[schemars(description = "Optional chain id")]
     pub chain_id: Option<u64>,

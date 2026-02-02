@@ -5,6 +5,7 @@ pub mod evm_calldata;
 pub mod evm_chain_registry;
 pub mod evm_confirm_store;
 pub mod evm_confirm_ux;
+pub mod evm_decode;
 pub mod evm_selector;
 pub mod evm_tx_replace;
 pub mod json;

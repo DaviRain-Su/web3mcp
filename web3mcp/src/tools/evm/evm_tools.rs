@@ -2220,6 +2220,38 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM: build an explorer URL (tx or address) for a supported chain")]
+    async fn evm_get_explorer_url(
+        &self,
+        Parameters(request): Parameters<EvmGetExplorerUrlRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+
+        let kind = request.kind.trim().to_lowercase();
+        let url = match kind.as_str() {
+            "tx" => crate::utils::evm_chain_registry::explorer_tx_url(chain_id, &request.value),
+            "address" => {
+                crate::utils::evm_chain_registry::explorer_address_url(chain_id, &request.value)
+            }
+            _ => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("kind must be 'tx' or 'address'"),
+                    data: None,
+                })
+            }
+        };
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "kind": kind,
+            "value": request.value,
+            "url": url
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]
     async fn evm_get_gas_price(
         &self,
@@ -3277,96 +3309,11 @@
     }
 
     fn evm_extract_revert_reason(err: &str) -> Option<Value> {
-        // Best-effort parsing from typical RPC/provider error strings.
-        // Examples we try to handle:
-        // - "execution reverted: <reason>"
-        // - embedded revert data like 0x08c379a0... (Error(string))
-        // - embedded panic data like 0x4e487b71... (Panic(uint256))
-        let lower = err.to_lowercase();
-
-        if let Some(pos) = lower.find("execution reverted") {
-            // Try to capture after colon.
-            if let Some(colon) = err[pos..].find(':') {
-                let reason = err[pos + colon + 1..].trim();
-                if !reason.is_empty() {
-                    return Some(json!({"kind":"execution_reverted","reason":reason}));
-                }
-            }
-            return Some(json!({"kind":"execution_reverted"}));
-        }
-
-        fn extract_hex_after(hay: &str, needle: &str) -> Option<String> {
-            let idx = hay.to_lowercase().find(&needle.to_lowercase())?;
-            let s = &hay[idx..];
-            let start = s.find("0x")?;
-            let s = &s[start..];
-            let mut end = 2;
-            for (i, ch) in s[2..].char_indices() {
-                if ch.is_ascii_hexdigit() {
-                    end = 2 + i + ch.len_utf8();
-                } else {
-                    break;
-                }
-            }
-            let hex = &s[..end];
-            if hex.len() > 2 {
-                Some(hex.to_string())
-            } else {
-                None
-            }
-        }
-
-        // Solidity Error(string)
-        if let Some(hexdata) = extract_hex_after(err, "0x08c379a0") {
-            let raw = hex::decode(hexdata.trim_start_matches("0x")).ok()?;
-            if raw.len() >= 4 {
-                let payload = &raw[4..];
-                if let Ok(tokens) = ethers::abi::decode(&[ethers::abi::ParamType::String], payload)
-                {
-                    if let Some(s) = tokens.get(0).and_then(|t| t.clone().into_string()) {
-                        return Some(json!({"kind":"error_string","selector":"0x08c379a0","reason":s}));
-                    }
-                }
-            }
-        }
-
-        // Solidity Panic(uint256)
-        if let Some(hexdata) = extract_hex_after(err, "0x4e487b71") {
-            let raw = hex::decode(hexdata.trim_start_matches("0x")).ok()?;
-            if raw.len() >= 4 {
-                let payload = &raw[4..];
-                if let Ok(tokens) =
-                    ethers::abi::decode(&[ethers::abi::ParamType::Uint(256)], payload)
-                {
-                    if let Some(code) = tokens.get(0).and_then(|t| t.clone().into_uint()) {
-                        return Some(json!({
-                            "kind":"panic",
-                            "selector":"0x4e487b71",
-                            "code": code.to_string()
-                        }));
-                    }
-                }
-            }
-        }
-
-        None
+        crate::utils::evm_decode::extract_revert_reason(err)
     }
 
     fn evm_standard_event_abi() -> Result<ethers::abi::Abi, ErrorData> {
-        // A minimal, self-contained ABI containing the most common standard events.
-        // This allows decoding without any external ABI registry.
-        let abi_json = r#"[
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"approved","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"Approval","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"TransferSingle","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"indexed":false,"internalType":"uint256[]","name":"values","type":"uint256[]"}],"name":"TransferBatch","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},
-  {"anonymous":false,"inputs":[{"indexed":false,"internalType":"string","name":"value","type":"string"},{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"URI","type":"event"}
-]"#;
-
-        serde_json::from_str::<ethers::abi::Abi>(abi_json).map_err(|e| ErrorData {
+        crate::utils::evm_decode::standard_event_abi().map_err(|e| ErrorData {
             code: ErrorCode(-32603),
             message: Cow::from(format!("Failed to build standard ABI: {}", e)),
             data: None,
