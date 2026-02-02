@@ -16,7 +16,7 @@
 
 ---
 
-## 🎯 为什么加入 Avalanche 和 BNB Chain？
+## 🎯 为什么选择 Avalanche 和 BNB Chain 作为 EVM 扩展样例？
 
 ### 1. 市场规模大幅增加
 
@@ -32,8 +32,8 @@
 | 链 | 优势 | 目标用户 | 主要 DeFi |
 |----|------|---------|----------|
 | **Solana** | 超高性能 | 量化交易者 | Marginfi, Kamino |
-| **Avalanche** | 子网生态 | 机构用户 | AAVE, Trader Joe |
-| **BNB Chain** | 最大用户群 | 散户投资者 | PancakeSwap, Venus |
+| **Avalanche（样例）** | 子网生态 | 机构用户 | Aave, Trader Joe |
+| **BNB Chain（样例）** | 最大用户群 | 散户投资者 | PancakeSwap, Venus |
 
 ### 3. 降低单链风险
 
@@ -43,7 +43,7 @@
 
 ---
 
-## 📈 Avalanche 生态分析
+## 📈 Avalanche 生态分析（EVM 样例链）
 
 ### 基本信息
 
@@ -55,7 +55,7 @@
 
 ### 核心 DeFi 协议
 
-#### 1. AAVE (Avalanche)
+#### 1. Aave（Avalanche，EVM 样例）
 
 **TVL**: $400M+  
 **日活**: 15k+
@@ -120,7 +120,7 @@ const provider = new ethers.JsonRpcProvider("https://api.avax.network/ext/bc/C/r
 
 ---
 
-## 📈 BNB Chain 生态分析
+## 📈 BNB Chain 生态分析（EVM 样例链）
 
 ### 基本信息
 
@@ -286,24 +286,24 @@ bnb_balance
 | 链 | 协议 | 优先级 | 原因 |
 |----|------|--------|------|
 | **Solana** | Marginfi | P0 | 最大 TVL |
-| **Avalanche** | AAVE | P0 | 知名度高 |
-| **BNB** | Venus | P1 | 用户多 |
+| **EVM（样例）** | Aave（Avalanche） | P0 | 代表性 Lending 协议 |
+| **EVM（样例）** | Venus（BNB） | P1 | 代表性 Lending 协议 |
 
 ### Phase 3: Swap 协议（Week 9-12）
 
 | 链 | 协议 | 优先级 | 原因 |
 |----|------|--------|------|
 | **Solana** | Jupiter | P1 | 官方已支持 |
-| **Avalanche** | Trader Joe | P0 | 最大 DEX |
-| **BNB** | PancakeSwap | P0 | 最大用户群 |
+| **EVM（样例）** | Trader Joe（Avalanche） | P0 | 代表性 DEX（样例链） |
+| **EVM（样例）** | PancakeSwap（BNB） | P0 | 代表性 DEX（样例链） |
 
 ### Phase 4: 高级功能（Week 13-16）
 
 | 链 | 功能 | 协议 |
 |----|------|------|
 | **Solana** | Yield Optimization | Kamino |
-| **Avalanche** | Flash Loans | AAVE |
-| **BNB** | Leveraged Farming | Alpaca |
+| **EVM（样例）** | Flash Loans | Aave（或同类） |
+| **EVM（样例）** | Leveraged Farming | Alpaca（或同类） |
 
 ---
 
@@ -403,7 +403,7 @@ Enterprise ($99/月):
 - 特殊的账户模型
 - 需要专门的 SDK (@solana/web3.js)
 
-### Avalanche (新增)
+### Avalanche（EVM 样例链）
 
 **复杂度**: ⭐⭐⭐ (中)
 
@@ -411,7 +411,7 @@ Enterprise ($99/月):
 - 可以复用 ethers.js
 - 主要工作在协议集成
 
-### BNB Chain (新增)
+### BNB Chain（EVM 样例链）
 
 **复杂度**: ⭐⭐ (低)
 
@@ -419,7 +419,7 @@ Enterprise ($99/月):
 - 与 Avalanche 共享大部分代码
 - 协议接口标准化
 
-**总结**: Avalanche 和 BNB Chain 的加入**反而降低了平均复杂度**，因为可以复用 EVM 工具链。
+**总结**: 选择 Avalanche 和 BNB Chain 作为样例链，主要是为了说明：扩展更多 EVM 链时可以复用同一套 EVM 工具链，因此总体复杂度可控。
 
 ---
 
@@ -434,7 +434,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 // Solana
 import { Connection, Keypair } from '@solana/web3.js';
 
-// EVM (Avalanche + BNB)
+// EVM（样例链：Avalanche / BNB）
 import { ethers } from 'ethers';
 
 // DeFi 协议
@@ -476,18 +476,18 @@ import { VenusProtocol } from '@venusprotocol/venus-sdk';
 - ✅ Solana 转账和余额查询
 - ✅ 本地测试网验证
 
-**Week 3-4**: Avalanche & BNB 基础
+**Week 3-4**: EVM 样例链（Avalanche & BNB）基础
 - ✅ EVM 适配器
-- ✅ Avalanche 转账和余额
-- ✅ BNB Chain 转账和余额
+- ✅ （样例）Avalanche 转账和余额
+- ✅ （样例）BNB Chain 转账和余额
 - ✅ 统一接口封装
 
 ### Phase 2: Lending 协议（Month 3-4）
 
 **Week 5-6**: 核心 Lending
 - ✅ Marginfi (Solana)
-- ✅ AAVE (Avalanche)
-- ✅ Venus (BNB)
+- 🚧 （样例）Aave (EVM)
+- 🚧 （样例）Venus / 其他 EVM Lending
 
 **Week 7-8**: 测试和优化
 - ✅ 跨链测试套件
@@ -497,14 +497,14 @@ import { VenusProtocol } from '@venusprotocol/venus-sdk';
 ### Phase 3: Swap & Yield（Month 5-6）
 
 **Week 9-10**: DEX 集成
-- ✅ Trader Joe (Avalanche)
-- ✅ PancakeSwap (BNB)
+- 🚧 （样例）Trader Joe（Avalanche）
+- 🚧 （样例）PancakeSwap（BNB）
 - ✅ Jupiter (Solana，增强)
 
 **Week 11-12**: 高级功能
 - ✅ Kamino Yield (Solana)
-- ✅ Alpaca Leveraged Farming (BNB)
-- ✅ AAVE Flash Loans (Avalanche)
+- 🚧 （样例）Alpaca Leveraged Farming（BNB）
+- 🚧 （样例）Aave Flash Loans（Avalanche）
 
 ### Phase 4: 跨链功能（Month 7-8）
 
@@ -521,7 +521,7 @@ import { VenusProtocol } from '@venusprotocol/venus-sdk';
 1. **市场规模翻倍**
    - Solana: 135k DAU
    - Avalanche: 50k DAU
-   - BNB Chain: 300k DAU
+   - BNB Chain: 300k DAU（EVM 样例链）
    - **总计: 500k+ DAU**
 
 2. **技术风险分散**
@@ -546,8 +546,8 @@ import { VenusProtocol } from '@venusprotocol/venus-sdk';
 
 AI Agent:
 1. 查询 Marginfi (Solana): 8.5% APY
-2. 查询 AAVE (Avalanche): 7.2% APY
-3. 查询 Venus (BNB): 6.8% APY
+2. （样例）查询 Aave（Avalanche）: 7.2% APY
+3. （样例）查询 Venus（BNB）: 6.8% APY
 
 结果: Marginfi 最优，自动执行 deposit
 ```
@@ -603,8 +603,8 @@ AI Agent:
    - 获取早期用户
 
 2. **Month 2-3**: 多链扩展
-   - 加入 Avalanche (AAVE)
-   - 加入 BNB (Venus, PancakeSwap)
+   - （样例）选择一条 EVM 链并接入 Aave（或同类）
+   - （样例）选择另一条 EVM 链并接入 Venus/PancakeSwap（或同类）
    - 统一接口
 
 3. **Month 4+**: 高级功能

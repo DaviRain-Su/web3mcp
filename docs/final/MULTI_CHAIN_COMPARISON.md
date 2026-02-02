@@ -40,12 +40,12 @@
   - Marginfi ($800M)
   - Kamino ($600M)
   
-  **Avalanche**:
+  **Avalanche（EVM 样例链）**:
   - AAVE ($400M)
   - Trader Joe ($150M)
   - Benqi ($100M)
   
-  **BNB Chain**:
+  **BNB Chain（EVM 样例链）**:
   - PancakeSwap ($1.5B)
   - Venus ($500M)
   - Alpaca ($150M)
@@ -80,7 +80,7 @@
 ```
 
 **关键洞察**: 
-- Avalanche 和 BNB Chain 可以**共享 80% 的代码**（都是 EVM）
+- Avalanche 和 BNB Chain 可以**共享 80% 的代码**（都是 EVM；此处作为样例链说明可复用性）
 - 只需要掌握两套技术栈：Solana + EVM
 - EVM 工具链成熟（ethers.js, viem）
 
@@ -140,8 +140,8 @@ AI: ✅ 执行
 
 AI Agent:
 1. 查询 Marginfi (Solana): 8.5% APY ✅
-2. 查询 AAVE (Avalanche): 7.2% APY
-3. 查询 Venus (BNB): 6.8% APY
+2. （样例）查询 Aave（Avalanche）: 7.2% APY
+3. （样例）查询 Venus（BNB）: 6.8% APY
 
 结果: "Marginfi 最高 (8.5%)，为你执行 deposit"
 ```
@@ -164,7 +164,7 @@ AI Agent:
 
 AI Agent:
 1. 扫描三条链的 DEX 汇率
-2. 发现 BNB Chain USDC/USDT = 0.998
+2. （样例）发现 BNB Chain USDC/USDT = 0.998
 3. 发现 Avalanche USDC/USDT = 1.002
 4. 提示套利机会（0.4% 利润）
 
@@ -265,8 +265,8 @@ Week 7-8: 优化和文档
 **时间成本**:
 ```
 Week 1-4: Solana (同上)
-Week 5-6: Avalanche (AAVE + Trader Joe)
-Week 7-8: BNB (Venus + PancakeSwap)
+Week 5-6: EVM 样例链（Avalanche）协议接入（Aave / Trader Joe）
+Week 7-8: EVM 样例链（BNB）协议接入（Venus / PancakeSwap）
 
 总计: 2 个月
 ```
@@ -357,8 +357,8 @@ Month 1: Solana MVP (v0.1.0)
   └─ 获取早期用户反馈
 
 Month 2: 多链扩展 (v0.2.0)
-  ├─ 添加 Avalanche (AAVE)
-  ├─ 添加 BNB (Venus + PancakeSwap)
+  ├─ （样例）添加 EVM 链：Avalanche（Aave）
+  ├─ （样例）添加 EVM 链：BNB（Venus/PancakeSwap）
   └─ 发布跨链版本
 
 Month 3+: 高级功能
