@@ -599,6 +599,34 @@ pub struct SolanaGetBalanceRequest {
     pub address: String,
 }
 
+// ---------------- Sui aggregator (off-chain) ----------------
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SuiAggregatorCallRequest {
+    #[schemars(
+        description = "Base URL override (optional). If absent, uses env SUI_AGGREGATOR_BASE_URL."
+    )]
+    pub base_url: Option<String>,
+
+    #[schemars(description = "HTTP method: GET or POST (default POST)")]
+    pub method: Option<String>,
+
+    #[schemars(description = "Path, e.g. /quote or /router/quote")]
+    pub path: String,
+
+    #[schemars(description = "Optional query params object (string->string/number/bool).")]
+    pub query: Option<Value>,
+
+    #[schemars(description = "Optional JSON body for POST")]
+    pub body: Option<Value>,
+
+    #[schemars(description = "Timeout ms (default 15000)")]
+    pub timeout_ms: Option<u64>,
+
+    #[schemars(description = "If true, return only parsed json; else include status/url/body")]
+    pub result_only: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetAccountInfoRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]

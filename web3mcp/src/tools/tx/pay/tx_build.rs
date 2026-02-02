@@ -1691,6 +1691,108 @@
         }
     }
 
+    #[tool(description = "Sui aggregator: raw HTTP call to a swap aggregator (quote/route APIs).")]
+    async fn sui_aggregator_call(
+        &self,
+        Parameters(request): Parameters<SuiAggregatorCallRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = request
+            .base_url
+            .or_else(|| std::env::var("SUI_AGGREGATOR_BASE_URL").ok())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "Missing aggregator base URL. Provide base_url or set env SUI_AGGREGATOR_BASE_URL",
+                ),
+                data: None,
+            })?;
+
+        let method = request
+            .method
+            .as_deref()
+            .unwrap_or("POST")
+            .trim()
+            .to_uppercase();
+        let path = request.path.trim();
+        if path.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("path is required"),
+                data: None,
+            });
+        }
+
+        let base = base_url.trim_end_matches('/');
+        let path = if path.starts_with('/') { path } else { &format!("/{path}") };
+        let mut url = format!("{}{}", base, path);
+
+        // query params
+        if let Some(q) = request.query.as_ref() {
+            if let Some(map) = q.as_object() {
+                let mut first = true;
+                for (k, v) in map.iter() {
+                    let vs = if v.is_string() {
+                        v.as_str().unwrap_or("").to_string()
+                    } else {
+                        v.to_string()
+                    };
+                    url.push(if first { '?' } else { '&' });
+                    first = false;
+                    url.push_str(&format!("{}={}", urlencoding::encode(k), urlencoding::encode(&vs)));
+                }
+            }
+        }
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(timeout_ms))
+            .build()
+            .map_err(|e| Self::sdk_error("sui_aggregator_call:client", e))?;
+
+        let resp = match method.as_str() {
+            "GET" => client.get(&url).send().await,
+            "POST" => {
+                let mut r = client.post(&url);
+                if let Some(b) = request.body.as_ref() {
+                    r = r.json(b);
+                }
+                r.send().await
+            }
+            other => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Unsupported method: {} (use GET or POST)", other)),
+                    data: None,
+                })
+            }
+        }
+        .map_err(|e| Self::sdk_error("sui_aggregator_call:request", e))?;
+
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| Self::sdk_error("sui_aggregator_call:read_body", e))?;
+
+        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from aggregator"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+            });
+        }
+
+        if request.result_only.unwrap_or(true) {
+            let response = Self::pretty_json(&parsed)?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let response = Self::pretty_json(&json!({"url": url, "status": status.as_u16(), "body": parsed}))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Sui: list pending confirmations (sqlite-backed)")]
     async fn sui_list_pending_confirmations(
         &self,
