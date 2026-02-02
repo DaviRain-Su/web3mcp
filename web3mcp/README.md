@@ -86,10 +86,52 @@ EVM (mainnet):
 3) Send via retry (requires token on mainnet)
 
 Example (Base mainnet `chain_id=8453`):
-- Build: `evm_build_transfer_native`
-- Preflight: `evm_preflight`
-- Create pending: `evm_create_pending_confirmation`
-- Send: `evm_retry_pending_confirmation` with `id`, `tx_summary_hash`, `confirm_token`
+
+1) Build
+```json
+{
+  "tool": "evm_build_transfer_native",
+  "args": {
+    "chain_id": 8453,
+    "sender": "0xSENDER...",
+    "recipient": "0xRECIPIENT...",
+    "amount": "0.000001"
+  }
+}
+```
+
+2) Preflight (fills nonce/gas/fees)
+```json
+{
+  "tool": "evm_preflight",
+  "args": {
+    "tx": "<paste tx from step 1 output>"
+  }
+}
+```
+
+3) Create pending confirmation (returns confirm_token)
+```json
+{
+  "tool": "evm_create_pending_confirmation",
+  "args": {
+    "tx": "<paste tx from step 2 output>",
+    "label": "base-mainnet-transfer"
+  }
+}
+```
+
+4) Broadcast (mainnet requires confirm_token)
+```json
+{
+  "tool": "evm_retry_pending_confirmation",
+  "args": {
+    "id": "<confirmation_id>",
+    "tx_summary_hash": "<tx_summary_hash>",
+    "confirm_token": "<confirm_token>"
+  }
+}
+```
 
 Solana (mainnet):
 1) `solana_send_transaction` with `confirm=false` (returns `pending_confirmation_id` + `tx_summary_hash`)
