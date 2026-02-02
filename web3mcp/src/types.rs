@@ -1090,6 +1090,28 @@ pub struct SolanaTxBuildRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaBuildTransferRequest {
+    #[schemars(
+        description = "Network: mainnet|mainnet-beta|testnet|devnet (optional; default mainnet)"
+    )]
+    pub network: Option<String>,
+    #[schemars(description = "Sender pubkey (base58)")]
+    pub sender: String,
+    #[schemars(description = "Recipient pubkey (base58)")]
+    pub recipient: String,
+    #[schemars(description = "Lamports to transfer (u64 as string)")]
+    pub lamports: String,
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default false)")]
+    pub sign: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaSendTransactionRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,

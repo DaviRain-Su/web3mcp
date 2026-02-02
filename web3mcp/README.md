@@ -140,19 +140,32 @@ Solana (mainnet):
 { "tool": "solana_list_networks", "args": {} }
 ```
 
-1) Create a pending confirmation (safe; does not broadcast)
+1) Build tx (no broadcast)
+```json
+{
+  "tool": "solana_build_transfer",
+  "args": {
+    "network": "mainnet",
+    "sender": "<SENDER_PUBKEY>",
+    "recipient": "<RECIPIENT_PUBKEY>",
+    "lamports": "1000"
+  }
+}
+```
+
+2) Create a pending confirmation (safe; does not broadcast)
 ```json
 {
   "tool": "solana_send_transaction",
   "args": {
     "network": "mainnet",
-    "transaction_base64": "<TX_BASE64>",
+    "transaction_base64": "<transaction_base64_from_step_1>",
     "confirm": false
   }
 }
 ```
 
-2) Broadcast (mainnet requires confirm_token)
+3) Broadcast (mainnet requires confirm_token)
 ```json
 {
   "tool": "solana_confirm_transaction",

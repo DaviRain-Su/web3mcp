@@ -5124,6 +5124,102 @@
         }
     }
 
+    #[tool(description = "Solana: build a native SOL transfer transaction (returns transaction_base64; does not broadcast)")]
+    async fn solana_build_transfer(
+        &self,
+        Parameters(request): Parameters<SolanaBuildTransferRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let network = request.network.as_deref();
+        let rpc_url = Self::solana_rpc_url_for_network(network)?;
+        let client = Self::solana_rpc(network)?;
+
+        let sender = solana_sdk::pubkey::Pubkey::from_str(request.sender.trim()).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid sender pubkey: {}", e)),
+            data: Some(json!({"sender": request.sender})),
+        })?;
+        let recipient = solana_sdk::pubkey::Pubkey::from_str(request.recipient.trim()).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid recipient pubkey: {}", e)),
+            data: Some(json!({"recipient": request.recipient})),
+        })?;
+
+        let lamports: u64 = request.lamports.trim().parse().map_err(|_| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("lamports must be a u64 integer string"),
+            data: Some(json!({"provided": request.lamports})),
+        })?;
+
+        let sign = request.sign.unwrap_or(false);
+        let kp_path = if sign { Some(Self::solana_keypair_path()?) } else { None };
+        let kp = if sign {
+            Some(Self::solana_read_keypair_from_json_file(kp_path.as_ref().unwrap())?)
+        } else {
+            None
+        };
+
+        let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+            solana_sdk::pubkey::Pubkey::from_str(fp.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid fee_payer pubkey: {}", e)),
+                data: Some(json!({"fee_payer": fp})),
+            })?
+        } else if let Some(ref k) = kp {
+            solana_sdk::signature::Signer::pubkey(k)
+        } else {
+            sender
+        };
+
+        let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+            solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                data: None,
+            })?
+        } else {
+            client
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_build_transfer", e))?
+        };
+
+        let ix = solana_system_interface::instruction::transfer(&sender, &recipient, lamports);
+        let msg = solana_sdk::message::Message::new(&[ix], Some(&fee_payer));
+        let mut tx = solana_sdk::transaction::Transaction::new_unsigned(msg);
+        tx.message.recent_blockhash = recent_blockhash;
+
+        if let Some(ref k) = kp {
+            tx.try_sign(&[k], recent_blockhash).map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to sign tx: {}", e)),
+                data: None,
+            })?;
+        }
+
+        let bytes = bincode::serialize(&tx).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize tx: {}", e)),
+            data: None,
+        })?;
+
+        let tx_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": request.network.clone().unwrap_or("mainnet".to_string()),
+            "fee_payer": fee_payer.to_string(),
+            "sender": sender.to_string(),
+            "recipient": recipient.to_string(),
+            "lamports": lamports,
+            "signed": sign,
+            "transaction_base64": tx_b64,
+            "tx_bytes_len": bytes.len(),
+            "note": "Use solana_send_transaction(confirm=false) to create a pending confirmation; then solana_confirm_transaction to broadcast (mainnet requires confirm_token)."
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Solana: send a transaction (safe default: creates pending confirmation unless confirm=true)")]
     async fn solana_send_transaction(
         &self,

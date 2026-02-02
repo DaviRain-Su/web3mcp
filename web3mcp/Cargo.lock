@@ -13796,6 +13796,7 @@ dependencies = [
  "solana-program-pack 3.0.0",
  "solana-rpc-client-api",
  "solana-sdk",
+ "solana-system-interface 2.0.0",
  "solana-transaction",
  "solana-transaction-status",
  "spl-associated-token-account",
