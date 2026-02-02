@@ -1,11 +1,13 @@
 use anyhow::Result;
+use rmcp::service::RequestContext;
+use rmcp::RoleServer;
 
 #[path = "intent/adapters.rs"]
 mod intent_adapters;
 // (moved) Base64Engine/Engine + various chain/tool types imported via router_prelude
 use rmcp::{
-    handler::server::wrapper::Parameters, model::*, tool, tool_handler, tool_router, ServerHandler,
-    ServiceExt,
+    handler::server::wrapper::Parameters, model::*, prompt_handler, tool, tool_handler,
+    tool_router, ServerHandler, ServiceExt,
 };
 // (moved) tool request schemas live in src/types.rs
 // (moved) Future used in src/sui/dynamic_fields.rs
@@ -72,6 +74,7 @@ impl Web3McpServer {
 mod move_auto_fill;
 mod move_schema;
 mod move_type_args;
+mod prompts;
 mod router_prelude;
 mod server;
 mod sui;
@@ -91,17 +94,20 @@ pub use types_solana_idl_dynamic::*;
 // AutoFilledMoveCall moved to src/move_auto_fill.rs
 
 include!(concat!(env!("OUT_DIR"), "/router_impl.rs"));
+
 #[tool_handler]
+#[prompt_handler(router = self.prompt_router)]
 impl ServerHandler for Web3McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(
-                "A Sui blockchain MCP server providing tools for querying the Sui network. \
-                 Use the available tools to get balances, objects, transactions, and other blockchain data."
-                    .to_string(),
+                "A multi-chain Web3 MCP server (Sui + Solana + EVM).\n\n".to_string(),
             ),
         }
     }

@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::router::tool::ToolRouter;
 use std::sync::Arc;
 use sui_sdk::{SuiClient, SuiClientBuilder};
@@ -9,6 +10,7 @@ pub struct Web3McpServer {
     pub rpc_url: String,
     pub client: SuiClient,
     pub tool_router: ToolRouter<Self>,
+    pub prompt_router: PromptRouter<Self>,
 
     // In-memory caches
     pub solana_idl_cache: Arc<crate::utils::solana_idl_cache::SolanaIdlCache>,
@@ -22,6 +24,7 @@ impl Web3McpServer {
             rpc_url: url,
             client,
             tool_router: Self::tool_router(),
+            prompt_router: Self::build_prompt_router(),
             solana_idl_cache: Arc::new(crate::utils::solana_idl_cache::SolanaIdlCache::new()),
         })
     }

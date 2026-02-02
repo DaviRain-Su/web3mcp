@@ -1653,6 +1653,43 @@ pub struct EvmTransferErc1155Request {
     #[schemars(description = "Allow signer mismatch between tx.from and EVM_PRIVATE_KEY")]
     pub allow_sender_mismatch: Option<bool>,
 }
+
+// MCP Prompts request schemas
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PromptAnalyzeAddressRequest {
+    #[schemars(description = "Chain id (optional; default 1)")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "EVM address (0x...)")]
+    pub address: String,
+    #[schemars(description = "Optional ERC20 token address to include in analysis")]
+    pub token_address: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PromptAnalyzeTransactionRequest {
+    #[schemars(description = "Chain id (optional; default 1)")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Tx hash (0x...)")]
+    pub tx_hash: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PromptAnalyzeTokenRequest {
+    #[schemars(description = "Chain id (optional; default 1)")]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "ERC20 token address")]
+    pub token_address: String,
+    #[schemars(description = "Optional owner address to include balance")]
+    pub owner_address: Option<String>,
+    #[schemars(description = "Optional spender address to include allowance")]
+    pub spender: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PromptExplainEvmConceptRequest {
+    #[schemars(description = "Concept to explain (e.g. gas, nonce, allowance, EIP-1559)")]
+    pub concept: String,
+}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmBuildErc20ApproveTxRequest {
     #[schemars(description = "Owner/sender address")]
