@@ -2168,6 +2168,116 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM ERC20: get token info (name, symbol, decimals, totalSupply)")]
+    async fn evm_get_erc20_token_info(
+        &self,
+        Parameters(request): Parameters<EvmGetErc20TokenInfoRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+        let token = Self::parse_evm_address(&request.token)?;
+
+        // name()
+        let name_data = Self::encode_erc20_call("name()", vec![]);
+        let name_call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(name_data),
+            ..Default::default()
+        };
+        let name_typed: ethers::types::transaction::eip2718::TypedTransaction = name_call.into();
+        let name_raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &name_typed,
+            None,
+        )
+        .await;
+
+        // symbol()
+        let symbol_data = Self::encode_erc20_call("symbol()", vec![]);
+        let symbol_call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(symbol_data),
+            ..Default::default()
+        };
+        let symbol_typed: ethers::types::transaction::eip2718::TypedTransaction = symbol_call.into();
+        let symbol_raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &symbol_typed,
+            None,
+        )
+        .await;
+
+        // decimals()
+        let decimals_data = Self::encode_erc20_call("decimals()", vec![]);
+        let decimals_call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(decimals_data),
+            ..Default::default()
+        };
+        let decimals_typed: ethers::types::transaction::eip2718::TypedTransaction =
+            decimals_call.into();
+        let decimals_raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &decimals_typed,
+            None,
+        )
+        .await;
+
+        // totalSupply() (optional but common)
+        let supply_data = Self::encode_erc20_call("totalSupply()", vec![]);
+        let supply_call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(supply_data),
+            ..Default::default()
+        };
+        let supply_typed: ethers::types::transaction::eip2718::TypedTransaction = supply_call.into();
+        let supply_raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &supply_typed,
+            None,
+        )
+        .await;
+
+        // Decode helpers
+        fn decode_string_ret(raw: &[u8]) -> Option<String> {
+            let tokens = ethers::abi::decode(&[ethers::abi::ParamType::String], raw).ok()?;
+            tokens.get(0)?.clone().into_string()
+        }
+        fn decode_u8_ret(raw: &[u8]) -> Option<u8> {
+            let tokens = ethers::abi::decode(&[ethers::abi::ParamType::Uint(8)], raw).ok()?;
+            tokens.get(0)?.clone().into_uint().map(|u| u.as_u32() as u8)
+        }
+        fn decode_u256_ret(raw: &[u8]) -> Option<ethers::types::U256> {
+            let tokens = ethers::abi::decode(&[ethers::abi::ParamType::Uint(256)], raw).ok()?;
+            tokens.get(0)?.clone().into_uint()
+        }
+
+        let name = name_raw
+            .ok()
+            .and_then(|b| decode_string_ret(b.as_ref()));
+        let symbol = symbol_raw
+            .ok()
+            .and_then(|b| decode_string_ret(b.as_ref()));
+        let decimals = decimals_raw
+            .ok()
+            .and_then(|b| decode_u8_ret(b.as_ref()));
+        let total_supply_raw = supply_raw
+            .ok()
+            .and_then(|b| decode_u256_ret(b.as_ref()))
+            .map(|u| u.to_string());
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "token": request.token,
+            "name": name,
+            "symbol": symbol,
+            "decimals": decimals,
+            "total_supply_raw": total_supply_raw
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM ERC20: balanceOf(token, owner)")]
     async fn evm_erc20_balance_of(
         &self,

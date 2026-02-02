@@ -1481,6 +1481,14 @@ pub struct EvmExecuteErc20TransferRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetErc20TokenInfoRequest {
+    #[schemars(description = "ERC20 token contract address")]
+    pub token: String,
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmExecuteErc20ApproveRequest {
     #[schemars(
         description = "Owner/sender address (must match EVM_PRIVATE_KEY unless allow_sender_mismatch is true)"

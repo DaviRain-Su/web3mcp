@@ -75,6 +75,13 @@ Handy EVM helpers:
 - `evm_is_contract`
 - `evm_resolve_ens` (ENS typically requires Ethereum mainnet, `chain_id=1`)
 
+ERC20 helpers:
+- `evm_get_erc20_token_info`
+- `evm_erc20_balance_of`
+- `evm_erc20_allowance`
+- `evm_erc20_build_approve`
+- `evm_erc20_approve` / `evm_erc20_transfer` (one-step; uses local signer)
+
 ## Mainnet safety (Solana / Sui / EVM)
 
 For **mainnet** transactions, the server enforces a stricter workflow:
