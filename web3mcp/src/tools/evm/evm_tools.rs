@@ -1885,6 +1885,106 @@
         }
     }
 
+    #[tool(description = "EVM: get address from private key (uses EVM_PRIVATE_KEY env by default)")]
+    async fn evm_get_address_from_private_key(
+        &self,
+        Parameters(request): Parameters<EvmGetAddressFromPrivateKeyRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let pk = if let Some(p) = request.private_key.as_deref() {
+            p.trim().to_string()
+        } else {
+            std::env::var("EVM_PRIVATE_KEY").map_err(|_| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Missing private key: provide private_key or set EVM_PRIVATE_KEY env"),
+                data: None,
+            })?
+        };
+
+        let pk_hex = pk.strip_prefix("0x").unwrap_or(&pk);
+        let bytes = hex::decode(pk_hex).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid private_key hex: {}", e)),
+            data: None,
+        })?;
+        let wallet = ethers::signers::LocalWallet::from_bytes(&bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid private key bytes: {}", e)),
+            data: None,
+        })?;
+
+        let address = wallet.address();
+        let response = Self::pretty_json(&json!({
+            "address": format!("0x{}", hex::encode(address.as_bytes())),
+            "note": "Derived from provided private key; do not share private keys"
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: check if an address is a contract (true if code size > 0)")]
+    async fn evm_is_contract(
+        &self,
+        Parameters(request): Parameters<EvmIsContractRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+
+        let addr: ethers::types::Address = request.address.parse().map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid address: {}", e)),
+            data: None,
+        })?;
+
+        let code = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_code(
+            &provider,
+            addr,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_is_contract", e))?;
+
+        let is_contract = !code.0.is_empty();
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "address": request.address,
+            "is_contract": is_contract,
+            "code_size": code.0.len(),
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: resolve an ENS name to an address (requires an ENS-capable chain; typically Ethereum mainnet chain_id=1)")]
+    async fn evm_resolve_ens(
+        &self,
+        Parameters(request): Parameters<EvmResolveEnsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+
+        let name = request.name.trim();
+        if !name.contains('.') {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("ENS name must contain a dot (e.g. vitalik.eth)"),
+                data: Some(json!({"provided": request.name})),
+            });
+        }
+
+        let addr = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::resolve_name(
+            &provider,
+            name,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_resolve_ens", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "name": request.name,
+            "resolved": format!("0x{}", hex::encode(addr.as_bytes())),
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: get gas price / EIP-1559 fee suggestions")]
     async fn evm_get_gas_price(
         &self,

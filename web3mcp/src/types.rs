@@ -256,6 +256,32 @@ pub struct EvmGetTransactionReceiptRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetAddressFromPrivateKeyRequest {
+    #[schemars(description = "Private key hex (0x...). If omitted, uses EVM_PRIVATE_KEY env")]
+    pub private_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmIsContractRequest {
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "Address (0x...)")]
+    pub address: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmResolveEnsRequest {
+    #[schemars(
+        description = "Chain id (optional; defaults to EVM_DEFAULT_CHAIN_ID). ENS typically requires Ethereum mainnet (1)."
+    )]
+    pub chain_id: Option<u64>,
+    #[schemars(description = "ENS name (e.g. vitalik.eth)")]
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmDecodeTransactionReceiptRequest {
     #[schemars(description = "EVM chain id")]
     pub chain_id: u64,

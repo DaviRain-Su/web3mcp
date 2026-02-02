@@ -70,6 +70,11 @@ EVM:
 Tip:
 - Use the tool `evm_list_rpc_defaults` to see which chain IDs have built-in defaults.
 
+Handy EVM helpers:
+- `evm_get_address_from_private_key`
+- `evm_is_contract`
+- `evm_resolve_ens` (ENS typically requires Ethereum mainnet, `chain_id=1`)
+
 ## Mainnet safety (Solana / Sui / EVM)
 
 For **mainnet** transactions, the server enforces a stricter workflow:

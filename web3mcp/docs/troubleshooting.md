@@ -52,6 +52,7 @@ Common EVM classes:
 - `INSUFFICIENT_ALLOWANCE`: approve allowance_target/spender, then retry
 - `NONCE_TOO_LOW` / `NONCE_TOO_HIGH`: rebuild with correct pending nonce
 - `FEE_TOO_LOW` / `REPLACEMENT_UNDERPRICED`: increase maxFeePerGas/maxPriorityFeePerGas
+- `CHAIN_ID_MISMATCH`: ensure you are signing for the correct chain_id and broadcasting to the matching network RPC
 - `UNPREDICTABLE_GAS_LIMIT`: simulate to find revert; then set explicit gas limit if appropriate
 
 ## Interpreting structured Solana errors (`error_class`)
