@@ -2357,8 +2357,9 @@
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
             "tx_hash": tx_hash,
+            "explorer_url": Self::evm_explorer_tx_url(chain_id, &tx_hash),
             "send": sent_json,
-            "wait": waited_json
+            "wait": waited_json.unwrap_or(json!({"note": "No wait payload"}))
         }))?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
@@ -2369,12 +2370,11 @@
         Parameters(request): Parameters<EvmWaitForConfirmationsRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
-        let required = request
-            .confirmations
-            .or_else(|| crate::utils::evm_chain_registry::confirmations_for_chain(chain_id))
-            .unwrap_or(2);
+        let required_default = crate::utils::evm_chain_registry::confirmations_for_chain(chain_id);
+        let required = request.confirmations.or(required_default).unwrap_or(2);
         let timeout_ms = request.timeout_ms.unwrap_or(120_000);
         let poll_ms = request.poll_interval_ms.unwrap_or(1_500).max(200);
+        let explorer_url = Self::evm_explorer_tx_url(chain_id, &request.tx_hash);
 
         let provider = self.evm_provider(chain_id).await?;
         let tx_hash = Self::parse_evm_h256(&request.tx_hash)?;
@@ -2384,6 +2384,21 @@
 
         loop {
             if start.elapsed().as_millis() as u64 > timeout_ms {
+                let mut extra = last;
+                if let Some(mut m) = extra.as_ref().and_then(|v| v.as_object()).cloned() {
+                    m.insert(
+                        "confirmations_required_default".to_string(),
+                        json!(required_default),
+                    );
+                    m.insert("explorer_url".to_string(), json!(explorer_url));
+                    extra = Some(Value::Object(m));
+                } else {
+                    extra = Some(json!({
+                        "confirmations_required_default": required_default,
+                        "explorer_url": explorer_url
+                    }));
+                }
+
                 return Err(Self::structured_error(
                     "Timed out waiting for confirmations",
                     "evm_wait_for_confirmations",
@@ -2391,7 +2406,7 @@
                     true,
                     Some("Try again later or increase timeout_ms"),
                     None,
-                    last,
+                    extra,
                 ));
             }
 
