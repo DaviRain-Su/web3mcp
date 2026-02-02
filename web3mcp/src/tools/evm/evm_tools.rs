@@ -50,6 +50,38 @@
         Ok(EthersSigner::with_chain_id(wallet, chain_id))
     }
 
+    fn evm_is_mainnet_chain_id(chain_id: u64) -> bool {
+        // Whitelist-based mainnet detection.
+        // Testnets are intentionally excluded.
+        match chain_id {
+            // Ethereum
+            1 => true,
+            // Base
+            8453 => true,
+            // Arbitrum
+            42161 => true,
+            // Optimism
+            10 => true,
+            // Polygon PoS
+            137 => true,
+            // BSC
+            56 => true,
+            // Avalanche C-Chain
+            43114 => true,
+            // Celo
+            42220 => true,
+            // Kava
+            2222 => true,
+            // World Chain
+            480 => true,
+            // Monad
+            143 => true,
+            // Kaia
+            8217 => true,
+            _ => false,
+        }
+    }
+
     fn evm_default_chain_id() -> Result<u64, ErrorData> {
         if let Ok(v) = std::env::var("EVM_DEFAULT_CHAIN_ID") {
             return v.parse::<u64>().map_err(|e| ErrorData {
@@ -639,8 +671,13 @@
             return Ok(CallToolResult::success(vec![Content::text(response)]));
         }
 
-        // Large-value double confirmation (requires token)
-        if crate::utils::evm_confirm_store::is_large_value(&tx) {
+        // Double confirmation (requires token)
+        // - Always required on mainnet
+        // - Also required for large-value tx (even on testnet)
+        let require_second_confirm = Self::evm_is_mainnet_chain_id(row.chain_id)
+            || crate::utils::evm_confirm_store::is_large_value(&tx);
+
+        if require_second_confirm {
             let token = crate::utils::evm_confirm_store::make_confirm_token(id, &provided_hash);
             let provided = request.confirm_token.clone();
             if provided.as_deref() != Some(&token) {
@@ -651,7 +688,11 @@
                     "tx_summary_hash": provided_hash,
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                     "tool_context": tool_context,
-                    "note": "Second confirmation required for large-value tx",
+                    "note": if Self::evm_is_mainnet_chain_id(row.chain_id) {
+                        "Second confirmation required for mainnet tx"
+                    } else {
+                        "Second confirmation required for large-value tx"
+                    },
                     "next": {
                         "how_to_retry": format!("Call evm_retry_pending_confirmation again with confirm_token='{}'", token)
                     }
@@ -3928,6 +3969,41 @@ fn abi_entry_json(
             message: Cow::from(format!("Failed to decode preflight tx: {}", e)),
             data: None,
         })?;
+
+        // Mainnet safety: do not broadcast in one-step mode.
+        // Instead, create a pending confirmation that must be retried with a confirm_token.
+        if Self::evm_is_mainnet_chain_id(chain_id) {
+            let confirmation_id = format!(
+                "evm_send_{}_{}",
+                crate::utils::evm_confirm_store::now_ms(),
+                tx.from.chars().take(10).collect::<String>()
+            );
+
+            let ttl = crate::utils::evm_confirm_store::default_ttl_ms();
+            let now_ms = crate::utils::evm_confirm_store::now_ms();
+            let expires = now_ms + ttl;
+            let hash = crate::utils::evm_confirm_store::tx_summary_hash(&tx);
+
+            crate::utils::evm_confirm_store::insert_pending(&confirmation_id, &tx, now_ms, expires, &hash)?;
+
+            let token = crate::utils::evm_confirm_store::make_confirm_token(&confirmation_id, &hash);
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "chain_id": chain_id,
+                "confirmation_id": confirmation_id,
+                "tx_built": built_json_for_return,
+                "tx_preflight": pre_json_for_return,
+                "tx_summary_hash": hash,
+                "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
+                "note": "Mainnet tx created. Broadcast requires explicit retry with confirm_token.",
+                "next": {
+                    "how_to_send": format!("Call evm_retry_pending_confirmation with id='{}' and tx_summary_hash='{}' and confirm_token='{}'", confirmation_id, hash, token)
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         let signed = self
             .evm_sign_transaction_local(Parameters(EvmSignLocalRequest {
