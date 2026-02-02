@@ -225,7 +225,13 @@ def main() -> int:
     ap.add_argument(
         "--enrich-details",
         action="store_true",
-        help="fetch /pair/<address> for top-N candidates to enrich trade_volume_24h and other fields",
+        help="fetch /pair/<address> for top-N candidates to enrich volume/trade_volume and other fields",
+    )
+    ap.add_argument(
+        "--window",
+        default="24h",
+        choices=["24h", "12h", "4h", "2h", "1h", "30m"],
+        help="window for volume-based scoring (requires --enrich-details). default: 24h",
     )
     ap.add_argument("--top-n", type=int, default=50)
     ap.add_argument("--limit", type=int, default=50, help="alias for --top-n")
@@ -371,8 +377,18 @@ def main() -> int:
     rows.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
     ranked = rows[:top_n]
 
-    # Optional: enrich candidates via /pair/<address> (gives trade_volume_24h, base_fee_percentage, etc.)
+    # Optional: enrich candidates via /pair/<address> (gives volume buckets + fee_tvl_ratio buckets, base_fee_percentage, etc.)
     if args.enrich_details:
+        window_key_map = {
+            "30m": "min_30",
+            "1h": "hour_1",
+            "2h": "hour_2",
+            "4h": "hour_4",
+            "12h": "hour_12",
+            "24h": "hour_24",
+        }
+        wkey = window_key_map.get(args.window, "hour_24")
+
         for r in ranked:
             addr = r.get("pair_address")
             if not isinstance(addr, str) or not addr:
@@ -380,24 +396,38 @@ def main() -> int:
             try:
                 detail = http_get_json(f"{args.base_url.rstrip('/')}/pair/{addr}", timeout_s=20)
                 if isinstance(detail, dict):
-                    # Standardize detail fields into our row
-                    # Prefer trade_volume_24h if present
-                    tv24 = detail.get("trade_volume_24h")
-                    if isinstance(tv24, (int, float)):
-                        r["volume_24h"] = float(tv24)
-                    # Sometimes volume is nested
+                    # 1) Volume: prefer bucketed detail.volume[wkey]; fallback to trade_volume_24h
                     vol = detail.get("volume")
-                    if isinstance(vol, dict) and isinstance(vol.get("hour_24"), (int, float)):
-                        r["volume_24h"] = float(vol.get("hour_24"))
+                    if isinstance(vol, dict) and isinstance(vol.get(wkey), (int, float)):
+                        r["volume_window"] = float(vol.get(wkey))
+                    else:
+                        tv24 = detail.get("trade_volume_24h")
+                        if isinstance(tv24, (int, float)):
+                            r["volume_window"] = float(tv24)
+
+                    # 2) Fee estimate for window: use fee_tvl_ratio bucket * tvl
+                    # fee_tvl_ratio appears to be a percent value (e.g. 1.59 = 1.59%)
+                    ftr = detail.get("fee_tvl_ratio")
+                    if isinstance(ftr, dict) and isinstance(ftr.get(wkey), (int, float)):
+                        r["fee_tvl_ratio_window"] = float(ftr.get(wkey))
+                    else:
+                        r["fee_tvl_ratio_window"] = None
+
+                    tvl = r.get("tvl")
+                    if isinstance(tvl, (int, float)) and tvl > 0 and isinstance(r.get("fee_tvl_ratio_window"), (int, float)):
+                        r["fee_window"] = float(tvl) * (float(r["fee_tvl_ratio_window"]) / 100.0)
+                    else:
+                        r["fee_window"] = None
+
                     r["base_fee_percentage"] = detail.get("base_fee_percentage")
                     r["max_fee_percentage"] = detail.get("max_fee_percentage")
             except Exception:
                 continue
 
-        # Re-rank after enrichment using fee/vol (your preference)
+        # Re-rank after enrichment using fee/vol on selected window
         for r in ranked:
-            fee = r.get("fee_24h")
-            vol = r.get("volume_24h")
+            fee = r.get("fee_window") if isinstance(r.get("fee_window"), (int, float)) else r.get("fee_24h")
+            vol = r.get("volume_window") if isinstance(r.get("volume_window"), (int, float)) else r.get("volume_24h")
             if isinstance(fee, (int, float)) and isinstance(vol, (int, float)) and vol > 0:
                 r["fee_over_vol"] = float(fee) / float(vol)
                 r["score"] = r["fee_over_vol"]
@@ -484,6 +514,8 @@ def main() -> int:
         r["tvl_display"] = human_usd(r.get("tvl") if isinstance(r.get("tvl"), (int, float)) else None)
         r["fee_24h_display"] = human_usd(r.get("fee_24h") if isinstance(r.get("fee_24h"), (int, float)) else None)
         r["volume_24h_display"] = human_usd(r.get("volume_24h") if isinstance(r.get("volume_24h"), (int, float)) else None)
+        r["volume_window_display"] = human_usd(r.get("volume_window") if isinstance(r.get("volume_window"), (int, float)) else None)
+        r["fee_window_display"] = human_usd(r.get("fee_window") if isinstance(r.get("fee_window"), (int, float)) else None)
 
     cooldown_ms = args.cooldown_min * 60 * 1000
     min_tvl = float(args.min_tvl)
@@ -577,7 +609,10 @@ def main() -> int:
     save_state(args.state, state)
 
     volume_present = sum(
-        1 for r in ranked if isinstance(r.get("volume_24h"), (int, float)) and (r.get("volume_24h") or 0) > 0
+        1
+        for r in ranked
+        if isinstance(r.get("volume_window"), (int, float))
+        and (r.get("volume_window") or 0) > 0
     )
 
     out = {
@@ -596,8 +631,9 @@ def main() -> int:
             "triggered_before_cooldown": triggered_before_cooldown,
             "suppressed_by_cooldown": suppressed_by_cooldown,
             "triggers_count": triggers_count,
-            "volume_24h_present": volume_present,
-            "scoring": "fee_over_vol (fallback fee_over_tvl, then fee)",
+            "volume_window_present": volume_present,
+            "window": args.window,
+            "scoring": "fee_over_vol(window) (fallback fee_over_tvl, then fee)",
         },
         "token_list": {
             "url": token_source_url,
