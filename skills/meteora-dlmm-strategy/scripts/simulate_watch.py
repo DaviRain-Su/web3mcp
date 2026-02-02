@@ -97,7 +97,7 @@ def resolve_token_map(
     state: Dict[str, Any],
     token_list_url: str,
     token_cache_ttl_ms: int,
-    timeout_s: int = 15,
+    timeout_s: int = 45,
 ) -> Dict[str, Dict[str, str]]:
     """Return mapping mint-> {symbol,name}. Cached in state."""
 
@@ -129,8 +129,13 @@ def resolve_token_map(
     except Exception:
         pass
 
-    # fallback: no map
-    return {}
+    # fallback: minimal map for common mints (still improves readability)
+    return {
+        # SOL (wSOL)
+        "So11111111111111111111111111111111111111112": {"symbol": "SOL", "name": "Wrapped SOL"},
+        # USDC
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": {"symbol": "USDC", "name": "USD Coin"},
+    }
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -234,6 +239,16 @@ def main() -> int:
 
     token_cache_ttl_ms = args.token_cache_ttl_min * 60 * 1000
     token_map = resolve_token_map(state, args.token_list_url, token_cache_ttl_ms)
+
+    # Enrich ranked entries with symbols/labels (used by cron summaries)
+    for r in ranked:
+        mx = r.get("mint_x")
+        my = r.get("mint_y")
+        mx_sym = token_map.get(mx, {}).get("symbol") if isinstance(mx, str) else None
+        my_sym = token_map.get(my, {}).get("symbol") if isinstance(my, str) else None
+        r["mint_x_symbol"] = mx_sym
+        r["mint_y_symbol"] = my_sym
+        r["pair_label"] = f"{mx_sym}/{my_sym}" if mx_sym and my_sym else None
 
     cooldown_ms = args.cooldown_min * 60 * 1000
     min_tvl = float(args.min_tvl)
