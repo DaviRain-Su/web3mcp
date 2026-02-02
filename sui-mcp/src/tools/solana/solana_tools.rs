@@ -5193,10 +5193,15 @@
                 }
             })?;
 
+        let status = waited
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
         let response = Self::pretty_json(&json!({
             "ok": true,
             "stage": "send",
-            "status": "sent",
+            "status": status,
             "rpc_url": rpc_url,
             "network": request.network.unwrap_or("mainnet".to_string()),
             "signature": sig.to_string(),
