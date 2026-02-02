@@ -58,6 +58,53 @@ impl Web3McpServer {
         }
     }
 
+    pub fn guard_result(
+        context: &str,
+        guard_class: &str,
+        reason: &str,
+        retryable: bool,
+        suggest_fix: Option<&str>,
+        next: Option<serde_json::Value>,
+        extra: Option<serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut data = Self::classify_error(context, "");
+        if let serde_json::Value::Object(ref mut m) = data {
+            m.insert(
+                "guard_class".to_string(),
+                serde_json::Value::String(guard_class.to_string()),
+            );
+            m.insert("retryable".to_string(), serde_json::Value::Bool(retryable));
+            m.insert(
+                "suggest_fix".to_string(),
+                match suggest_fix {
+                    Some(s) => serde_json::Value::String(s.to_string()),
+                    None => serde_json::Value::Null,
+                },
+            );
+            if let Some(n) = next {
+                m.insert("next".to_string(), n);
+            }
+            if let Some(e) = extra {
+                m.insert("extra".to_string(), e);
+            }
+        }
+
+        let body = serde_json::json!({
+            "status": "needs_confirmation",
+            "context": context,
+            "reason": reason,
+            "guard": data
+        });
+
+        let text = serde_json::to_string_pretty(&body).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to serialize guard result: {}", e)),
+            data: None,
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
     pub fn classify_error(context: &str, error: &str) -> serde_json::Value {
         let lower = error.to_lowercase();
         let ctx = context.to_lowercase();

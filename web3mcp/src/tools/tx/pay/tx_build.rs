@@ -1527,23 +1527,29 @@
                 &request.tx_summary_hash,
             );
             if request.confirm_token.as_deref() != Some(expected.as_str()) {
-                return Err(Self::structured_error(
-                    "Mainnet confirmation requires confirm_token",
+                return Self::guard_result(
                     "sui_confirm_execution",
                     "CONFIRM_TOKEN_REQUIRED",
+                    "Mainnet confirmation requires confirm_token",
                     false,
                     Some("Re-run sui_confirm_execution with the expected confirm_token"),
-                    None,
                     Some(json!({
-                        "id": request.id,
-                        "tx_summary_hash": request.tx_summary_hash,
+                        "tool": "sui_confirm_execution",
+                        "args": {
+                            "id": request.id,
+                            "tx_summary_hash": request.tx_summary_hash,
+                            "confirm_token": expected,
+                            "keystore_path": "<PATH_TO_SUI_KEYSTORE>"
+                        }
+                    })),
+                    Some(json!({
                         "expected_confirm_token": expected,
                         "how_to_confirm": format!(
                             "sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>",
                             request.id, request.tx_summary_hash, expected
                         )
                     })),
-                ));
+                );
             }
         }
 
@@ -1853,23 +1859,28 @@
                 request.tx_summary_hash.trim(),
             );
             if request.confirm_token.as_deref() != Some(expected.as_str()) {
-                return Err(Self::structured_error(
-                    "Mainnet retry requires confirm_token",
+                return Self::guard_result(
                     "sui_retry_pending_confirmation",
                     "CONFIRM_TOKEN_REQUIRED",
+                    "Mainnet retry requires confirm_token",
                     false,
                     Some("Re-run sui_retry_pending_confirmation with the expected confirm_token"),
-                    None,
                     Some(json!({
-                        "id": request.id,
-                        "tx_summary_hash": request.tx_summary_hash,
+                        "tool": "sui_retry_pending_confirmation",
+                        "args": {
+                            "id": request.id,
+                            "tx_summary_hash": request.tx_summary_hash,
+                            "confirm_token": expected
+                        }
+                    })),
+                    Some(json!({
                         "expected_confirm_token": expected,
                         "how_to_retry": format!(
                             "sui_retry_pending_confirmation id:{} tx_summary_hash:{} confirm_token:{}",
                             request.id, request.tx_summary_hash, expected
                         )
                     })),
-                ));
+                );
             }
         }
 

@@ -1126,18 +1126,26 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(Self::structured_error(
-                "confirm=true requires a signed transaction",
+            return Self::guard_result(
                 "solana_send_transaction",
                 "SIGNED_TX_REQUIRED",
+                "confirm=true requires a signed transaction",
                 false,
                 Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
-                None,
+                Some(json!({
+                    "tool": "solana_send_transaction",
+                    "args": {
+                        "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                        "transaction_base64": request.transaction_base64.clone(),
+                        "confirm": true,
+                        "allow_direct_send": true
+                    }
+                })),
                 Some(json!({
                     "safer_default": "Use confirm=false to create a pending confirmation first",
                     "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
                 })),
-            ));
+            );
         }
 
         let sig = client
@@ -1478,18 +1486,26 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(Self::structured_error(
-                "confirm=true requires a signed transaction",
+            return Self::guard_result(
                 "solana_send_transaction",
                 "SIGNED_TX_REQUIRED",
+                "confirm=true requires a signed transaction",
                 false,
                 Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
-                None,
-                Some(serde_json::json!({
+                Some(json!({
+                    "tool": "solana_send_transaction",
+                    "args": {
+                        "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                        "transaction_base64": request.transaction_base64.clone(),
+                        "confirm": true,
+                        "allow_direct_send": true
+                    }
+                })),
+                Some(json!({
                     "safer_default": "Use confirm=false to create a pending confirmation first",
                     "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
                 })),
-            ));
+            );
         }
 
         let sig = client
@@ -1729,18 +1745,26 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(Self::structured_error(
-                "confirm=true requires a signed transaction",
+            return Self::guard_result(
                 "solana_send_transaction",
                 "SIGNED_TX_REQUIRED",
+                "confirm=true requires a signed transaction",
                 false,
                 Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
-                None,
-                Some(serde_json::json!({
+                Some(json!({
+                    "tool": "solana_send_transaction",
+                    "args": {
+                        "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                        "transaction_base64": request.transaction_base64.clone(),
+                        "confirm": true,
+                        "allow_direct_send": true
+                    }
+                })),
+                Some(json!({
                     "safer_default": "Use confirm=false to create a pending confirmation first",
                     "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
                 })),
-            ));
+            );
         }
 
         let sig = client
@@ -1993,18 +2017,26 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(Self::structured_error(
-                "confirm=true requires a signed transaction",
+            return Self::guard_result(
                 "solana_send_transaction",
                 "SIGNED_TX_REQUIRED",
+                "confirm=true requires a signed transaction",
                 false,
                 Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
-                None,
-                Some(serde_json::json!({
+                Some(json!({
+                    "tool": "solana_send_transaction",
+                    "args": {
+                        "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                        "transaction_base64": request.transaction_base64.clone(),
+                        "confirm": true,
+                        "allow_direct_send": true
+                    }
+                })),
+                Some(json!({
                     "safer_default": "Use confirm=false to create a pending confirmation first",
                     "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
                 })),
-            ));
+            );
         }
 
         let sig = client
@@ -2397,18 +2429,26 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(Self::structured_error(
-                "confirm=true requires a signed transaction",
+            return Self::guard_result(
                 "solana_send_transaction",
                 "SIGNED_TX_REQUIRED",
+                "confirm=true requires a signed transaction",
                 false,
                 Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
-                None,
-                Some(serde_json::json!({
+                Some(json!({
+                    "tool": "solana_send_transaction",
+                    "args": {
+                        "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                        "transaction_base64": request.transaction_base64.clone(),
+                        "confirm": true,
+                        "allow_direct_send": true
+                    }
+                })),
+                Some(json!({
                     "safer_default": "Use confirm=false to create a pending confirmation first",
                     "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
                 })),
-            ));
+            );
         }
 
         let sig = client
@@ -5326,20 +5366,27 @@
         }
 
         if request.confirm.unwrap_or(false) && !request.allow_direct_send.unwrap_or(false) {
-            return Err(Self::structured_error(
-                "Direct broadcast is blocked by default",
+            return Self::guard_result(
                 "solana_send_transaction",
                 "SAFETY_GUARD_BLOCKED",
+                "Direct broadcast is blocked by default",
                 false,
                 Some("Use confirm=false to create a pending confirmation, then solana_confirm_transaction (mainnet requires confirm_token); or set allow_direct_send=true only if you understand the risks"),
-                None,
                 Some(json!({
-                    "hint": "Call solana_send_transaction(confirm=false) (safe) or use solana_tx_preview, then solana_confirm_transaction",
+                    "tool": "solana_send_transaction",
+                    "args": {
+                        "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                        // Clone to avoid moving out of request.
+                        "transaction_base64": request.transaction_base64.clone(),
+                        "confirm": false
+                    }
+                })),
+                Some(json!({
                     "tool_preview": "solana_tx_preview",
                     "tool_confirm": "solana_confirm_transaction",
                     "param": "allow_direct_send"
                 })),
-            ));
+            );
         }
 
         if !request.confirm.unwrap_or(false) {
@@ -5606,23 +5653,29 @@
         if Self::solana_is_mainnet_network(Some(&network)) {
             let expected = crate::utils::solana_confirm_store::make_confirm_token(&request.id, &request.hash);
             if request.confirm_token.as_deref() != Some(expected.as_str()) {
-                return Err(Self::structured_error(
-                    "Mainnet confirmation requires confirm_token",
+                return Self::guard_result(
                     "solana_confirm_transaction",
                     "CONFIRM_TOKEN_REQUIRED",
+                    "Mainnet confirmation requires confirm_token",
                     false,
                     Some("Re-run solana_confirm_transaction with the expected confirm_token"),
-                    None,
                     Some(json!({
-                        "id": request.id,
-                        "tx_summary_hash": request.hash,
+                        "tool": "solana_confirm_transaction",
+                        "args": {
+                            "id": request.id,
+                            "hash": request.hash,
+                            "confirm_token": expected,
+                            "network": network
+                        }
+                    })),
+                    Some(json!({
                         "expected_confirm_token": expected,
                         "how_to_confirm": format!(
                             "solana_confirm_transaction id:{} hash:{} confirm_token:{}",
                             request.id, request.hash, expected
                         )
                     })),
-                ));
+                );
             }
         }
 
