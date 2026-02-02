@@ -205,11 +205,28 @@ impl Web3McpServer {
 
         // EVM-specific
         if chain == "evm" {
+            // Execution reverted / call exception
             if lower.contains("execution reverted") || lower.contains("reverted") {
                 error_class = "EXECUTION_REVERTED";
                 retryable = false;
                 suggest_fix = Some("Simulate/preview the call to extract the revert reason, verify parameters and balances/allowances, then rebuild and retry");
             }
+            if lower.contains("call exception") || lower.contains("call_exception") {
+                error_class = "CALL_EXCEPTION";
+                retryable = false;
+                suggest_fix = Some("Simulate/preview the call to extract the revert reason, verify contract state and parameters, then rebuild and retry");
+            }
+
+            // Funds
+            if (lower.contains("insufficient funds") && lower.contains("for gas"))
+                || lower.contains("insufficient funds for gas")
+            {
+                error_class = "INSUFFICIENT_FUNDS_FOR_GAS";
+                retryable = false;
+                suggest_fix = Some("Ensure the sender/fee payer has enough native token to cover gas fees; reduce gas limit or amount if needed");
+            }
+
+            // Fee / nonce
             if lower.contains("nonce too low") {
                 error_class = "NONCE_TOO_LOW";
                 retryable = true;
@@ -221,12 +238,24 @@ impl Web3McpServer {
                 retryable = true;
                 suggest_fix = Some("Increase maxFeePerGas/maxPriorityFeePerGas and retry");
             }
+
+            // Mempool / known
             if lower.contains("already known") || lower.contains("known transaction") {
                 error_class = "TX_ALREADY_KNOWN";
                 retryable = false;
                 suggest_fix = Some(
                     "The tx may already be in the mempool; wait for a receipt or query by tx_hash",
                 );
+            }
+
+            // Gas estimation / gas too low
+            if lower.contains("unpredictable gas limit")
+                || lower.contains("cannot estimate gas")
+                || lower.contains("gas estimation")
+            {
+                error_class = "UNPREDICTABLE_GAS_LIMIT";
+                retryable = false;
+                suggest_fix = Some("Simulate the transaction to find the revert reason; if you are sure it will succeed, set an explicit gas limit and retry");
             }
             if lower.contains("intrinsic gas too low")
                 || lower.contains("gas required exceeds allowance")
@@ -400,6 +429,30 @@ mod tests {
         assert_eq!(
             v.get("revert_reason").and_then(|x| x.as_str()),
             Some("TRANSFER_FAILED")
+        );
+    }
+
+    #[test]
+    fn evm_insufficient_funds_for_gas_is_classified() {
+        let v = Web3McpServer::classify_error(
+            "evm_send_raw_transaction",
+            "insufficient funds for gas * price + value",
+        );
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("INSUFFICIENT_FUNDS_FOR_GAS")
+        );
+    }
+
+    #[test]
+    fn evm_unpredictable_gas_limit_is_classified() {
+        let v = Web3McpServer::classify_error(
+            "evm_preflight",
+            "cannot estimate gas; transaction may fail or may require manual gas limit",
+        );
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("UNPREDICTABLE_GAS_LIMIT")
         );
     }
 }
