@@ -4968,12 +4968,18 @@
         )?;
 
         let response = Self::pretty_json(&json!({
+            "ok": true,
+            "stage": "preview",
             "status": "preview",
             "rpc_url": rpc_url,
             "network": network_str,
             "tx_version": tx_version,
             "address_table_lookups": address_table_lookups,
+
+            // Compatibility + unified naming
             "confirmation_id": confirmation_id,
+            "pending_confirmation_id": confirmation_id,
+
             "tx_summary_hash": hash,
             "expires_in_ms": ttl,
             "confirmation": {
@@ -5061,12 +5067,22 @@
                 "ok": true,
                 "stage": "send",
                 "status": "pending",
+                "rpc_url": rpc_url,
+                "network": request.network.clone().unwrap_or("mainnet".to_string()),
                 "pending_confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
                 "summary": summary,
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call solana_confirm_transaction to broadcast and wait.",
                 "next": {
+                    "confirm": {
+                        "tool": "solana_confirm_transaction",
+                        "args": {
+                            "id": confirmation_id,
+                            "hash": hash,
+                            "commitment": request.commitment.clone().unwrap_or("confirmed".to_string())
+                        }
+                    },
                     "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
                 }
             }))?;
@@ -6915,6 +6931,14 @@
                 },
                 "expires_in_ms": ttl,
                 "next": {
+                    "confirm": {
+                        "tool": "solana_confirm_transaction",
+                        "args": {
+                            "id": confirmation_id,
+                            "hash": hash,
+                            "commitment": request.commitment.clone().unwrap_or("confirmed".to_string())
+                        }
+                    },
                     "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{}", confirmation_id, hash)
                 }
             }))?;
