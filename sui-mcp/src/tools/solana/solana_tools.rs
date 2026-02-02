@@ -4968,6 +4968,7 @@
         )?;
 
         let confirm_timeout_ms = request.confirm_timeout_ms.unwrap_or(60_000);
+        let confirm_skip_preflight = request.confirm_skip_preflight.unwrap_or(false);
 
         let response = Self::pretty_json(&json!({
             "ok": true,
@@ -4991,7 +4992,8 @@
                     "hash": hash,
                     "network": network_str,
                     "commitment": commitment,
-                    "timeout_ms": confirm_timeout_ms
+                    "timeout_ms": confirm_timeout_ms,
+                    "skip_preflight": confirm_skip_preflight
                 }
             },
             "transaction_base64": tx_base64,

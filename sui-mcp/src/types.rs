@@ -1170,6 +1170,9 @@ pub struct SolanaTxPreviewRequest {
 
     #[schemars(description = "Optional: timeout used by the suggested confirm step (ms). Default 60000.")]
     pub confirm_timeout_ms: Option<u64>,
+
+    #[schemars(description = "Optional: skip_preflight used by the suggested confirm step (default false).")]
+    pub confirm_skip_preflight: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
