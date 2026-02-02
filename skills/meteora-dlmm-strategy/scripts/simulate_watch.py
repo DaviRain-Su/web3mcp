@@ -234,6 +234,18 @@ def main() -> int:
         help="window for volume-based scoring (requires --enrich-details). default: 24h",
     )
     ap.add_argument("--top-n", type=int, default=50)
+    ap.add_argument(
+        "--trigger-fee-tvl-window-min",
+        type=float,
+        default=None,
+        help="trigger if fee_tvl_ratio over selected window >= this percent (e.g. 0.6 for 0.6%). Requires --enrich-details.",
+    )
+    ap.add_argument(
+        "--trigger-score-top",
+        type=int,
+        default=None,
+        help="trigger if pair is within top K by score (fee/vol on selected window).",
+    )
     ap.add_argument("--limit", type=int, default=50, help="alias for --top-n")
     ap.add_argument("--min-tvl", type=float, default=1_000_000.0)
     ap.add_argument("--cooldown-min", type=int, default=15)
@@ -444,10 +456,10 @@ def main() -> int:
 
         ranked.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
 
-    # Volume top 10 among the ranked list (fallback: trades_24h if volume missing)
+    # Volume top 10 among the ranked list (uses enriched window volume when available)
     vol_sorted = sorted(
-        [r for r in ranked if isinstance(r.get("volume_24h"), (int, float))],
-        key=lambda r: r.get("volume_24h") or 0.0,
+        [r for r in ranked if isinstance(r.get("volume_window"), (int, float))],
+        key=lambda r: r.get("volume_window") or 0.0,
         reverse=True,
     )
     trades_sorted = sorted(
@@ -462,6 +474,12 @@ def main() -> int:
     top10_trades_addrs = set(
         [r.get("pair_address") for r in trades_sorted[:10] if r.get("pair_address")]
     )
+
+    trigger_score_top_addrs: set[str] = set()
+    if isinstance(args.trigger_score_top, int) and args.trigger_score_top > 0:
+        trigger_score_top_addrs = set(
+            [r.get("pair_address") for r in ranked[: args.trigger_score_top] if r.get("pair_address")]
+        )
 
     state = load_state(args.state)
     last_alert_ms = state.get("last_alert_ms", {})
@@ -523,7 +541,13 @@ def main() -> int:
     eligible_after_tvl = 0
     triggered_before_cooldown = 0
     suppressed_by_cooldown = 0
-    triggers_count = {"fee_over_tvl_ge_1pct": 0, "top10_volume": 0, "top10_trades": 0}
+    triggers_count = {
+        "fee_over_tvl_ge_1pct": 0,
+        "fee_tvl_window_ge_threshold": 0,
+        "score_topk": 0,
+        "top10_volume": 0,
+        "top10_trades": 0,
+    }
 
     alerts = []
     for r in ranked:
@@ -545,16 +569,33 @@ def main() -> int:
         if isinstance(fee, (int, float)) and tvl > 0:
             fee_tvl = float(fee) / float(tvl)
 
+        # Window-specific fee/tvl ratio (percent) from enrichment, e.g. 0.6 means 0.6%
+        fee_tvl_ratio_window = r.get("fee_tvl_ratio_window")
+        if not isinstance(fee_tvl_ratio_window, (int, float)):
+            fee_tvl_ratio_window = None
+
         trigger_fee_tvl = fee_tvl is not None and fee_tvl >= 0.01
+        trigger_fee_tvl_window = False
+        if args.trigger_fee_tvl_window_min is not None:
+            trigger_fee_tvl_window = (
+                fee_tvl_ratio_window is not None
+                and float(fee_tvl_ratio_window) >= float(args.trigger_fee_tvl_window_min)
+            )
+
         trigger_vol = addr in top10_vol_addrs
         trigger_trades = addr in top10_trades_addrs
+        trigger_score_top = addr in trigger_score_top_addrs
 
-        if not (trigger_fee_tvl or trigger_vol or trigger_trades):
+        if not (trigger_fee_tvl or trigger_fee_tvl_window or trigger_vol or trigger_trades or trigger_score_top):
             continue
 
         triggered_before_cooldown += 1
         if trigger_fee_tvl:
             triggers_count["fee_over_tvl_ge_1pct"] += 1
+        if trigger_fee_tvl_window:
+            triggers_count["fee_tvl_window_ge_threshold"] += 1
+        if trigger_score_top:
+            triggers_count["score_topk"] += 1
         if trigger_vol:
             triggers_count["top10_volume"] += 1
         if trigger_trades:
@@ -593,8 +634,14 @@ def main() -> int:
             "tvl": tvl,
             "tvl_display": human_usd(tvl if isinstance(tvl, (int, float)) else None),
             "fee_over_tvl": fee_tvl,
+            "fee_tvl_ratio_window": r.get("fee_tvl_ratio_window"),
+            "volume_window": r.get("volume_window"),
+            "fee_window": r.get("fee_window"),
+            "fee_over_vol": r.get("fee_over_vol"),
             "trigger": {
                 "fee_over_tvl_ge_1pct": trigger_fee_tvl,
+                "fee_tvl_window_ge_threshold": trigger_fee_tvl_window,
+                "score_topk": trigger_score_top,
                 "top10_volume": trigger_vol,
                 "top10_trades": trigger_trades,
             },
@@ -634,6 +681,10 @@ def main() -> int:
             "volume_window_present": volume_present,
             "window": args.window,
             "scoring": "fee_over_vol(window) (fallback fee_over_tvl, then fee)",
+            "trigger": {
+                "fee_tvl_window_min": args.trigger_fee_tvl_window_min,
+                "score_top": args.trigger_score_top,
+            },
         },
         "token_list": {
             "url": token_source_url,
