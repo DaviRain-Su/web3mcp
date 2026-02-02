@@ -3,6 +3,7 @@
 This folder is a **documentation-only example** showing how to structure an integration where:
 
 - `README-main-agent.md` explains how a Claude Desktop (human-facing) agent should create ACP jobs.
+- `notes/security.md` documents executor vs main-agent separation and key handling.
 
 - Your *main agent* (human-facing) creates ACP jobs.
 - A dedicated *executor agent* executes a strict 2-phase workflow against `sui-mcp`.
