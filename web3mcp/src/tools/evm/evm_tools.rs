@@ -674,10 +674,14 @@
 
         // Only allow retry when status is pending/failed/consumed.
         if !matches!(row.status.as_str(), "pending" | "failed" | "consumed") {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Unsupported status for retry: {}", row.status)),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "Unsupported status for retry",
+                "evm_retry_pending_confirmation",
+                "UNSUPPORTED_STATUS",
+                false,
+                Some("Create a new pending confirmation (rebuild) instead of retrying"),
+                None,
+                Some(json!({
                     "confirmation_id": row.id,
                     "chain_id": row.chain_id,
                     "status": row.status,
@@ -687,7 +691,7 @@
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
                 })),
-            });
+            ));
         }
 
         let mut tx = row.tx;
@@ -774,10 +778,16 @@
         let raw_tx = signed_json
             .get("raw_tx")
             .and_then(Value::as_str)
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32603),
-                message: Cow::from("Missing raw_tx"),
-                data: None,
+            .ok_or_else(|| {
+                Self::structured_error(
+                    "Missing raw_tx from signer",
+                    "evm_retry_pending_confirmation",
+                    "SIGNER_FAILED",
+                    false,
+                    Some("Verify local signer configuration / private key env and retry"),
+                    None,
+                    Some(json!({"step": "evm_sign_transaction_local"})),
+                )
             })?
             .to_string();
 
@@ -3599,10 +3609,16 @@ fn abi_entry_json(
         let raw_tx = signed_json
             .get("raw_tx")
             .and_then(Value::as_str)
-            .ok_or_else(|| ErrorData {
-                code: ErrorCode(-32603),
-                message: Cow::from("Missing raw_tx"),
-                data: None,
+            .ok_or_else(|| {
+                Self::structured_error(
+                    "Missing raw_tx from signer",
+                    "evm_send_transaction_local",
+                    "SIGNER_FAILED",
+                    false,
+                    Some("Verify local signer configuration / private key env and retry"),
+                    None,
+                    Some(json!({"step": "evm_sign_transaction_local"})),
+                )
             })?
             .to_string();
 

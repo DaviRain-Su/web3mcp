@@ -433,7 +433,12 @@ pub fn get_pending(id: &str) -> Result<PendingSolanaConfirmation, ErrorData> {
     row_opt.ok_or_else(|| ErrorData {
         code: ErrorCode(-32602),
         message: Cow::from("Unknown confirmation id"),
-        data: Some(serde_json::json!({"id": id})),
+        data: Some(serde_json::json!({
+            "error_class": "UNKNOWN_CONFIRMATION_ID",
+            "retryable": false,
+            "suggest_fix": "Re-run the build/send step to create a new pending confirmation",
+            "id": id
+        })),
     })
 }
 

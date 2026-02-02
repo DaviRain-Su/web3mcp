@@ -1474,11 +1474,15 @@
         )?;
 
         let row = crate::utils::sui_confirm_store::get_row(&conn, &request.id)?.ok_or_else(|| {
-            ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Unknown or expired confirmation_id"),
-                data: None,
-            }
+            Self::structured_error(
+                "Unknown or expired confirmation_id",
+                "sui_confirm_execution",
+                "UNKNOWN_CONFIRMATION_ID",
+                false,
+                Some("Re-run the build step to create a new pending confirmation"),
+                None,
+                Some(json!({"id": request.id})),
+            )
         })?;
 
         if row.status != "pending" {
@@ -1816,11 +1820,15 @@
         )?;
 
         let row = crate::utils::sui_confirm_store::get_row(&conn, request.id.trim())?.ok_or_else(|| {
-            ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from("Unknown or expired confirmation_id"),
-                data: None,
-            }
+            Self::structured_error(
+                "Unknown or expired confirmation_id",
+                "sui_retry_pending_confirmation",
+                "UNKNOWN_CONFIRMATION_ID",
+                false,
+                Some("Re-run the build step to create a new pending confirmation"),
+                None,
+                Some(json!({"id": request.id})),
+            )
         })?;
 
         if row.tx_summary_hash != request.tx_summary_hash {
@@ -1867,10 +1875,14 @@
 
         let allowed = ["pending", "failed", "consumed"];
         if !allowed.contains(&row.status.as_str()) {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Cannot retry status={}", row.status)),
-                data: Some(json!({
+            return Err(Self::structured_error(
+                "Cannot retry this status",
+                "sui_retry_pending_confirmation",
+                "UNSUPPORTED_STATUS",
+                false,
+                Some("Create a new pending confirmation (rebuild) instead of retrying"),
+                None,
+                Some(json!({
                     "status": row.status,
                     "digest": row.digest,
                     "last_error": row.last_error,
@@ -1880,7 +1892,7 @@
                         .as_deref()
                         .and_then(|s| serde_json::from_str::<Value>(s).ok()),
                 })),
-            });
+            ));
         }
 
         // Reset to pending before retry.
