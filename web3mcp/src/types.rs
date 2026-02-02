@@ -1394,6 +1394,19 @@ pub struct SolanaMeteoraDlmmBuildTxRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaMeteoraDlmmPlanRequest {
+    #[schemars(
+        description = "IDL instruction name to plan (default: add_liquidity). Returns args/accounts template."
+    )]
+    pub instruction: Option<String>,
+
+    #[schemars(
+        description = "If true (default), include args_template and accounts_template placeholders"
+    )]
+    pub include_templates: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaBuildTransferRequest {
     #[schemars(
         description = "Network: mainnet|mainnet-beta|testnet|devnet (optional; default mainnet)"

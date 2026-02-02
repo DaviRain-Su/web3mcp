@@ -558,6 +558,123 @@
     }
 
     #[cfg_attr(feature = "solana-extended-tools", tool(description = "Meteora DLMM (IDL): build a transaction for a single DLMM instruction (default add_liquidity). Safe: returns tx_base64 and creates a pending confirmation by default (no broadcast)."))]
+    async fn solana_meteora_dlmm_plan(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraDlmmPlanRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        #[cfg(not(feature = "solana-extended-tools"))]
+        {
+            let _ = request;
+            return Err(ErrorData {
+                code: ErrorCode(-32601),
+                message: Cow::from(
+                    "Tool not available: built without feature solana-extended-tools (rebuild with --features solana-extended-tools)",
+                ),
+                data: None,
+            });
+        }
+
+        #[cfg(feature = "solana-extended-tools")]
+        {
+            let program_id = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
+            let idl = Self::solana_meteora_dlmm_idl_json();
+
+            let instruction_name = request
+                .instruction
+                .as_deref()
+                .unwrap_or("add_liquidity")
+                .trim();
+            if instruction_name.is_empty() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("instruction is required"),
+                    data: None,
+                });
+            }
+
+            let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, instruction_name)
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "Unknown instruction in Meteora DLMM IDL: {}",
+                        e
+                    )),
+                    data: Some(json!({
+                        "program_id": program_id,
+                        "instruction": instruction_name,
+                        "hint": "Use solana_idl_list_instructions or solana_idl_search to inspect available instructions"
+                    })),
+                })?;
+
+            let include_templates = request.include_templates.unwrap_or(true);
+
+            let args = ix
+                .args
+                .iter()
+                .map(|a| {
+                    json!({
+                        "name": a.name,
+                        "type": a.ty,
+                    })
+                })
+                .collect::<Vec<Value>>();
+
+            let accounts = ix
+                .accounts
+                .iter()
+                .map(|a| {
+                    json!({
+                        "name": a.name,
+                        "is_signer": a.is_signer,
+                        "is_writable": a.is_mut,
+                    })
+                })
+                .collect::<Vec<Value>>();
+
+            let out = if include_templates {
+                let mut args_template = serde_json::Map::new();
+                for a in ix.args.iter() {
+                    args_template.insert(a.name.clone(), json!("__FILL_ME__"));
+                }
+
+                let mut accounts_template = serde_json::Map::new();
+                for a in ix.accounts.iter() {
+                    accounts_template.insert(a.name.clone(), json!("__FILL_ME__"));
+                }
+
+                json!({
+                    "ok": true,
+                    "program_id": program_id,
+                    "instruction": ix.name,
+                    "args": args,
+                    "accounts": accounts,
+                    "args_template": Value::Object(args_template),
+                    "accounts_template": Value::Object(accounts_template),
+                    "next": {
+                        "tool": "solana_meteora_dlmm_build_tx",
+                        "args": {
+                            "instruction": ix.name,
+                            "args": "(fill args_template)",
+                            "accounts": "(fill accounts_template)"
+                        }
+                    }
+                })
+            } else {
+                json!({
+                    "ok": true,
+                    "program_id": program_id,
+                    "instruction": ix.name,
+                    "args": args,
+                    "accounts": accounts
+                })
+            };
+
+            let response = Self::pretty_json(&out)?;
+            Ok(CallToolResult::success(vec![Content::text(response)]))
+        }
+    }
+
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Meteora DLMM (IDL): build a transaction for a single DLMM instruction (default add_liquidity). Safe: returns tx_base64 and creates a pending confirmation by default (no broadcast)."))]
     async fn solana_meteora_dlmm_build_tx(
         &self,
         Parameters(request): Parameters<SolanaMeteoraDlmmBuildTxRequest>,
