@@ -53,3 +53,15 @@ Common EVM classes:
 - `NONCE_TOO_LOW` / `NONCE_TOO_HIGH`: rebuild with correct pending nonce
 - `FEE_TOO_LOW` / `REPLACEMENT_UNDERPRICED`: increase maxFeePerGas/maxPriorityFeePerGas
 - `UNPREDICTABLE_GAS_LIMIT`: simulate to find revert; then set explicit gas limit if appropriate
+
+## Interpreting structured Solana errors (`error_class`)
+
+When a Solana tool fails, `ErrorData.data` may include `error_class` + `retryable` + `suggest_fix`.
+
+Common Solana classes:
+- `BLOCKHASH_EXPIRED`: fetch fresh blockhash, rebuild, resend
+- `ACCOUNT_IN_USE`: wait/retry later
+- `INSUFFICIENT_FUNDS_FOR_FEE`: fund fee payer with SOL
+- `SIMULATION_FAILED`: inspect simulation logs (preview/simulate), fix accounts/params, rebuild
+- `INVALID_ACCOUNT_DATA`: account layout/type mismatch; verify ATA/program/accounts
+- `ACCOUNT_NOT_FOUND`: missing account (often missing ATA); create required account and retry

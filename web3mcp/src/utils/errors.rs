@@ -187,19 +187,53 @@ impl Web3McpServer {
         // Solana-specific
         if chain == "solana" {
             if lower.contains("blockhash not found")
-                || lower.contains("blockhash") && lower.contains("expired")
+                || (lower.contains("blockhash") && lower.contains("expired"))
             {
                 error_class = "BLOCKHASH_EXPIRED";
                 retryable = true;
                 suggest_fix =
                     Some("Fetch a fresh recent_blockhash, rebuild the transaction, then resend");
             }
+
             if lower.contains("account in use") {
                 error_class = "ACCOUNT_IN_USE";
                 retryable = true;
                 suggest_fix = Some(
                     "Retry later; if it persists, wait for conflicting transaction to finalize",
                 );
+            }
+
+            if lower.contains("insufficient funds")
+                && (lower.contains("fee") || lower.contains("rent"))
+            {
+                error_class = "INSUFFICIENT_FUNDS_FOR_FEE";
+                retryable = false;
+                suggest_fix =
+                    Some("Fund the fee payer with enough SOL to cover fees/rent, then retry");
+            }
+
+            if lower.contains("transaction simulation failed")
+                || lower.contains("simulate") && lower.contains("failed")
+                || lower.contains("custom program error")
+                || lower.contains("program failed")
+            {
+                error_class = "SIMULATION_FAILED";
+                retryable = false;
+                suggest_fix = Some("Run simulation/preview to inspect logs, fix parameters/accounts, then rebuild and retry");
+            }
+
+            if lower.contains("invalidaccountdata") || lower.contains("invalid account data") {
+                error_class = "INVALID_ACCOUNT_DATA";
+                retryable = false;
+                suggest_fix = Some("Verify the accounts/program and instruction data; the account type/layout may be wrong");
+            }
+
+            if lower.contains("accountnotfound")
+                || (lower.contains("account") && lower.contains("not found"))
+            {
+                error_class = "ACCOUNT_NOT_FOUND";
+                retryable = false;
+                suggest_fix = Some("Verify account addresses exist on the selected network and required accounts are created (e.g., ATA)");
             }
         }
 
@@ -509,6 +543,38 @@ mod tests {
         assert_eq!(
             v.get("error_class").and_then(|x| x.as_str()),
             Some("INSUFFICIENT_ALLOWANCE")
+        );
+    }
+
+    #[test]
+    fn solana_simulation_failed_is_classified() {
+        let v = Web3McpServer::classify_error(
+            "solana_simulate_transaction",
+            "Transaction simulation failed: Error processing Instruction 0: custom program error: 0x1",
+        );
+        assert_eq!(v.get("chain").and_then(|x| x.as_str()), Some("solana"));
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("SIMULATION_FAILED")
+        );
+    }
+
+    #[test]
+    fn solana_insufficient_funds_for_fee_is_classified() {
+        let v =
+            Web3McpServer::classify_error("solana_send_transaction", "insufficient funds for fee");
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("INSUFFICIENT_FUNDS_FOR_FEE")
+        );
+    }
+
+    #[test]
+    fn solana_account_not_found_is_classified() {
+        let v = Web3McpServer::classify_error("solana_get_account_info", "AccountNotFound");
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("ACCOUNT_NOT_FOUND")
         );
     }
 }
