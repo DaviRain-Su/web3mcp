@@ -117,16 +117,16 @@ async fn main() -> Result<()> {
     let rpc_url = std::env::var("SUI_RPC_URL").ok();
     let network = std::env::var("SUI_NETWORK").ok();
 
-    // Create Sui MCP server
+    // Create Web3MCP server
     let server = Web3McpServer::new(rpc_url, network).await?;
 
-    info!("Starting Sui MCP Server");
+    info!("Starting Web3MCP Server");
     info!("Using RPC URL: {}", server.rpc_url);
 
     // Serve the MCP server via stdio
     let service = server.serve(rmcp::transport::stdio()).await?;
 
-    info!("Sui MCP Server running and ready to accept requests");
+    info!("Web3MCP Server running and ready to accept requests");
 
     // Wait for server to finish
     service.waiting().await?;

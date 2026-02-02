@@ -1,7 +1,7 @@
 /// EVM tools (Base / EVM-compatible chains)
     ///
-    /// NOTE: This server was historically named `sui-mcp`, but we're expanding it into a
-    /// multi-chain MCP server. These EVM tools are the first step.
+    /// NOTE: This server was historically Sui-focused, but has been renamed to `web3mcp` as it
+    /// expands into a multi-chain MCP server. These EVM tools are one step in that direction.
 
     fn evm_keystore_dir() -> String {
         std::env::var("EVM_KEYSTORE_DIR")

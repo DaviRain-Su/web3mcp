@@ -3,7 +3,7 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use std::sync::Arc;
 use sui_sdk::{SuiClient, SuiClientBuilder};
 
-/// Sui MCP Server - provides tools for interacting with the Sui blockchain via RPC
+/// Web3MCP Server - provides tools for interacting with chains (Sui, Solana, EVM) via RPC
 #[derive(Clone)]
 pub struct Web3McpServer {
     pub rpc_url: String,

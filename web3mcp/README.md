@@ -1,4 +1,4 @@
-# Sui MCP Server
+# Web3MCP Server
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for interacting with the Sui blockchain. Built using the official [Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk).
 
