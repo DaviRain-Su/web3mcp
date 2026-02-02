@@ -2738,6 +2738,11 @@
             .await
             .ok();
 
+        let call_error_str = call_res.as_ref().err().map(|e| e.to_string());
+        let revert = call_error_str
+            .as_deref()
+            .and_then(Self::evm_extract_revert_reason);
+
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
             "from": request.from,
@@ -2745,7 +2750,8 @@
             "value_wei": request.value_wei,
             "gas_limit": request.gas_limit,
             "call_ok": call_res.is_ok(),
-            "call_error": call_res.as_ref().err().map(|e| e.to_string()),
+            "call_error": call_error_str,
+            "revert": revert,
             "estimate_gas": estimate_gas,
             "estimate_gas_with_buffer": estimate_gas_with_buffer,
             "estimate_gas_error": estimate_gas_error,
@@ -3305,6 +3311,82 @@
                 json!(arr.iter().map(Self::evm_token_to_json).collect::<Vec<_>>())
             }
         }
+    }
+
+    fn evm_extract_revert_reason(err: &str) -> Option<Value> {
+        // Best-effort parsing from typical RPC/provider error strings.
+        // Examples we try to handle:
+        // - "execution reverted: <reason>"
+        // - embedded revert data like 0x08c379a0... (Error(string))
+        // - embedded panic data like 0x4e487b71... (Panic(uint256))
+        let lower = err.to_lowercase();
+
+        if let Some(pos) = lower.find("execution reverted") {
+            // Try to capture after colon.
+            if let Some(colon) = err[pos..].find(':') {
+                let reason = err[pos + colon + 1..].trim();
+                if !reason.is_empty() {
+                    return Some(json!({"kind":"execution_reverted","reason":reason}));
+                }
+            }
+            return Some(json!({"kind":"execution_reverted"}));
+        }
+
+        fn extract_hex_after(hay: &str, needle: &str) -> Option<String> {
+            let idx = hay.to_lowercase().find(&needle.to_lowercase())?;
+            let s = &hay[idx..];
+            let start = s.find("0x")?;
+            let s = &s[start..];
+            let mut end = 2;
+            for (i, ch) in s[2..].char_indices() {
+                if ch.is_ascii_hexdigit() {
+                    end = 2 + i + ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            let hex = &s[..end];
+            if hex.len() > 2 {
+                Some(hex.to_string())
+            } else {
+                None
+            }
+        }
+
+        // Solidity Error(string)
+        if let Some(hexdata) = extract_hex_after(err, "0x08c379a0") {
+            let raw = hex::decode(hexdata.trim_start_matches("0x")).ok()?;
+            if raw.len() >= 4 {
+                let payload = &raw[4..];
+                if let Ok(tokens) = ethers::abi::decode(&[ethers::abi::ParamType::String], payload)
+                {
+                    if let Some(s) = tokens.get(0).and_then(|t| t.clone().into_string()) {
+                        return Some(json!({"kind":"error_string","selector":"0x08c379a0","reason":s}));
+                    }
+                }
+            }
+        }
+
+        // Solidity Panic(uint256)
+        if let Some(hexdata) = extract_hex_after(err, "0x4e487b71") {
+            let raw = hex::decode(hexdata.trim_start_matches("0x")).ok()?;
+            if raw.len() >= 4 {
+                let payload = &raw[4..];
+                if let Ok(tokens) =
+                    ethers::abi::decode(&[ethers::abi::ParamType::Uint(256)], payload)
+                {
+                    if let Some(code) = tokens.get(0).and_then(|t| t.clone().into_uint()) {
+                        return Some(json!({
+                            "kind":"panic",
+                            "selector":"0x4e487b71",
+                            "code": code.to_string()
+                        }));
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     fn evm_standard_event_abi() -> Result<ethers::abi::Abi, ErrorData> {
