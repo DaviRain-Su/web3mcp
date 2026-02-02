@@ -205,6 +205,11 @@ impl Web3McpServer {
 
         // EVM-specific
         if chain == "evm" {
+            if lower.contains("execution reverted") || lower.contains("reverted") {
+                error_class = "EXECUTION_REVERTED";
+                retryable = false;
+                suggest_fix = Some("Simulate/preview the call to extract the revert reason, verify parameters and balances/allowances, then rebuild and retry");
+            }
             if lower.contains("nonce too low") {
                 error_class = "NONCE_TOO_LOW";
                 retryable = true;
@@ -215,6 +220,13 @@ impl Web3McpServer {
                 error_class = "REPLACEMENT_UNDERPRICED";
                 retryable = true;
                 suggest_fix = Some("Increase maxFeePerGas/maxPriorityFeePerGas and retry");
+            }
+            if lower.contains("already known") || lower.contains("known transaction") {
+                error_class = "TX_ALREADY_KNOWN";
+                retryable = false;
+                suggest_fix = Some(
+                    "The tx may already be in the mempool; wait for a receipt or query by tx_hash",
+                );
             }
             if lower.contains("intrinsic gas too low")
                 || lower.contains("gas required exceeds allowance")
@@ -251,11 +263,27 @@ impl Web3McpServer {
             }
         }
 
+        let revert_reason = if chain == "evm" {
+            // common formats:
+            // - "execution reverted: <reason>"
+            // - "execution reverted"
+            error
+                .split("execution reverted")
+                .nth(1)
+                .and_then(|s| s.split(':').nth(1))
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        } else {
+            None
+        };
+
         serde_json::json!({
             "chain": chain,
             "error_class": error_class,
             "retryable": retryable,
             "suggest_fix": suggest_fix,
+            "revert_reason": revert_reason,
             "links": [
                 "web3mcp/docs/troubleshooting.md",
                 "web3mcp/docs/prompts/troubleshooting.md"
@@ -356,5 +384,22 @@ mod tests {
         // `next` is included when provided, and normalized to an object.
         let next = guard.get("next").expect("next object");
         assert!(next.is_object());
+    }
+
+    #[test]
+    fn evm_revert_error_is_classified() {
+        let v = Web3McpServer::classify_error(
+            "evm_send_raw_transaction",
+            "execution reverted: TRANSFER_FAILED",
+        );
+        assert_eq!(v.get("chain").and_then(|x| x.as_str()), Some("evm"));
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("EXECUTION_REVERTED")
+        );
+        assert_eq!(
+            v.get("revert_reason").and_then(|x| x.as_str()),
+            Some("TRANSFER_FAILED")
+        );
     }
 }
