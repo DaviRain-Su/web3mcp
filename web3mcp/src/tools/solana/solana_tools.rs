@@ -546,6 +546,273 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[cfg(feature = "solana-extended-tools")]
+    fn solana_meteora_dlmm_idl_json() -> serde_json::Value {
+        // Bundled from the archived Omni Web3 MCP project.
+        // Program: Meteora DLMM (LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo)
+        let s = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../archive/omniweb3-mcp/idl_registry/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo.json"
+        ));
+        serde_json::from_str(s).unwrap_or_else(|_| json!({ "raw": s }))
+    }
+
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Meteora DLMM (IDL): build a transaction for a single DLMM instruction (default add_liquidity). Safe: returns tx_base64 and creates a pending confirmation by default (no broadcast)."))]
+    async fn solana_meteora_dlmm_build_tx(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraDlmmBuildTxRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        #[cfg(not(feature = "solana-extended-tools"))]
+        {
+            let _ = request;
+            return Err(ErrorData {
+                code: ErrorCode(-32601),
+                message: Cow::from(
+                    "Tool not available: built without feature solana-extended-tools (rebuild with --features solana-extended-tools)",
+                ),
+                data: None,
+            });
+        }
+
+        #[cfg(feature = "solana-extended-tools")]
+        {
+            let network = request.network.as_deref();
+            let network_str = network.unwrap_or("mainnet").trim().to_lowercase();
+            let rpc_url = Self::solana_rpc_url_for_network(network)?;
+            let client = Self::solana_rpc(network)?;
+
+            let program_id = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
+            let idl = Self::solana_meteora_dlmm_idl_json();
+
+            let instruction_name = request
+                .instruction
+                .as_deref()
+                .unwrap_or("add_liquidity")
+                .trim();
+            if instruction_name.is_empty() {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("instruction is required"),
+                    data: None,
+                });
+            }
+
+            // Parse + normalize instruction from IDL
+            let ix = crate::utils::solana_idl::normalize_idl_instruction(&idl, instruction_name)
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!(
+                        "Unknown instruction in Meteora DLMM IDL: {}",
+                        e
+                    )),
+                    data: Some(json!({
+                        "program_id": program_id,
+                        "instruction": instruction_name,
+                        "hint": "Use solana_idl_list_instructions or solana_idl_plan_instruction to inspect required args/accounts"
+                    })),
+                })?;
+
+            // Build args pairs from request.args (object)
+            let args_obj = request.args.as_object().ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("args must be an object"),
+                data: Some(json!({"provided": request.args})),
+            })?;
+
+            let mut args_pairs: Vec<(crate::utils::solana_idl::IdlArg, Value)> = Vec::new();
+            for a in ix.args.iter() {
+                let v = args_obj.get(&a.name).cloned().ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Missing arg: {}", a.name)),
+                    data: Some(json!({
+                        "missing": a.name,
+                        "note": "Args must match IDL exactly. Consider calling solana_idl_plan_instruction for a template."
+                    })),
+                })?;
+                args_pairs.push((a.clone(), v));
+            }
+
+            let data =
+                crate::utils::solana_idl::encode_anchor_ix_data(&idl, &ix.name, &args_pairs)?;
+
+            // Accounts: object mapping name -> pubkey
+            let accounts_obj = request.accounts.as_object().ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("accounts must be an object"),
+                data: Some(json!({"provided": request.accounts})),
+            })?;
+
+            let mut metas: Vec<solana_sdk::instruction::AccountMeta> = Vec::new();
+            for acc in ix.accounts.iter() {
+                let pk_s = accounts_obj
+                    .get(&acc.name)
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!(
+                            "Missing account pubkey for: {}",
+                            acc.name
+                        )),
+                        data: Some(json!({
+                            "missing": acc.name,
+                            "note": "Provide accounts as an object mapping IDL account name -> pubkey (base58)."
+                        })),
+                    })?;
+                let pk = Self::solana_parse_pubkey(pk_s.trim(), &format!("account {}", acc.name))?;
+                metas.push(if acc.is_mut {
+                    solana_sdk::instruction::AccountMeta::new(pk, acc.is_signer)
+                } else {
+                    solana_sdk::instruction::AccountMeta::new_readonly(pk, acc.is_signer)
+                });
+            }
+
+            // Build transaction (optionally signed)
+            let sign = request.sign.unwrap_or(true);
+            let kp_path = if sign {
+                Some(Self::solana_keypair_path()?)
+            } else {
+                None
+            };
+            let kp = if sign {
+                Some(Self::solana_read_keypair_from_json_file(
+                    kp_path.as_ref().unwrap(),
+                )?)
+            } else {
+                None
+            };
+
+            let fee_payer = if let Some(fp) = request.fee_payer.as_deref() {
+                Self::solana_parse_pubkey(fp.trim(), "fee_payer")?
+            } else if let Some(ref k) = kp {
+                solana_sdk::signature::Signer::pubkey(k)
+            } else {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(
+                        "fee_payer is required unless sign=true and SOLANA_KEYPAIR_PATH is set",
+                    ),
+                    data: None,
+                });
+            };
+
+            let recent_blockhash = if let Some(bh) = request.recent_blockhash.as_deref() {
+                solana_sdk::hash::Hash::from_str(bh.trim()).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid recent_blockhash: {}", e)),
+                    data: None,
+                })?
+            } else {
+                client
+                    .get_latest_blockhash()
+                    .await
+                    .map_err(|e| Self::sdk_error("solana_meteora_dlmm_build_tx", e))?
+            };
+
+            let mut ixs: Vec<solana_sdk::instruction::Instruction> = Vec::new();
+
+            if let Some(limit) = request.compute_unit_limit {
+                ixs.push(
+                    solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_limit(
+                        limit,
+                    ),
+                );
+            }
+            if let Some(price) = request.compute_unit_price_micro_lamports {
+                ixs.push(
+                    solana_compute_budget_interface::ComputeBudgetInstruction::set_compute_unit_price(
+                        price,
+                    ),
+                );
+            }
+
+            ixs.push(solana_sdk::instruction::Instruction {
+                program_id: Self::solana_parse_program_id(program_id)?,
+                accounts: metas.clone(),
+                data,
+            });
+
+            let message = solana_sdk::message::Message::new(&ixs, Some(&fee_payer));
+            let mut tx = solana_sdk::transaction::Transaction::new_unsigned(message);
+            tx.message.recent_blockhash = recent_blockhash;
+
+            if let Some(ref k) = kp {
+                tx.sign(&[k], recent_blockhash);
+            }
+
+            let tx_bytes = bincode::serialize(&tx)
+                .map_err(|e| Self::sdk_error("solana_meteora_dlmm_build_tx", e))?;
+            let tx_base64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+            let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+            let mut out = json!({
+                "ok": true,
+                "status": "built",
+                "network": network_str,
+                "rpc_url": rpc_url,
+                "program_id": program_id,
+                "instruction": ix.name,
+                "tx_summary_hash": hash,
+                "transaction_base64": tx_base64,
+                "note": if sign { "Transaction is signed (SOLANA_KEYPAIR_PATH)." } else { "Transaction is unsigned. You must sign it before broadcasting." }
+            });
+
+            if request.create_pending.unwrap_or(true) {
+                let created = crate::utils::solana_confirm_store::now_ms();
+                let ttl = request
+                    .confirm_ttl_ms
+                    .unwrap_or(10 * 60 * 1000)
+                    .min(15 * 60 * 1000);
+                let expires = created + ttl;
+
+                let id_seed = format!("{}:{}", created, hash);
+                let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+                let confirmation_id = format!("solana_meteora_dlmm_{}", &id_suffix[..16]);
+
+                let summary = json!({
+                    "tool": "solana_meteora_dlmm_build_tx",
+                    "program_id": program_id,
+                    "instruction": ix.name,
+                    "accounts": ix.accounts.iter().map(|a| json!({
+                        "name": a.name,
+                        "is_signer": a.is_signer,
+                        "is_writable": a.is_mut,
+                        "pubkey": accounts_obj.get(&a.name).and_then(|v| v.as_str())
+                    })).collect::<Vec<Value>>(),
+                    "args": args_obj,
+                    "tx_bytes_len": tx_bytes.len(),
+                    "note": "Pending confirmation created. Use solana_confirm_transaction to broadcast. Mainnet requires confirm_token."
+                });
+
+                crate::utils::solana_confirm_store::insert_pending(
+                    &confirmation_id,
+                    &tx_base64,
+                    created,
+                    expires,
+                    &hash,
+                    "solana_meteora_dlmm_build_tx",
+                    Some(summary.clone()),
+                )?;
+
+                let confirm = json!({
+                    "tool": "solana_confirm_transaction",
+                    "args": {
+                        "id": confirmation_id,
+                        "hash": hash,
+                        "network": network_str
+                    }
+                });
+
+                out["status"] = Value::String("pending".to_string());
+                out["pending_confirmation_id"] = Value::String(confirmation_id.clone());
+                out["expires_in_ms"] = Value::Number(ttl.into());
+                out["confirm"] = confirm;
+            }
+
+            let response = Self::pretty_json(&out)?;
+            Ok(CallToolResult::success(vec![Content::text(response)]))
+        }
+    }
+
     fn meteora_first_number(v: &Value, keys: &[&str]) -> Option<(f64, String)> {
         let obj = v.as_object()?;
         for k in keys {

@@ -69,6 +69,10 @@ Sui 7K Aggregator:
 Solana (off-chain APIs):
 - `SOLANA_METEORA_DLMM_API_BASE_URL` - Meteora DLMM API base URL (defaults to `https://dlmm-api.meteora.ag`)
 
+Solana (Meteora DLMM / IDL):
+- Program ID (mainnet): `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo`
+- Tools like `solana_meteora_dlmm_build_tx` are available when built with `--features solana-extended-tools`.
+
 EVM:
 - `EVM_DEFAULT_CHAIN_ID` - Default EVM chain id (defaults to Base Sepolia `84532`)
 - `EVM_RPC_URL_<chain_id>` - Override the RPC URL for an EVM chain (e.g. `EVM_RPC_URL_8453=https://mainnet.base.org`).

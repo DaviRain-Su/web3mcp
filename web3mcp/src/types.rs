@@ -1344,6 +1344,56 @@ pub struct SolanaTxBuildRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaMeteoraDlmmBuildTxRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(
+        description = "IDL instruction name (default: add_liquidity). This is intentionally low-level."
+    )]
+    pub instruction: Option<String>,
+
+    #[schemars(description = "Args object for the instruction (IDL field names -> values)")]
+    pub args: serde_json::Value,
+
+    #[schemars(
+        description = "Accounts object for the instruction (IDL account names -> pubkey base58)."
+    )]
+    pub accounts: serde_json::Value,
+
+    #[schemars(
+        description = "Fee payer pubkey (base58). If omitted and sign=true, uses SOLANA_KEYPAIR_PATH pubkey"
+    )]
+    pub fee_payer: Option<String>,
+
+    #[schemars(description = "Recent blockhash (base58). If omitted, fetched from RPC")]
+    pub recent_blockhash: Option<String>,
+
+    #[schemars(
+        description = "Optional compute unit limit to prepend via ComputeBudget program (setComputeUnitLimit)"
+    )]
+    pub compute_unit_limit: Option<u32>,
+
+    #[schemars(
+        description = "Optional compute unit price (micro-lamports) to prepend via ComputeBudget program (setComputeUnitPrice)"
+    )]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+
+    #[schemars(description = "Whether to sign with SOLANA_KEYPAIR_PATH (default true)")]
+    pub sign: Option<bool>,
+
+    #[schemars(
+        description = "If true (default), create a pending confirmation record and return pending_confirmation_id"
+    )]
+    pub create_pending: Option<bool>,
+
+    #[schemars(
+        description = "Pending confirmation TTL in ms (default 10 minutes, max 15 minutes)"
+    )]
+    pub confirm_ttl_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaBuildTransferRequest {
     #[schemars(
         description = "Network: mainnet|mainnet-beta|testnet|devnet (optional; default mainnet)"
