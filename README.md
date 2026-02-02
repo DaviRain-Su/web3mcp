@@ -54,14 +54,17 @@ Binary:
 ### Sui
 - "On Sui testnet (set `SUI_RPC_URL=https://fullnode.testnet.sui.io:443`), use `get_balance` for 0x..."
 - "On Sui testnet, use `get_owned_objects` for 0x..."
+- "(Mainnet demo, safe) Build a Sui transaction using a safe-default tool so it returns a pending confirmation, then show me how `sui_confirm_execution` requires `confirm_token` on mainnet. Do not send until I confirm." 
 
 ### Solana
 - "Use `solana_list_networks`, then on devnet use `solana_rpc_call` to getBalance for <base58_pubkey>."
 - "(No send) Load an IDL via `solana_idl_load`, then run `solana_idl_plan_instruction` and `solana_idl_simulate_instruction` for program <PROGRAM_ID> instruction <IX_NAME>."
+- "(Mainnet demo, safe) Create a transaction, call `solana_send_transaction` with `confirm=false`, then show me how `solana_confirm_transaction` requires `confirm_token` on mainnet. Do not broadcast until I confirm." 
 
 ### EVM
 - "Use `evm_list_rpc_defaults`, then on Base Sepolia (`chain_id=84532`) run `evm_get_balance` for 0x..."
 - "(No broadcast) On Base Sepolia, run `evm_build_transfer_native` then `evm_preflight` and show me the resulting tx summary."
+- "(Mainnet demo, safe) On Base mainnet (`chain_id=8453`), build+preflight a 0.000001 ETH transfer and show me the pending confirmation flow. Do not send until I confirm; then require `confirm_token` and use `evm_retry_pending_confirmation`."
 
 ## Docs
 
