@@ -83,3 +83,7 @@ Executor agent should enforce:
 - [ ] Executor uses strict 2-phase protocol
 - [ ] Pending-confirm is default
 - [ ] Logs are redacted
+
+## Rollout
+
+See `examples/acp/notes/rollout.md`.
