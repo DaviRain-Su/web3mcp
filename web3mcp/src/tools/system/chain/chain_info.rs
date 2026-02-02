@@ -95,6 +95,34 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "List supported Sui networks and their default RPC URLs.")]
+    async fn sui_list_networks(&self) -> Result<CallToolResult, ErrorData> {
+        let response = Self::pretty_json(&serde_json::json!({
+            "mainnet": {
+                "network": "mainnet",
+                "rpc_url": "https://fullnode.mainnet.sui.io:443",
+                "mainnet": true
+            },
+            "testnet": {
+                "network": "testnet",
+                "rpc_url": "https://fullnode.testnet.sui.io:443",
+                "mainnet": false
+            },
+            "devnet": {
+                "network": "devnet",
+                "rpc_url": "https://fullnode.devnet.sui.io:443",
+                "mainnet": false
+            },
+            "localnet": {
+                "network": "localnet",
+                "rpc_url": "http://127.0.0.1:9000",
+                "mainnet": false
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     /// Report currently configured server network context (Sui rpc_url + mainnet/testnet hints).
     #[tool(description = "Get server network context (Sui rpc_url and inferred network; plus Solana network notes).")]
     async fn system_network_context(&self) -> Result<CallToolResult, ErrorData> {
