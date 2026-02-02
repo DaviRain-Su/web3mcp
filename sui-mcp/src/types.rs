@@ -497,10 +497,22 @@ pub struct SolanaIdlSearchRequest {
 pub struct SolanaRpcCallRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
+
     #[schemars(description = "JSON-RPC method name (e.g. getBalance)")]
     pub method: String,
-    #[schemars(description = "JSON-RPC params array (optional; default [])")]
-    pub params: Option<Vec<serde_json::Value>>,
+
+    #[schemars(
+        description = "JSON-RPC params. Can be an array (standard) or an object (passed through as-is). Default: []."
+    )]
+    pub params: Option<serde_json::Value>,
+
+    #[schemars(description = "Optional JSON-RPC id (default 1)")]
+    pub id: Option<u64>,
+
+    #[schemars(
+        description = "If true (default), convert JSON-RPC 'error' responses into tool errors (-32000 style)"
+    )]
+    pub fail_on_rpc_error: Option<bool>,
 }
 
 

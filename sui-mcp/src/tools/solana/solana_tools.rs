@@ -292,10 +292,17 @@
             });
         }
 
-        let params = request.params.unwrap_or_default();
+        let id = request.id.unwrap_or(1);
+
+        // By default, JSON-RPC params should be an array. However, we accept an object and pass it
+        // through as-is to support edge cases / future methods.
+        let params = request
+            .params
+            .unwrap_or_else(|| Value::Array(Vec::new()));
+
         let body = json!({
             "jsonrpc": "2.0",
-            "id": 1,
+            "id": id,
             "method": method,
             "params": params
         });
@@ -313,12 +320,50 @@
             .await
             .map_err(|e| Self::sdk_error("solana_rpc_call", e))?;
 
-        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({"raw": text}));
+        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+
+        // Turn JSON-RPC error into a tool error by default, so the LLM doesn't have to pattern-match
+        // on {error:{...}}.
+        let fail_on_rpc_error = request.fail_on_rpc_error.unwrap_or(true);
+        if fail_on_rpc_error {
+            if let Some(err) = parsed.get("error") {
+                let code = err
+                    .get("code")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(-32000);
+                let message = err
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Solana JSON-RPC error")
+                    .to_string();
+                let data = err.get("data").cloned();
+
+                let code_i32: i32 = code
+                    .try_into()
+                    .unwrap_or(-32000);
+
+                return Err(ErrorData {
+                    code: ErrorCode(code_i32),
+                    message: Cow::from(message),
+                    data,
+                });
+            }
+        }
+
+        if !status.is_success() {
+            let status_code: i32 = i32::from(status.as_u16());
+            return Err(ErrorData {
+                code: ErrorCode(status_code),
+                message: Cow::from("HTTP error from Solana RPC"),
+                data: Some(json!({ "rpc_url": rpc_url, "status": status.as_u16(), "body": parsed })),
+            });
+        }
 
         let response = Self::pretty_json(&json!({
             "rpc_url": rpc_url,
             "network": network,
             "method": method,
+            "id": id,
             "status": status.as_u16(),
             "response": parsed
         }))?;
