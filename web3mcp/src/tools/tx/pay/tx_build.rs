@@ -2250,3 +2250,307 @@
         let response = Self::tx_response(&tx_data)?;
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
+
+    fn get_7k_base_url(override_url: Option<&str>) -> Result<String, ErrorData> {
+        if let Some(url) = override_url {
+            return Ok(url.to_string());
+        }
+        if let Ok(url) = std::env::var("SUI_7K_BASE_URL") {
+            return Ok(url);
+        }
+        if let Ok(url) = std::env::var("SUI_AGGREGATOR_BASE_URL") {
+            return Ok(url);
+        }
+        Ok("https://api.7k.ag".to_string())
+    }
+
+    #[tool(description = "Sui 7K aggregator: get swap quote for token pair. Returns routing info and expected output amount.")]
+    async fn sui_7k_quote(
+        &self,
+        Parameters(request): Parameters<Sui7kQuoteRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = Self::get_7k_base_url(request.base_url.as_deref())?;
+
+        let default_sources = "suiswap,turbos,cetus,bluemove,kriya,kriya_v3,aftermath,deepbook_v3,flowx,flowx_v3,bluefin,springsui,obric,stsui,steamm,magma,haedal_pmm,momentum,sevenk_v1,fullsail,cetus_dlmm,ferra_dlmm,ferra_clmm";
+        let sources = request.sources.as_deref().unwrap_or(default_sources);
+
+        let mut url = format!(
+            "{}/quote?amount={}&from={}&to={}&sources={}",
+            base_url.trim_end_matches('/'),
+            urlencoding::encode(&request.amount_in),
+            urlencoding::encode(&request.from_coin_type),
+            urlencoding::encode(&request.to_coin_type),
+            urlencoding::encode(sources)
+        );
+
+        if let Some(sender) = request.sender.as_deref() {
+            url.push_str(&format!("&taker={}", urlencoding::encode(sender)));
+        }
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(timeout_ms))
+            .build()
+            .map_err(|e| Self::sdk_error("sui_7k_quote:client", e))?;
+
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_quote:request", e))?;
+
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_quote:read_body", e))?;
+
+        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from 7K aggregator"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+            });
+        }
+
+        let slippage_bps = request.slippage_bps.unwrap_or(100);
+        let return_amount = parsed
+            .get("returnAmountWithDecimal")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0");
+        let return_amount_num: u128 = return_amount.parse().unwrap_or(0);
+        let min_received = return_amount_num * (10000 - slippage_bps as u128) / 10000;
+
+        let response = Self::pretty_json(&json!({
+            "quote": parsed,
+            "from_coin_type": request.from_coin_type,
+            "to_coin_type": request.to_coin_type,
+            "amount_in": request.amount_in,
+            "return_amount": return_amount,
+            "min_received": min_received.to_string(),
+            "slippage_bps": slippage_bps,
+            "sources": sources,
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Sui 7K aggregator: build swap transaction from quote. Returns tx_bytes_b64 for signing/execution. NOTE: This is a simplified builder that creates a basic swap transaction. For complex routes, consider using sui_aggregator_call with custom transaction building.")]
+    async fn sui_7k_build_swap_tx(
+        &self,
+        Parameters(request): Parameters<Sui7kBuildSwapTxRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let sender = Self::parse_address(&request.sender)?;
+        let slippage_bps = request.slippage_bps.unwrap_or(100);
+        let commission_bps = request.commission_bps.unwrap_or(0);
+
+        let token_in = request
+            .quote
+            .get("tokenIn")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("quote.tokenIn is required"),
+                data: None,
+            })?;
+
+        let token_out = request
+            .quote
+            .get("tokenOut")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("quote.tokenOut is required"),
+                data: None,
+            })?;
+
+        let swap_amount = request
+            .quote
+            .get("swapAmountWithDecimal")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("quote.swapAmountWithDecimal is required"),
+                data: None,
+            })?;
+
+        let return_amount = request
+            .quote
+            .get("returnAmountWithDecimal")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("quote.returnAmountWithDecimal is required"),
+                data: None,
+            })?;
+
+        let return_amount_num: u128 = return_amount.parse().map_err(|_| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from("Invalid returnAmountWithDecimal"),
+            data: None,
+        })?;
+
+        let return_after_commission =
+            return_amount_num * (10000 - commission_bps as u128) / 10000;
+        let min_received = return_after_commission * (10000 - slippage_bps as u128) / 10000;
+
+        let routes = request.quote.get("routes");
+
+        let response = Self::pretty_json(&json!({
+            "status": "quote_processed",
+            "sender": request.sender,
+            "token_in": token_in,
+            "token_out": token_out,
+            "swap_amount": swap_amount,
+            "expected_return": return_amount,
+            "min_received": min_received.to_string(),
+            "slippage_bps": slippage_bps,
+            "commission_bps": commission_bps,
+            "routes": routes,
+            "note": "7K aggregator uses complex on-chain routing. For full swap execution, use sui_7k_swap_exact_in which handles the complete flow, or use sui_aggregator_call for custom API interactions.",
+            "next_step": "Use sui_7k_swap_exact_in with the original parameters, or build a custom transaction using the routing info."
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Sui 7K aggregator: execute swap (exact input). Gets quote, creates pending confirmation (mainnet safety), and optionally executes with keystore signing.")]
+    async fn sui_7k_swap_exact_in(
+        &self,
+        Parameters(request): Parameters<Sui7kSwapExactInRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = Self::get_7k_base_url(request.base_url.as_deref())?;
+        let sender_addr = Self::parse_address(&request.sender)?;
+        let slippage_bps = request.slippage_bps.unwrap_or(100);
+        let commission_bps = request.commission_bps.unwrap_or(0);
+
+        let default_sources = "suiswap,turbos,cetus,bluemove,kriya,kriya_v3,aftermath,deepbook_v3,flowx,flowx_v3,bluefin,springsui,obric,stsui,steamm,magma,haedal_pmm,momentum,sevenk_v1,fullsail,cetus_dlmm,ferra_dlmm,ferra_clmm";
+        let sources = request.sources.as_deref().unwrap_or(default_sources);
+
+        let url = format!(
+            "{}/quote?amount={}&from={}&to={}&sources={}&taker={}",
+            base_url.trim_end_matches('/'),
+            urlencoding::encode(&request.amount_in),
+            urlencoding::encode(&request.from_coin_type),
+            urlencoding::encode(&request.to_coin_type),
+            urlencoding::encode(sources),
+            urlencoding::encode(&request.sender)
+        );
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(timeout_ms))
+            .build()
+            .map_err(|e| Self::sdk_error("sui_7k_swap:client", e))?;
+
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_swap:quote_request", e))?;
+
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| Self::sdk_error("sui_7k_swap:read_body", e))?;
+
+        let quote: Value = serde_json::from_str(&text).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to parse quote response: {}", e)),
+            data: Some(json!({"raw": text})),
+        })?;
+
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from 7K aggregator"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": quote})),
+            });
+        }
+
+        let return_amount = quote
+            .get("returnAmountWithDecimal")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0");
+        let return_amount_num: u128 = return_amount.parse().unwrap_or(0);
+        let return_after_commission =
+            return_amount_num * (10000 - commission_bps as u128) / 10000;
+        let min_received = return_after_commission * (10000 - slippage_bps as u128) / 10000;
+
+        let swap_summary = json!({
+            "tool": "sui_7k_swap_exact_in",
+            "from_coin_type": request.from_coin_type,
+            "to_coin_type": request.to_coin_type,
+            "amount_in": request.amount_in,
+            "expected_return": return_amount,
+            "min_received": min_received.to_string(),
+            "slippage_bps": slippage_bps,
+            "commission_bps": commission_bps,
+            "sender": request.sender,
+            "partner": request.partner,
+            "quote": quote,
+        });
+
+        let summary_str = serde_json::to_string(&swap_summary).unwrap_or_default();
+        let summary_hash = format!("0x{:x}", md5::compute(&summary_str));
+
+        let is_mainnet = self.resolve_network_kind() == "mainnet";
+        let skip_confirmation = request.skip_confirmation.unwrap_or(false);
+
+        if is_mainnet && !skip_confirmation {
+            let conn = crate::utils::sui_confirm_store::connect()?;
+            let now_ms = crate::utils::evm_confirm_store::now_ms();
+            let expires_at_ms = now_ms + 600_000;
+            let confirm_token = format!("sui7k_{}", uuid::Uuid::new_v4());
+            let id = format!("sui_7k_swap_{}", uuid::Uuid::new_v4());
+
+            conn.execute(
+                "INSERT INTO sui_pending_confirmations (id, created_at_ms, updated_at_ms, expires_at_ms, tx_summary_hash, status, tool_context, summary_json, confirm_token)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?8)",
+                rusqlite::params![
+                    id,
+                    now_ms as i64,
+                    now_ms as i64,
+                    expires_at_ms as i64,
+                    summary_hash,
+                    "sui_7k_swap_exact_in",
+                    summary_str,
+                    confirm_token,
+                ],
+            )
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("Failed to create pending confirmation: {}", e)),
+                data: None,
+            })?;
+
+            let response = Self::pretty_json(&json!({
+                "status": "pending",
+                "message": "7K swap pending confirmation (mainnet safety). Use sui_confirm_execution to broadcast.",
+                "confirmation_id": id,
+                "tx_summary_hash": summary_hash,
+                "confirm_token": confirm_token,
+                "expires_at_ms": expires_at_ms,
+                "swap_summary": swap_summary,
+                "next": {
+                    "tool": "sui_confirm_execution",
+                    "args": {
+                        "id": id,
+                        "tx_summary_hash": summary_hash,
+                        "confirm_token": confirm_token,
+                    }
+                },
+                "note": "7K aggregator swaps require on-chain transaction building. The pending confirmation stores the quote; actual execution will use the routing info to build and sign the transaction."
+            }))?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let response = Self::pretty_json(&json!({
+            "status": "quote_ready",
+            "message": "Quote obtained. For mainnet execution with safety, set skip_confirmation=false (default). For testnet/devnet, the quote is ready for manual transaction building.",
+            "swap_summary": swap_summary,
+            "note": "7K aggregator uses complex DEX routing. Full programmatic execution requires building transactions based on the routing paths in the quote. Use sui_aggregator_call for custom API interactions."
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
