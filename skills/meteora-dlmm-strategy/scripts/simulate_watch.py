@@ -23,6 +23,8 @@ import os
 import time
 from typing import Any, Dict, Optional, Tuple, List
 
+TOKEN_LIST_DEFAULT_URL = "https://token.jup.ag/all"
+
 try:
     import requests  # type: ignore
 except Exception:
@@ -70,12 +72,17 @@ def http_get_json(url: str, timeout_s: int = 15) -> Any:
 
 def load_state(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
-        return {"last_alert_ms": {}}
+        return {"last_alert_ms": {}, "token_cache": {}}
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            s = json.load(f)
+            if "last_alert_ms" not in s:
+                s["last_alert_ms"] = {}
+            if "token_cache" not in s:
+                s["token_cache"] = {}
+            return s
     except Exception:
-        return {"last_alert_ms": {}}
+        return {"last_alert_ms": {}, "token_cache": {}}
 
 
 def save_state(path: str, state: Dict[str, Any]) -> None:
@@ -85,6 +92,45 @@ def save_state(path: str, state: Dict[str, Any]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
 
+
+def resolve_token_map(
+    state: Dict[str, Any],
+    token_list_url: str,
+    token_cache_ttl_ms: int,
+    timeout_s: int = 15,
+) -> Dict[str, Dict[str, str]]:
+    """Return mapping mint-> {symbol,name}. Cached in state."""
+
+    cache = state.get("token_cache") or {}
+    cached_at = int(cache.get("fetched_at_ms", 0) or 0)
+    by_mint = cache.get("by_mint")
+
+    if isinstance(by_mint, dict) and now_ms() - cached_at < token_cache_ttl_ms:
+        return by_mint
+
+    try:
+        data = http_get_json(token_list_url, timeout_s=timeout_s)
+        if isinstance(data, list):
+            m: Dict[str, Dict[str, str]] = {}
+            for t in data:
+                if not isinstance(t, dict):
+                    continue
+                addr = t.get("address")
+                sym = t.get("symbol")
+                name = t.get("name")
+                if isinstance(addr, str) and addr and isinstance(sym, str) and sym:
+                    m[addr] = {"symbol": sym, "name": name if isinstance(name, str) else sym}
+            state["token_cache"] = {
+                "fetched_at_ms": now_ms(),
+                "url": token_list_url,
+                "by_mint": m,
+            }
+            return m
+    except Exception:
+        pass
+
+    # fallback: no map
+    return {}
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -101,12 +147,24 @@ def main() -> int:
         action="store_true",
         help="include the full ranked top-N list (with mint_x/mint_y) in JSON output",
     )
+    ap.add_argument(
+        "--token-list-url",
+        default=TOKEN_LIST_DEFAULT_URL,
+        help="token list URL (mint->symbol/name), default: https://token.jup.ag/all",
+    )
+    ap.add_argument(
+        "--token-cache-ttl-min",
+        type=int,
+        default=720,
+        help="token list cache TTL (minutes), default 720 (12h)",
+    )
     args = ap.parse_args()
 
     top_n = args.top_n if args.top_n else args.limit
 
     url = args.base_url.rstrip("/") + "/pair/all"
-    pairs = http_get_json(url)
+    # /pair/all can be large; allow longer timeout than default
+    pairs = http_get_json(url, timeout_s=45)
     if not isinstance(pairs, list):
         raise SystemExit(f"Unexpected /pair/all response (expected array), got: {type(pairs)}")
 
@@ -174,6 +232,9 @@ def main() -> int:
     state = load_state(args.state)
     last_alert_ms = state.get("last_alert_ms", {})
 
+    token_cache_ttl_ms = args.token_cache_ttl_min * 60 * 1000
+    token_map = resolve_token_map(state, args.token_list_url, token_cache_ttl_ms)
+
     cooldown_ms = args.cooldown_min * 60 * 1000
     min_tvl = float(args.min_tvl)
 
@@ -208,10 +269,22 @@ def main() -> int:
         if isinstance(fee, (int, float)) and tvl > 0:
             est_fee_share = float(fee) * (float(args.invest_usd) / float(tvl))
 
+        mx = r.get("mint_x")
+        my = r.get("mint_y")
+        mx_sym = token_map.get(mx, {}).get("symbol") if isinstance(mx, str) else None
+        my_sym = token_map.get(my, {}).get("symbol") if isinstance(my, str) else None
+
+        pair_label = None
+        if mx_sym and my_sym:
+            pair_label = f"{mx_sym}/{my_sym}"
+
         alerts.append({
             "pair_address": addr,
-            "mint_x": r.get("mint_x"),
-            "mint_y": r.get("mint_y"),
+            "mint_x": mx,
+            "mint_y": my,
+            "mint_x_symbol": mx_sym,
+            "mint_y_symbol": my_sym,
+            "pair_label": pair_label,
             "fee_24h": fee,
             "volume_24h": vol,
             "tvl": tvl,
@@ -249,6 +322,8 @@ def main() -> int:
     else:
         print(f"Meteora DLMM watch: top_n={top_n}, min_tvl={min_tvl:.0f}, cooldown={args.cooldown_min}min, invest_usd={args.invest_usd:.0f}")
         print(f"Detected fields: fee={diag['fee']} volume={diag['volume']} tvl={diag['tvl']} addr={diag['addr']} mX={diag['mint_x']} mY={diag['mint_y']}")
+        if state.get('token_cache', {}).get('url'):
+            print(f"Token list: {state.get('token_cache', {}).get('url')} (cached)")
         if not alerts:
             print("No alerts.")
         else:
