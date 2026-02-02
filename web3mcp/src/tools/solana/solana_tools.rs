@@ -5628,19 +5628,26 @@
 
         let pending = crate::utils::solana_confirm_store::get_pending(&request.id)?;
         if pending.tx_summary_hash != request.hash {
-            return Err(Self::structured_error(
-                "Hash mismatch for confirmation id",
+            return Self::guard_result(
                 "solana_confirm_transaction",
                 "TX_SUMMARY_HASH_MISMATCH",
+                "Hash mismatch for confirmation id",
                 false,
                 Some("Use the tx_summary_hash returned by solana_send_transaction for this confirmation id"),
-                None,
                 Some(json!({
-                    "id": request.id,
+                    "tool": "solana_confirm_transaction",
+                    "args": {
+                        "id": request.id.clone(),
+                        "hash": pending.tx_summary_hash.clone(),
+                        "confirm_token": request.confirm_token.clone(),
+                        "network": request.network.clone()
+                    }
+                })),
+                Some(json!({
                     "expected": pending.tx_summary_hash,
                     "provided": request.hash
                 })),
-            ));
+            );
         }
 
         let network = request

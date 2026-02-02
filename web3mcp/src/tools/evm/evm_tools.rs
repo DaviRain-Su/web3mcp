@@ -656,13 +656,20 @@
         }
 
         if row.tx_summary_hash.to_lowercase() != provided_hash {
-            return Err(Self::structured_error(
-                "tx_summary_hash mismatch",
+            return Self::guard_result(
                 "evm_retry_pending_confirmation",
                 "TX_SUMMARY_HASH_MISMATCH",
+                "tx_summary_hash mismatch",
                 false,
-                Some("Rebuild the transaction and retry with the new tx_summary_hash"),
-                None,
+                Some("Use the tx_summary_hash from the pending confirmation record (it may change after preflight); then retry"),
+                Some(json!({
+                    "tool": "evm_retry_pending_confirmation",
+                    "args": {
+                        "id": row.id,
+                        "tx_summary_hash": row.tx_summary_hash,
+                        "confirm_token": request.confirm_token.clone()
+                    }
+                })),
                 Some(json!({
                     "confirmation_id": row.id,
                     "chain_id": row.chain_id,
@@ -671,7 +678,7 @@
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
                 })),
-            ));
+            );
         }
 
         // Only allow retry when status is pending/failed/consumed.

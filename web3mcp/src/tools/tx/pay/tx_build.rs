@@ -1511,18 +1511,31 @@
         }
 
         if row.tx_summary_hash != request.tx_summary_hash {
-            return Err(Self::structured_error(
-                "tx_summary_hash mismatch; rebuild and confirm again",
+            return Self::guard_result(
                 "sui_confirm_execution",
                 "TX_SUMMARY_HASH_MISMATCH",
+                "tx_summary_hash mismatch; rebuild and confirm again",
                 false,
-                Some("Rebuild the transaction and create a new pending confirmation"),
-                None,
+                Some("Use the tx_summary_hash from the pending confirmation record (or rebuild to create a new confirmation)"),
+                Some(json!({
+                    "tool": "sui_confirm_execution",
+                    "args": {
+                        "id": request.id.clone(),
+                        "tx_summary_hash": row.tx_summary_hash.clone(),
+                        "confirm_token": request.confirm_token.clone(),
+                        "keystore_path": request.keystore_path.clone(),
+                        "signer": request.signer.clone(),
+                        "allow_sender_mismatch": request.allow_sender_mismatch,
+                        "preflight": request.preflight,
+                        "allow_preflight_failure": request.allow_preflight_failure
+                    }
+                })),
                 Some(json!({
                     "expected": row.tx_summary_hash,
                     "provided": request.tx_summary_hash,
+                    "confirmation_id": row.id
                 })),
-            ));
+            );
         }
 
         // Mainnet safety: require confirm_token.
@@ -1848,18 +1861,26 @@
         };
 
         if row.tx_summary_hash != request.tx_summary_hash {
-            return Err(Self::structured_error(
-                "tx_summary_hash mismatch; rebuild and confirm again",
+            return Self::guard_result(
                 "sui_retry_pending_confirmation",
                 "TX_SUMMARY_HASH_MISMATCH",
+                "tx_summary_hash mismatch; rebuild and confirm again",
                 false,
-                Some("Rebuild the transaction and create a new pending confirmation"),
-                None,
+                Some("Use the tx_summary_hash from the pending confirmation record (or rebuild to create a new confirmation)"),
+                Some(json!({
+                    "tool": "sui_retry_pending_confirmation",
+                    "args": {
+                        "id": request.id.clone(),
+                        "tx_summary_hash": row.tx_summary_hash.clone(),
+                        "confirm_token": request.confirm_token.clone()
+                    }
+                })),
                 Some(json!({
                     "expected": row.tx_summary_hash,
                     "provided": request.tx_summary_hash,
+                    "confirmation_id": row.id
                 })),
-            ));
+            );
         }
 
         // Mainnet safety: require confirm_token.
