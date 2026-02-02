@@ -1473,17 +1473,22 @@
             crate::utils::evm_confirm_store::now_ms(),
         )?;
 
-        let row = crate::utils::sui_confirm_store::get_row(&conn, &request.id)?.ok_or_else(|| {
-            Self::structured_error(
-                "Unknown or expired confirmation_id",
-                "sui_confirm_execution",
-                "UNKNOWN_CONFIRMATION_ID",
-                false,
-                Some("Re-run the build step to create a new pending confirmation"),
-                None,
-                Some(json!({"id": request.id})),
-            )
-        })?;
+        let row = match crate::utils::sui_confirm_store::get_row(&conn, &request.id)? {
+            Some(r) => r,
+            None => {
+                return Self::guard_result(
+                    "sui_confirm_execution",
+                    "UNKNOWN_CONFIRMATION_ID",
+                    "Unknown or expired confirmation_id",
+                    false,
+                    Some("Re-run the build step to create a new pending confirmation"),
+                    Some(json!({
+                        "next": "Re-run your build tool with confirm=false (or sui_create_pending_confirmation) to get a new confirmation_id"
+                    })),
+                    Some(json!({"id": request.id})),
+                );
+            }
+        };
 
         if row.status != "pending" {
             return Err(ErrorData {
@@ -1825,17 +1830,22 @@
             crate::utils::evm_confirm_store::now_ms(),
         )?;
 
-        let row = crate::utils::sui_confirm_store::get_row(&conn, request.id.trim())?.ok_or_else(|| {
-            Self::structured_error(
-                "Unknown or expired confirmation_id",
-                "sui_retry_pending_confirmation",
-                "UNKNOWN_CONFIRMATION_ID",
-                false,
-                Some("Re-run the build step to create a new pending confirmation"),
-                None,
-                Some(json!({"id": request.id})),
-            )
-        })?;
+        let row = match crate::utils::sui_confirm_store::get_row(&conn, request.id.trim())? {
+            Some(r) => r,
+            None => {
+                return Self::guard_result(
+                    "sui_retry_pending_confirmation",
+                    "UNKNOWN_CONFIRMATION_ID",
+                    "Unknown or expired confirmation_id",
+                    false,
+                    Some("Re-run the build step to create a new pending confirmation"),
+                    Some(json!({
+                        "next": "Re-run your build tool with confirm=false (or sui_create_pending_confirmation) to get a new confirmation_id"
+                    })),
+                    Some(json!({"id": request.id})),
+                );
+            }
+        };
 
         if row.tx_summary_hash != request.tx_summary_hash {
             return Err(Self::structured_error(
@@ -1886,13 +1896,15 @@
 
         let allowed = ["pending", "failed", "consumed"];
         if !allowed.contains(&row.status.as_str()) {
-            return Err(Self::structured_error(
-                "Cannot retry this status",
+            return Self::guard_result(
                 "sui_retry_pending_confirmation",
                 "UNSUPPORTED_STATUS",
+                "Cannot retry this status",
                 false,
                 Some("Create a new pending confirmation (rebuild) instead of retrying"),
-                None,
+                Some(json!({
+                    "next": "Rebuild and create a new pending confirmation_id"
+                })),
                 Some(json!({
                     "status": row.status,
                     "digest": row.digest,
@@ -1903,7 +1915,7 @@
                         .as_deref()
                         .and_then(|s| serde_json::from_str::<Value>(s).ok()),
                 })),
-            ));
+            );
         }
 
         // Reset to pending before retry.

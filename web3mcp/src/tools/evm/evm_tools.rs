@@ -635,13 +635,15 @@
         }
 
         if crate::utils::evm_confirm_store::now_ms() > row.expires_at_ms {
-            return Err(Self::structured_error(
-                "Pending confirmation expired; re-run dry-run.",
+            return Self::guard_result(
                 "evm_retry_pending_confirmation",
                 "PENDING_EXPIRED",
+                "Pending confirmation expired; re-run dry-run.",
                 false,
                 Some("Rebuild the transaction and create a new pending confirmation"),
-                None,
+                Some(json!({
+                    "next": "Re-run the build tool (or create pending confirmation) to get a fresh confirmation_id"
+                })),
                 Some(json!({
                     "confirmation_id": row.id,
                     "chain_id": row.chain_id,
@@ -650,7 +652,7 @@
                     "tool_context": tool_context,
                     "status": row.status,
                 })),
-            ));
+            );
         }
 
         if row.tx_summary_hash.to_lowercase() != provided_hash {
