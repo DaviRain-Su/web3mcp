@@ -70,6 +70,14 @@ EVM:
 Tip:
 - Use the tool `evm_list_rpc_defaults` to see which chain IDs have built-in defaults.
 
+## Mainnet safety (Solana / Sui / EVM)
+
+For **mainnet** transactions, the server enforces a stricter workflow:
+- Tools that would broadcast a tx will return a **pending confirmation** instead.
+- Broadcasting requires a second step with an explicit `confirm_token`.
+
+This is designed to reduce accidental mainnet sends.
+
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
 
 Sui:

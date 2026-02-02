@@ -201,7 +201,7 @@
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
-                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                    "how_to_confirm": if self.sui_is_mainnet_rpc_url() { let t = crate::utils::sui_confirm_store::make_confirm_token(&confirmation_id, &hash); format!("sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>", confirmation_id, hash, t) } else { format!("sui_confirm_execution id:{} tx_summary_hash:{} keystore_path:<path>", confirmation_id, hash) }
                 }
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -313,7 +313,7 @@
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
-                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                    "how_to_confirm": if self.sui_is_mainnet_rpc_url() { let t = crate::utils::sui_confirm_store::make_confirm_token(&confirmation_id, &hash); format!("sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>", confirmation_id, hash, t) } else { format!("sui_confirm_execution id:{} tx_summary_hash:{} keystore_path:<path>", confirmation_id, hash) }
                 }
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -423,7 +423,7 @@
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
-                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                    "how_to_confirm": if self.sui_is_mainnet_rpc_url() { let t = crate::utils::sui_confirm_store::make_confirm_token(&confirmation_id, &hash); format!("sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>", confirmation_id, hash, t) } else { format!("sui_confirm_execution id:{} tx_summary_hash:{} keystore_path:<path>", confirmation_id, hash) }
                 }
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -529,7 +529,7 @@
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
-                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                    "how_to_confirm": if self.sui_is_mainnet_rpc_url() { let t = crate::utils::sui_confirm_store::make_confirm_token(&confirmation_id, &hash); format!("sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>", confirmation_id, hash, t) } else { format!("sui_confirm_execution id:{} tx_summary_hash:{} keystore_path:<path>", confirmation_id, hash) }
                 }
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -1346,7 +1346,7 @@
                 "expires_in_ms": ttl,
                 "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (requires keystore_path).",
                 "next": {
-                    "how_to_confirm": format!("sui_confirm_execution id:{} hash:{} keystore_path:<path>", confirmation_id, hash)
+                    "how_to_confirm": if self.sui_is_mainnet_rpc_url() { let t = crate::utils::sui_confirm_store::make_confirm_token(&confirmation_id, &hash); format!("sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>", confirmation_id, hash, t) } else { format!("sui_confirm_execution id:{} tx_summary_hash:{} keystore_path:<path>", confirmation_id, hash) }
                 }
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -1387,6 +1387,11 @@
             }),
         );
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    fn sui_is_mainnet_rpc_url(&self) -> bool {
+        let url = self.rpc_url.to_lowercase();
+        url.contains("mainnet") && !url.contains("testnet") && !url.contains("devnet")
     }
 
     /// Confirm and execute a previously prepared Sui transaction.
@@ -1438,6 +1443,29 @@
                     "provided": request.tx_summary_hash,
                 })),
             });
+        }
+
+        // Mainnet safety: require confirm_token.
+        if self.sui_is_mainnet_rpc_url() {
+            let expected = crate::utils::sui_confirm_store::make_confirm_token(
+                &request.id,
+                &request.tx_summary_hash,
+            );
+            if request.confirm_token.as_deref() != Some(expected.as_str()) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Mainnet confirmation requires confirm_token"),
+                    data: Some(json!({
+                        "id": request.id,
+                        "tx_summary_hash": request.tx_summary_hash,
+                        "expected_confirm_token": expected,
+                        "how_to_confirm": format!(
+                            "sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>",
+                            request.id, request.tx_summary_hash, expected
+                        )
+                    })),
+                });
+            }
         }
 
         let tx_bytes = Self::decode_base64("tx_bytes", &row.tx_bytes_b64)?;
@@ -1729,6 +1757,29 @@
                     "provided": request.tx_summary_hash,
                 })),
             });
+        }
+
+        // Mainnet safety: require confirm_token.
+        if self.sui_is_mainnet_rpc_url() {
+            let expected = crate::utils::sui_confirm_store::make_confirm_token(
+                request.id.trim(),
+                request.tx_summary_hash.trim(),
+            );
+            if request.confirm_token.as_deref() != Some(expected.as_str()) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Mainnet retry requires confirm_token"),
+                    data: Some(json!({
+                        "id": request.id,
+                        "tx_summary_hash": request.tx_summary_hash,
+                        "expected_confirm_token": expected,
+                        "how_to_retry": format!(
+                            "sui_retry_pending_confirmation id:{} tx_summary_hash:{} confirm_token:{}",
+                            request.id, request.tx_summary_hash, expected
+                        )
+                    })),
+                });
+            }
         }
 
         let allowed = ["pending", "failed", "consumed"];

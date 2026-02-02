@@ -36,6 +36,13 @@ pub fn default_ttl_ms() -> u128 {
     10 * 60 * 1000
 }
 
+pub fn make_confirm_token(id: &str, tx_summary_hash: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let msg = format!("sui:{}:{}", id, tx_summary_hash);
+    let h = Sha256::digest(msg.as_bytes());
+    format!("0x{}", hex::encode(h))
+}
+
 fn pending_db_path_from_cwd() -> Result<std::path::PathBuf, ErrorData> {
     let cwd = std::env::current_dir().map_err(|e| ErrorData {
         code: ErrorCode(-32603),

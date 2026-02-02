@@ -1114,6 +1114,10 @@ pub struct SolanaConfirmTransactionRequest {
     #[schemars(description = "tx_summary_hash returned by solana_send_transaction")]
     pub hash: String,
     #[schemars(
+        description = "Second-step confirmation token required on mainnet (returned by solana_send_transaction when pending)"
+    )]
+    pub confirm_token: Option<String>,
+    #[schemars(
         description = "Network override: mainnet|devnet|testnet (optional; default from stored request context if available; otherwise mainnet)"
     )]
     pub network: Option<String>,
@@ -1943,6 +1947,8 @@ pub struct SuiConfirmExecutionRequest {
     pub id: String,
     #[schemars(description = "Tx summary hash (0x...) to prevent stale/changed tx")]
     pub tx_summary_hash: String,
+    #[schemars(description = "Second-step confirmation token required on mainnet")]
+    pub confirm_token: Option<String>,
     #[schemars(
         description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
     )]
@@ -1981,6 +1987,8 @@ pub struct SuiRetryPendingConfirmationRequest {
     pub id: String,
     #[schemars(description = "Tx summary hash (0x...) to prevent stale/changed tx")]
     pub tx_summary_hash: String,
+    #[schemars(description = "Second-step confirmation token required on mainnet")]
+    pub confirm_token: Option<String>,
     #[schemars(
         description = "Optional keystore path (defaults to SUI_KEYSTORE_PATH or ~/.sui/sui_config/sui.keystore)"
     )]

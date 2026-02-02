@@ -133,6 +133,13 @@ pub fn tx_summary_hash(tx_bytes: &[u8]) -> String {
     hex::encode(h)
 }
 
+pub fn make_confirm_token(id: &str, tx_summary_hash: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let msg = format!("solana:{}:{}", id, tx_summary_hash);
+    let h = Sha256::digest(msg.as_bytes());
+    format!("0x{}", hex::encode(h))
+}
+
 pub fn cleanup_expired() -> Result<usize, ErrorData> {
     let mut store = read_store()?;
     let now = now_ms();

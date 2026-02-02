@@ -5115,6 +5115,15 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    fn solana_is_mainnet_network(network: Option<&str>) -> bool {
+        match network.map(|s| s.trim().to_lowercase()) {
+            None => true, // default is mainnet
+            Some(s) if s.is_empty() => true,
+            Some(s) if s == "mainnet" || s == "mainnet-beta" => true,
+            _ => false,
+        }
+    }
+
     #[tool(description = "Solana: send a transaction (safe default: creates pending confirmation unless confirm=true)")]
     async fn solana_send_transaction(
         &self,
@@ -5132,6 +5141,68 @@
             })?;
 
         let hash = crate::utils::solana_confirm_store::tx_summary_hash(&tx_bytes);
+
+        // Mainnet safety: even if confirm=true, do not directly broadcast from this tool.
+        // Instead, create a pending confirmation and require a second-step confirm_token.
+        if request.confirm.unwrap_or(false) && Self::solana_is_mainnet_network(network) {
+            // Force safe default path.
+            let created = crate::utils::solana_confirm_store::now_ms();
+            let ttl = crate::utils::solana_confirm_store::default_ttl_ms();
+            let expires = created + ttl;
+
+            let id_seed = format!("{}:{}", created, hash);
+            let id_suffix = crate::utils::solana_confirm_store::tx_summary_hash(id_seed.as_bytes());
+            let confirmation_id = format!("solana_confirm_{}", &id_suffix[..16]);
+
+            let summary = json!({
+                "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                "rpc_url": rpc_url,
+                "tx_bytes_len": tx_bytes.len(),
+            });
+
+            crate::utils::solana_confirm_store::insert_pending(
+                &confirmation_id,
+                request.transaction_base64.trim(),
+                created,
+                expires,
+                &hash,
+                "solana_send_transaction",
+                Some(summary.clone()),
+            )?;
+
+            let token = crate::utils::solana_confirm_store::make_confirm_token(&confirmation_id, &hash);
+
+            let response = Self::pretty_json(&json!({
+                "ok": true,
+                "stage": "send",
+                "status": "pending",
+                "rpc_url": rpc_url,
+                "network": request.network.clone().unwrap_or("mainnet".to_string()),
+                "pending_confirmation_id": confirmation_id,
+                "tx_summary_hash": hash,
+                "confirm_token": token,
+                "summary": summary,
+                "expires_in_ms": ttl,
+                "note": "Mainnet tx created. Broadcast requires explicit solana_confirm_transaction with confirm_token.",
+                "next": {
+                    "confirm": {
+                        "tool": "solana_confirm_transaction",
+                        "args": {
+                            "id": confirmation_id,
+                            "hash": hash,
+                            "confirm_token": token,
+                            "commitment": request.commitment.clone().unwrap_or("confirmed".to_string())
+                        }
+                    },
+                    "how_to_confirm": format!(
+                        "solana_confirm_transaction id:{} hash:{} confirm_token:{}",
+                        confirmation_id, hash, token
+                    )
+                }
+            }))?;
+
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
 
         if request.confirm.unwrap_or(false) && !request.allow_direct_send.unwrap_or(false) {
             return Err(ErrorData {
@@ -5402,6 +5473,23 @@
             .clone()
             .or_else(|| pending.summary.as_ref().and_then(|v| v.get("network").and_then(|x| x.as_str()).map(|s| s.to_string())))
             .unwrap_or("mainnet".to_string());
+
+        // Mainnet safety: require a confirm_token.
+        if Self::solana_is_mainnet_network(Some(&network)) {
+            let expected = crate::utils::solana_confirm_store::make_confirm_token(&request.id, &request.hash);
+            if request.confirm_token.as_deref() != Some(expected.as_str()) {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("Mainnet confirmation requires confirm_token"),
+                    data: Some(json!({
+                        "id": request.id,
+                        "tx_summary_hash": request.hash,
+                        "expected_confirm_token": expected,
+                        "how_to_confirm": format!("solana_confirm_transaction id:{} hash:{} confirm_token:{}", request.id, request.hash, expected)
+                    })),
+                });
+            }
+        }
 
         let rpc_url = Self::solana_rpc_url_for_network(Some(&network))?;
         let client = Self::solana_rpc(Some(&network))?;
