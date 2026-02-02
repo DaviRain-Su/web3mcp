@@ -78,6 +78,28 @@ pub struct EvmGetBalanceRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetNativeBalanceRequest {
+    #[schemars(description = "EVM address (0x...) to query")]
+    pub address: String,
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmGetErc20BalanceRequest {
+    #[schemars(description = "EVM address (0x...) to query")]
+    pub address: String,
+    #[schemars(description = "ERC20 token contract address")]
+    pub token_address: String,
+    #[schemars(
+        description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"
+    )]
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmGetGasPriceRequest {
     #[schemars(
         description = "Optional chain id (default: EVM_DEFAULT_CHAIN_ID or Base Sepolia 84532)"

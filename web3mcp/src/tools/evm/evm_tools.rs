@@ -2020,6 +2020,80 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM: get native token balance (wei) for an address")]
+    async fn evm_get_native_balance(
+        &self,
+        Parameters(request): Parameters<EvmGetNativeBalanceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+        let address = Self::parse_evm_address(&request.address)?;
+
+        let bal = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_balance(
+            &provider,
+            address,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_get_native_balance", e))?;
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "address": request.address,
+            "balance_wei": bal.to_string()
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: get ERC20 token balance for an address (raw base units)")]
+    async fn evm_get_erc20_balance(
+        &self,
+        Parameters(request): Parameters<EvmGetErc20BalanceRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+        let owner = Self::parse_evm_address(&request.address)?;
+        let token = Self::parse_evm_address(&request.token_address)?;
+
+        let data = Self::encode_erc20_call(
+            "balanceOf(address)",
+            vec![ethers::abi::Token::Address(owner)],
+        );
+
+        let call = ethers::types::TransactionRequest {
+            to: Some(ethers::types::NameOrAddress::Address(token)),
+            data: Some(data),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call.into();
+
+        let raw = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await
+        .map_err(|e| Self::sdk_error("evm_get_erc20_balance:eth_call", e))?;
+
+        let bytes: Vec<u8> = raw.to_vec();
+        if bytes.len() < 32 {
+            return Err(ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("ERC20 balanceOf returned unexpected length"),
+                data: None,
+            });
+        }
+        let balance = ethers::types::U256::from_big_endian(&bytes[bytes.len() - 32..]);
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "address": request.address,
+            "token_address": request.token_address,
+            "balance_raw": balance.to_string()
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: get balance (native ETH by default; ERC20 if token_address is provided)")]
     async fn evm_get_balance(
         &self,

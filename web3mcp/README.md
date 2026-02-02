@@ -77,6 +77,8 @@ Handy EVM helpers:
 
 ERC20 helpers:
 - `evm_get_erc20_token_info`
+- `evm_get_native_balance`
+- `evm_get_erc20_balance`
 - `evm_erc20_balance_of`
 - `evm_erc20_allowance`
 - `evm_erc20_build_approve`
