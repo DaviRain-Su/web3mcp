@@ -14,13 +14,13 @@ fn with_temp_cwd<F: FnOnce()>(f: F) {
 #[test]
 fn sqlite_migrations_are_idempotent_and_links_work() {
     with_temp_cwd(|| {
-        let conn = sui_mcp::utils::evm_confirm_store::connect().expect("connect");
+        let conn = web3mcp::utils::evm_confirm_store::connect().expect("connect");
 
         // second connect shouldn't error even with existing columns
-        let _ = sui_mcp::utils::evm_confirm_store::connect().expect("connect2");
+        let _ = web3mcp::utils::evm_confirm_store::connect().expect("connect2");
 
         // insert a dummy pending row
-        let tx = sui_mcp::types::EvmTxRequest {
+        let tx = web3mcp::types::EvmTxRequest {
             chain_id: 1,
             from: "0x1111111111111111111111111111111111111111".to_string(),
             to: "0x2222222222222222222222222222222222222222".to_string(),
@@ -32,17 +32,17 @@ fn sqlite_migrations_are_idempotent_and_links_work() {
             data_hex: Some("0x".to_string()),
         };
 
-        let now = sui_mcp::utils::evm_confirm_store::now_ms();
+        let now = web3mcp::utils::evm_confirm_store::now_ms();
         let id_swap = "swap_1";
         let id_app = "app_1";
-        let hash = sui_mcp::utils::evm_confirm_store::tx_summary_hash(&tx);
+        let hash = web3mcp::utils::evm_confirm_store::tx_summary_hash(&tx);
 
-        sui_mcp::utils::evm_confirm_store::insert_pending(id_swap, &tx, now, now + 10000, &hash)
+        web3mcp::utils::evm_confirm_store::insert_pending(id_swap, &tx, now, now + 10000, &hash)
             .expect("insert swap");
-        sui_mcp::utils::evm_confirm_store::insert_pending(id_app, &tx, now, now + 10000, &hash)
+        web3mcp::utils::evm_confirm_store::insert_pending(id_app, &tx, now, now + 10000, &hash)
             .expect("insert approve");
 
-        sui_mcp::utils::evm_confirm_store::set_expected_allowance(
+        web3mcp::utils::evm_confirm_store::set_expected_allowance(
             id_swap,
             "0xtoken",
             "0xspender",
@@ -50,10 +50,10 @@ fn sqlite_migrations_are_idempotent_and_links_work() {
         )
         .expect("set_expected_allowance");
 
-        sui_mcp::utils::evm_confirm_store::set_approve_link(id_swap, id_app).expect("link approve");
-        sui_mcp::utils::evm_confirm_store::set_swap_link(id_app, id_swap).expect("link swap");
+        web3mcp::utils::evm_confirm_store::set_approve_link(id_swap, id_app).expect("link approve");
+        web3mcp::utils::evm_confirm_store::set_swap_link(id_app, id_swap).expect("link swap");
 
-        let swap_row = sui_mcp::utils::evm_confirm_store::get_row(&conn, id_swap)
+        let swap_row = web3mcp::utils::evm_confirm_store::get_row(&conn, id_swap)
             .expect("get swap")
             .expect("swap exists");
         assert_eq!(swap_row.expected_token.as_deref(), Some("0xtoken"));
@@ -61,7 +61,7 @@ fn sqlite_migrations_are_idempotent_and_links_work() {
         assert_eq!(swap_row.required_allowance_raw.as_deref(), Some("123"));
         assert_eq!(swap_row.approve_confirmation_id.as_deref(), Some(id_app));
 
-        let approve_row = sui_mcp::utils::evm_confirm_store::get_row(&conn, id_app)
+        let approve_row = web3mcp::utils::evm_confirm_store::get_row(&conn, id_app)
             .expect("get approve")
             .expect("approve exists");
         assert_eq!(approve_row.swap_confirmation_id.as_deref(), Some(id_swap));

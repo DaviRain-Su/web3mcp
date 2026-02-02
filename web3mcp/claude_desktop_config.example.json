@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "sui": {
-      "command": "/absolute/path/to/web3mcp/target/release/sui-mcp",
+      "command": "/absolute/path/to/web3mcp/target/release/web3mcp",
       "env": {
         "SUI_RPC_URL": "https://fullnode.mainnet.sui.io:443"
       }

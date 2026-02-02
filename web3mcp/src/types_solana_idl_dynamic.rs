@@ -20,7 +20,9 @@ pub struct SolanaIdlLoadRequest {
     #[schemars(description = "Local IDL file path")]
     pub idl_path: Option<String>,
 
-    #[schemars(description = "If true, also write into abi_registry/solana/<program_id>/<name>.json (requires program_id)")]
+    #[schemars(
+        description = "If true, also write into abi_registry/solana/<program_id>/<name>.json (requires program_id)"
+    )]
     pub persist: Option<bool>,
 
     #[schemars(description = "If persist=true, optional registry name key")]

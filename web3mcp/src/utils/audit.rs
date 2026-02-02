@@ -5,11 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 impl SuiMcpServer {
     pub fn write_audit_log(&self, tool: &str, entry: Value) {
-        let path = if let Ok(path) = std::env::var("SUI_MCP_AUDIT_LOG") {
+        // Preferred env var (post-rename): WEB3MCP_AUDIT_LOG
+        // Back-compat (pre-rename): SUI_MCP_AUDIT_LOG
+        let path = if let Ok(path) = std::env::var("WEB3MCP_AUDIT_LOG") {
+            std::path::PathBuf::from(path)
+        } else if let Ok(path) = std::env::var("SUI_MCP_AUDIT_LOG") {
             std::path::PathBuf::from(path)
         } else if let Ok(home) = std::env::var("HOME") {
             std::path::PathBuf::from(home)
-                .join(".sui-mcp")
+                .join(".web3mcp")
                 .join("audit.log")
         } else {
             return;

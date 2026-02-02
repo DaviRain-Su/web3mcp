@@ -294,7 +294,9 @@ pub struct EvmBuildTransferNativeRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaKeypairInfoRequest {
-    #[schemars(description = "Optional keypair path (defaults to SOLANA_KEYPAIR_PATH or ~/.config/solana/id.json)")]
+    #[schemars(
+        description = "Optional keypair path (defaults to SOLANA_KEYPAIR_PATH or ~/.config/solana/id.json)"
+    )]
     pub keypair_path: Option<String>,
 }
 
@@ -345,7 +347,9 @@ pub struct SolanaIdlPlanInstructionRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
 
-    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    #[schemars(
+        description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored."
+    )]
     pub idl_id: Option<String>,
 
     #[schemars(description = "Solana program id (base58)")]
@@ -368,7 +372,9 @@ pub struct SolanaIdlBuildInstructionRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
 
-    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    #[schemars(
+        description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored."
+    )]
     pub idl_id: Option<String>,
 
     #[schemars(description = "Solana program id (base58)")]
@@ -391,7 +397,9 @@ pub struct SolanaIdlExecuteRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
 
-    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    #[schemars(
+        description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored."
+    )]
     pub idl_id: Option<String>,
 
     #[schemars(description = "Solana program id (base58)")]
@@ -451,7 +459,9 @@ pub struct SolanaIdlSimulateInstructionRequest {
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
     pub network: Option<String>,
 
-    #[schemars(description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored.")]
+    #[schemars(
+        description = "Optional in-memory IDL handle returned by solana_idl_load. If set, program_id/name are ignored."
+    )]
     pub idl_id: Option<String>,
 
     #[schemars(description = "Solana program id (base58)")]
@@ -524,7 +534,6 @@ pub struct SolanaRpcCallRequest {
     )]
     pub result_path: Option<String>,
 }
-
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaGetBalanceRequest {
@@ -713,9 +722,7 @@ pub struct SolanaSplTransferUiAmountRequest {
     )]
     pub destination_token_account: Option<String>,
 
-    #[schemars(
-        description = "If true, create destination ATA if missing (default false)."
-    )]
+    #[schemars(description = "If true, create destination ATA if missing (default false).")]
     pub create_ata_if_missing: Option<bool>,
 
     #[schemars(
@@ -935,9 +942,7 @@ pub struct SolanaSplCloseAccountRequest {
     )]
     pub token_account: Option<String>,
 
-    #[schemars(
-        description = "Where to send reclaimed lamports (base58). Default = owner"
-    )]
+    #[schemars(description = "Where to send reclaimed lamports (base58). Default = owner")]
     pub destination: Option<String>,
 
     #[schemars(
@@ -1156,7 +1161,9 @@ pub struct SolanaSimulateConfig {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaTxPreviewRequest {
-    #[schemars(description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify.")]
+    #[schemars(
+        description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify."
+    )]
     pub simulate_config: Option<SolanaSimulateConfig>,
 
     #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
@@ -1165,13 +1172,19 @@ pub struct SolanaTxPreviewRequest {
     #[schemars(description = "Transaction bytes (base64). Usually unsigned.")]
     pub transaction_base64: String,
 
-    #[schemars(description = "Optional override: ttl for confirmation token in ms (default 300000 = 5min). Max 900000.")]
+    #[schemars(
+        description = "Optional override: ttl for confirmation token in ms (default 300000 = 5min). Max 900000."
+    )]
     pub confirm_ttl_ms: Option<u64>,
 
-    #[schemars(description = "Optional: timeout used by the suggested confirm step (ms). Default 60000.")]
+    #[schemars(
+        description = "Optional: timeout used by the suggested confirm step (ms). Default 60000."
+    )]
     pub confirm_timeout_ms: Option<u64>,
 
-    #[schemars(description = "Optional: skip_preflight used by the suggested confirm step (default false).")]
+    #[schemars(
+        description = "Optional: skip_preflight used by the suggested confirm step (default false)."
+    )]
     pub confirm_skip_preflight: Option<bool>,
 }
 

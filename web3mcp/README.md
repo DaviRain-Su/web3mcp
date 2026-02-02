@@ -27,7 +27,7 @@ This MCP server provides tools for querying the Sui blockchain:
 cargo build --release
 ```
 
-The compiled binary will be available at `target/release/sui-mcp`.
+The compiled binary will be available at `target/release/web3mcp`.
 
 ## Usage
 
@@ -42,7 +42,7 @@ Add this to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "sui": {
-      "command": "/path/to/web3mcp/target/release/sui-mcp",
+      "command": "/path/to/web3mcp/target/release/web3mcp",
       "env": {
         "SUI_RPC_URL": "https://fullnode.mainnet.sui.io:443"
       }
@@ -100,10 +100,10 @@ You can also run the server directly via stdio:
 
 ```bash
 # Use default mainnet endpoint
-./target/release/sui-mcp
+./target/release/web3mcp
 
 # Or specify a custom RPC URL
-SUI_RPC_URL=https://fullnode.testnet.sui.io:443 ./target/release/sui-mcp
+SUI_RPC_URL=https://fullnode.testnet.sui.io:443 ./target/release/web3mcp
 ```
 
 ## Example Queries
@@ -281,7 +281,9 @@ Execution tools accept `preflight=true` to run a dry-run before signing. If the 
 
 ### Audit log
 
-Set `SUI_MCP_AUDIT_LOG` to enable JSONL audit logs (defaults to `~/.sui-mcp/audit.log`).
+Set `WEB3MCP_AUDIT_LOG` to enable JSONL audit logs (defaults to `~/.web3mcp/audit.log`).
+
+Back-compat: `SUI_MCP_AUDIT_LOG` is still supported for older configs.
 
 ### Example: Wallet overview
 

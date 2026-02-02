@@ -85,7 +85,11 @@ fn example_for_defined(idl: &Value, name: &str) -> Option<Value> {
             let variants = ty.get("variants")?.as_array()?;
             let names: Vec<String> = variants
                 .iter()
-                .filter_map(|v| v.get("name").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                .filter_map(|v| {
+                    v.get("name")
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.to_string())
+                })
                 .collect();
 
             let shown: Vec<String> = names.into_iter().take(3).collect();
@@ -94,7 +98,11 @@ fn example_for_defined(idl: &Value, name: &str) -> Option<Value> {
             }
 
             let primary = &shown[0];
-            let other = if shown.len() > 1 { Some(&shown[1..]) } else { None };
+            let other = if shown.len() > 1 {
+                Some(&shown[1..])
+            } else {
+                None
+            };
 
             Some(json!({
                 "_enum": {

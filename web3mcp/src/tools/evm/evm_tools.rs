@@ -1,6 +1,6 @@
 /// EVM tools (Base / EVM-compatible chains)
     ///
-    /// NOTE: This server is currently named `sui-mcp`, but we're gradually expanding it into a
+    /// NOTE: This server was historically named `sui-mcp`, but we're expanding it into a
     /// multi-chain MCP server. These EVM tools are the first step.
 
     fn evm_keystore_dir() -> String {

@@ -22,7 +22,7 @@ This starts the Vite UI and a `/mcp` endpoint on the same port.
 Use environment variables when launching if your MCP binary is not at the default path:
 
 ```bash
-MCP_COMMAND=../../target/release/sui-mcp SUI_RPC_URL=https://fullnode.mainnet.sui.io:443 npm run dev:all
+MCP_COMMAND=../../target/release/web3mcp SUI_RPC_URL=https://fullnode.mainnet.sui.io:443 npm run dev:all
 ```
 
 ## Env Vars

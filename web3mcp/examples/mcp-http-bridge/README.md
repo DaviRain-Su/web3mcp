@@ -1,6 +1,6 @@
 # MCP HTTP Bridge
 
-This is a small HTTP bridge that forwards `POST /mcp` calls to the local MCP binary over stdio (built from `web3mcp/`; binary name may be `sui-mcp`).
+This is a small HTTP bridge that forwards `POST /mcp` calls to the local MCP binary over stdio (built from `web3mcp/`; binary name is `web3mcp`).
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ npm run start
 ## Env Vars
 
 ```
-MCP_COMMAND=../../target/release/sui-mcp
+MCP_COMMAND=../../target/release/web3mcp
 MCP_ARGS=
 SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
 PORT=3000

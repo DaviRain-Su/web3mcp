@@ -442,7 +442,9 @@ fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
     match t {
         "bool" => Ok(vec![if v.as_bool().unwrap_or(false) { 1 } else { 0 }]),
         "u8" => Ok(vec![as_u64(v).ok_or_else(|| err_expected(t, v))? as u8]),
-        "i8" => Ok(vec![as_i64(v).ok_or_else(|| err_expected(t, v))? as i8 as u8]),
+        "i8" => Ok(vec![
+            as_i64(v).ok_or_else(|| err_expected(t, v))? as i8 as u8
+        ]),
         "u16" => Ok((as_u64(v).ok_or_else(|| err_expected(t, v))? as u16)
             .to_le_bytes()
             .to_vec()),

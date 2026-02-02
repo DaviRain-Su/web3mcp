@@ -11,14 +11,14 @@ pub mod network;
 pub mod solana_confirm_store;
 #[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl;
+pub mod solana_idl_cache;
 #[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl_registry;
-pub mod solana_idl_cache;
 
 #[cfg(feature = "solana-extended-tools")]
-pub mod solana_idl_enum_hints;
-#[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl_arg_examples;
+#[cfg(feature = "solana-extended-tools")]
+pub mod solana_idl_enum_hints;
 pub mod sui_confirm_store;
 pub mod sui_parse;
 pub mod token_registry;

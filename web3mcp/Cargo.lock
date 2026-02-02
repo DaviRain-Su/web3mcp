@@ -12106,60 +12106,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sui-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bcs",
- "bincode",
- "bs58 0.5.1",
- "carbon-core",
- "carbon-jupiter-swap-decoder",
- "ethers",
- "fastcrypto-zkp",
- "hex",
- "move-core-types",
- "reqwest 0.12.28",
- "rmcp",
- "rusqlite",
- "schemars 1.2.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "shared-crypto",
- "solana-account-decoder",
- "solana-address-lookup-table-interface",
- "solana-client",
- "solana-commitment-config",
- "solana-compute-budget-interface",
- "solana-message",
- "solana-program-pack 3.0.0",
- "solana-rpc-client-api",
- "solana-sdk",
- "solana-transaction",
- "solana-transaction-status",
- "spl-associated-token-account",
- "spl-token 9.0.0",
- "spl-token-2022",
- "sui-crypto 0.2.0 (git+https://github.com/MystenLabs/sui-rust-sdk)",
- "sui-graphql",
- "sui-json",
- "sui-json-rpc-types",
- "sui-keys",
- "sui-rpc 0.2.2 (git+https://github.com/MystenLabs/sui-rust-sdk)",
- "sui-sdk",
- "sui-sdk-types 0.2.2 (git+https://github.com/MystenLabs/sui-rust-sdk)",
- "sui-transaction-builder 0.2.2",
- "sui-types",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "urlencoding",
-]
-
-[[package]]
 name = "sui-name-service"
 version = "1.66.0"
 source = "git+https://github.com/MystenLabs/sui#79adab8799c60114cfd46934007c317d48e7f58f"
@@ -13816,6 +13762,60 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "web3mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bcs",
+ "bincode",
+ "bs58 0.5.1",
+ "carbon-core",
+ "carbon-jupiter-swap-decoder",
+ "ethers",
+ "fastcrypto-zkp",
+ "hex",
+ "move-core-types",
+ "reqwest 0.12.28",
+ "rmcp",
+ "rusqlite",
+ "schemars 1.2.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "shared-crypto",
+ "solana-account-decoder",
+ "solana-address-lookup-table-interface",
+ "solana-client",
+ "solana-commitment-config",
+ "solana-compute-budget-interface",
+ "solana-message",
+ "solana-program-pack 3.0.0",
+ "solana-rpc-client-api",
+ "solana-sdk",
+ "solana-transaction",
+ "solana-transaction-status",
+ "spl-associated-token-account",
+ "spl-token 9.0.0",
+ "spl-token-2022",
+ "sui-crypto 0.2.0 (git+https://github.com/MystenLabs/sui-rust-sdk)",
+ "sui-graphql",
+ "sui-json",
+ "sui-json-rpc-types",
+ "sui-keys",
+ "sui-rpc 0.2.2 (git+https://github.com/MystenLabs/sui-rust-sdk)",
+ "sui-sdk",
+ "sui-sdk-types 0.2.2 (git+https://github.com/MystenLabs/sui-rust-sdk)",
+ "sui-transaction-builder 0.2.2",
+ "sui-types",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "urlencoding",
 ]
 
 [[package]]

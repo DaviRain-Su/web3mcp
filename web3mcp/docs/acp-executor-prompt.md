@@ -60,7 +60,7 @@ Your response must be **strict JSON only** (no markdown, no prose). Always retur
 
 ### SEND (pending by default)
 - If simulation is required and not OK: reject.
-- Send tx using `sui-mcp` Solana pending-confirm UX.
+- Send tx using `web3mcp` Solana pending-confirm UX.
 - Return `result.pending_confirmation_id`.
 
 ### CONFIRM

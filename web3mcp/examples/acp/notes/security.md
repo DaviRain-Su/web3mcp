@@ -39,7 +39,7 @@ From the `openclaw-acp` skill, the executor-side env typically includes:
 
 Recommended:
 
-- Run **two builds** of `web3mcp` (binary may still be named `sui-mcp`):
+- Run **two builds** of `web3mcp`:
   1) **Desktop build (minimal tools)**
      - no Solana IDL tools, fewer dangerous helpers
      - safe for day-to-day use

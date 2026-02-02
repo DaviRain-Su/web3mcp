@@ -48,11 +48,11 @@ Strict JSON only (no markdown). Always return:
 - Return missing fields.
 
 ### SIMULATE
-- Simulate using an EVM call/simulate tool in `sui-mcp` (if available).
+- Simulate using an EVM call/simulate tool in `web3mcp` (if available).
 - Return concise revert reason / error class.
 
 ### SEND (pending by default)
-- Send tx using `sui-mcp` pending-confirm UX (EVM).
+- Send tx using `web3mcp` pending-confirm UX (EVM).
 
 ### CONFIRM
 - Confirm/broadcast pending tx.

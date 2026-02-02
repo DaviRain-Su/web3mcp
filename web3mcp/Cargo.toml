@@ -1,5 +1,5 @@
 [package]
-name = "sui-mcp"
+name = "web3mcp"
 version = "0.1.0"
 edition = "2021"
 
