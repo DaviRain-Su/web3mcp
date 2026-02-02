@@ -14,6 +14,9 @@ pub mod solana_idl;
 #[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl_registry;
 pub mod solana_idl_cache;
+
+#[cfg(feature = "solana-extended-tools")]
+pub mod solana_idl_enum_hints;
 pub mod sui_confirm_store;
 pub mod sui_parse;
 pub mod token_registry;

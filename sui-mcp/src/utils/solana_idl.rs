@@ -462,18 +462,18 @@ fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
             .to_le_bytes()
             .to_vec()),
         "u128" => {
+            // Force string for u128 to avoid JSON number precision surprises.
             let n = v
                 .as_str()
                 .and_then(|s| s.parse::<u128>().ok())
-                .or_else(|| v.as_u64().map(|x| x as u128))
                 .ok_or_else(|| err_expected(t, v))?;
             Ok(n.to_le_bytes().to_vec())
         }
         "i128" => {
+            // Force string for i128 to avoid JSON number precision surprises.
             let n = v
                 .as_str()
                 .and_then(|s| s.parse::<i128>().ok())
-                .or_else(|| v.as_i64().map(|x| x as i128))
                 .ok_or_else(|| err_expected(t, v))?;
             Ok(n.to_le_bytes().to_vec())
         }
