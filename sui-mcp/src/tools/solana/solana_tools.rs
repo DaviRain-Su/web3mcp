@@ -359,7 +359,8 @@
             });
         }
 
-        let result_only = request.result_only.unwrap_or(false);
+        // Default to returning only `result` to reduce token usage / clutter in LLM clients.
+        let result_only = request.result_only.unwrap_or(true);
 
         // Base value to return.
         let mut v = if result_only {

@@ -515,7 +515,7 @@ pub struct SolanaRpcCallRequest {
     pub fail_on_rpc_error: Option<bool>,
 
     #[schemars(
-        description = "If true, return only response.result (or response.error) instead of a wrapped object (default false)"
+        description = "If true (default), return only response.result (or response.error) instead of a wrapped object"
     )]
     pub result_only: Option<bool>,
 
