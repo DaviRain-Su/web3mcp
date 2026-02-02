@@ -129,13 +129,78 @@ async fn main() -> Result<()> {
     info!("Starting Web3MCP Server");
     info!("Using RPC URL: {}", server.rpc_url);
 
-    // Serve the MCP server via stdio
-    let service = server.serve(rmcp::transport::stdio()).await?;
+    // Transport selection
+    let mut args = std::env::args().skip(1);
+    let mut use_sse = false;
+    let mut sse_bind: Option<String> = None;
+    let mut sse_path: Option<String> = None;
+    let mut post_path: Option<String> = None;
 
-    info!("Web3MCP Server running and ready to accept requests");
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--sse" => use_sse = true,
+            "--sse-bind" => sse_bind = args.next(),
+            "--sse-path" => sse_path = args.next(),
+            "--post-path" => post_path = args.next(),
+            "-h" | "--help" => {
+                println!(concat!(
+                    "web3mcp\n\n",
+                    "USAGE:\n",
+                    "  web3mcp                # stdio (default)\n",
+                    "  web3mcp --sse           # SSE server (HTTP)\n\n",
+                    "SSE OPTIONS:\n",
+                    "  --sse-bind <addr>       # default: 127.0.0.1:8000\n",
+                    "  --sse-path <path>       # default: /sse\n",
+                    "  --post-path <path>      # default: /message\n\n",
+                    "ENV (Sui):\n",
+                    "  SUI_RPC_URL / SUI_NETWORK\n"
+                ));
+                return Ok(());
+            }
+            other => {
+                // Unknown args are ignored for now to keep integration flexible.
+                tracing::debug!(arg = other, "Ignoring unknown CLI arg");
+            }
+        }
+    }
 
-    // Wait for server to finish
-    service.waiting().await?;
+    if use_sse {
+        use rmcp::transport::sse_server::SseServerConfig;
+        use rmcp::transport::SseServer;
+        use tokio_util::sync::CancellationToken;
 
-    Ok(())
+        let bind = sse_bind
+            .or_else(|| std::env::var("WEB3MCP_SSE_BIND").ok())
+            .unwrap_or_else(|| "127.0.0.1:8000".to_string());
+        let bind = bind.parse()?;
+        let sse_path = sse_path.unwrap_or_else(|| "/sse".to_string());
+        let post_path = post_path.unwrap_or_else(|| "/message".to_string());
+
+        let sse = SseServer::serve_with_config(SseServerConfig {
+            bind,
+            sse_path: sse_path.clone(),
+            post_path: post_path.clone(),
+            ct: CancellationToken::new(),
+            sse_keep_alive: None,
+        })
+        .await?;
+
+        let server_clone = server.clone();
+        let ct = sse.with_service(move || server_clone.clone());
+
+        info!(
+            "Web3MCP SSE server running on http://{}{} (POST to {}?sessionId=...)",
+            bind, sse_path, post_path
+        );
+
+        tokio::signal::ctrl_c().await?;
+        ct.cancel();
+        Ok(())
+    } else {
+        // Default: serve via stdio
+        let service = server.serve(rmcp::transport::stdio()).await?;
+        info!("Web3MCP Server running and ready to accept requests");
+        service.waiting().await?;
+        Ok(())
+    }
 }

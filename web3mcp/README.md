@@ -85,6 +85,25 @@ ERC20 helpers:
 - `evm_execute_erc20_transfer` / `evm_execute_erc20_approve` (one-step; uses local signer; still respects mainnet safety)
 - Compatibility aliases: `evm_transfer_erc20`, `evm_approve_token_spending`
 
+## Running (stdio vs SSE)
+
+### stdio (default)
+Most MCP clients (Claude Desktop) will spawn the server and communicate over stdio.
+
+### SSE (HTTP)
+Run an SSE server (useful for web/remote clients):
+
+```bash
+web3mcp --sse --sse-bind 127.0.0.1:8000
+```
+
+Defaults:
+- `--sse-bind` = `127.0.0.1:8000`
+- `--sse-path` = `/sse`
+- `--post-path` = `/message`
+
+The SSE endpoint emits an initial `endpoint` event telling the client where to POST JSON-RPC messages.
+
 ## Mainnet safety (Solana / Sui / EVM)
 
 NFT helpers (EVM):
