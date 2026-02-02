@@ -380,6 +380,172 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    // ---------------- Solana DeFi APIs (off-chain) ----------------
+
+    fn solana_meteora_dlmm_api_base_url() -> String {
+        std::env::var("SOLANA_METEORA_DLMM_API_BASE_URL")
+            .unwrap_or_else(|_| "https://dlmm-api.meteora.ag".to_string())
+    }
+
+    async fn solana_http_get_json(
+        url: &str,
+        timeout_ms: u64,
+    ) -> Result<(reqwest::StatusCode, Value), ErrorData> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(timeout_ms))
+            .build()
+            .map_err(|e| Self::sdk_error("solana_http_get_json:client", e))?;
+
+        let resp = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| Self::sdk_error("solana_http_get_json:request", e))?;
+
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| Self::sdk_error("solana_http_get_json:read_body", e))?;
+
+        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+        Ok((status, parsed))
+    }
+
+    #[tool(description = "Meteora DLMM API: raw HTTP call (GET/POST minimal).")]
+    async fn solana_meteora_dlmm_api_call(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraApiCallRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = request
+            .base_url
+            .unwrap_or_else(Self::solana_meteora_dlmm_api_base_url);
+
+        let method = request
+            .method
+            .as_deref()
+            .unwrap_or("GET")
+            .trim()
+            .to_uppercase();
+
+        let path = request.path.trim();
+        if path.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("path is required"),
+                data: None,
+            });
+        }
+
+        let base = base_url.trim_end_matches('/');
+        let path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
+        let mut url = format!("{}{}", base, path);
+
+        if let Some(q) = request.query.as_ref().and_then(|v| v.as_object()) {
+            let mut first = true;
+            for (k, v) in q.iter() {
+                let vs = if v.is_string() {
+                    v.as_str().unwrap_or("").to_string()
+                } else {
+                    v.to_string()
+                };
+                url.push(if first { '?' } else { '&' });
+                first = false;
+                url.push_str(&format!("{}={}", urlencoding::encode(k), urlencoding::encode(&vs)));
+            }
+        }
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+
+        let (status, parsed) = match method.as_str() {
+            "GET" => Self::solana_http_get_json(&url, timeout_ms).await?,
+            other => {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Unsupported method: {} (only GET supported for now)", other)),
+                    data: None,
+                })
+            }
+        };
+
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from Meteora DLMM API"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+            });
+        }
+
+        if request.result_only.unwrap_or(true) {
+            let response = Self::pretty_json(&parsed)?;
+            return Ok(CallToolResult::success(vec![Content::text(response)]));
+        }
+
+        let response = Self::pretty_json(&json!({"url": url, "status": status.as_u16(), "body": parsed}))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Meteora DLMM API: list all DLMM pairs (pool metadata)")]
+    async fn solana_meteora_dlmm_list_pairs(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraDlmmListPairsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = request
+            .base_url
+            .unwrap_or_else(Self::solana_meteora_dlmm_api_base_url);
+        let url = format!("{}/pair/all", base_url.trim_end_matches('/'));
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+        let (status, parsed) = Self::solana_http_get_json(&url, timeout_ms).await?;
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from Meteora DLMM API"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+            });
+        }
+
+        let response = Self::pretty_json(&json!({
+            "base_url": base_url,
+            "count": parsed.as_array().map(|a| a.len()),
+            "pairs": parsed
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Meteora DLMM API: get a specific DLMM pair by address")]
+    async fn solana_meteora_dlmm_get_pair(
+        &self,
+        Parameters(request): Parameters<SolanaMeteoraDlmmGetPairRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let base_url = request
+            .base_url
+            .unwrap_or_else(Self::solana_meteora_dlmm_api_base_url);
+        let addr = request.pair_address.trim();
+        let url = format!("{}/pair/{}", base_url.trim_end_matches('/'), addr);
+
+        let timeout_ms = request.timeout_ms.unwrap_or(15_000);
+        let (status, parsed) = Self::solana_http_get_json(&url, timeout_ms).await?;
+        if !status.is_success() {
+            return Err(ErrorData {
+                code: ErrorCode(i32::from(status.as_u16())),
+                message: Cow::from("HTTP error from Meteora DLMM API"),
+                data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+            });
+        }
+
+        let response = Self::pretty_json(&json!({
+            "base_url": base_url,
+            "pair_address": addr,
+            "pair": parsed
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     // ---------------- Solana common RPC tools ----------------
 
     #[tool(description = "Solana: raw JSON-RPC call (method+params). Useful to avoid tool explosion in Claude Desktop.")]
