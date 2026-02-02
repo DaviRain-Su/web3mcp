@@ -49,8 +49,12 @@ Binary:
 ## Example prompts (copy/paste)
 
 ### 0) Sanity check (recommended)
+- "Run `system_healthcheck` and show me the JSON output."
 - "Run `system_network_context` and tell me what networks are active for Sui/Solana/EVM."
-- "If anything looks wrong, run `system_debug_bundle` and show me the JSON output (no secrets)."
+- "If anything looks wrong, run `system_debug_bundle out_path=./debug_bundle.json` and show me the JSON output (no secrets)."
+
+### 0.5) Safe demo (no broadcast)
+- "Run `system_demo_safe_mainnet_flow` and show me the output."
 
 ### Sui
 - "On Sui testnet (set `SUI_RPC_URL=https://fullnode.testnet.sui.io:443`), use `get_balance` for 0x..."
