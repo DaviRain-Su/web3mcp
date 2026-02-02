@@ -4967,6 +4967,8 @@
             Some(summary.clone()),
         )?;
 
+        let confirm_timeout_ms = request.confirm_timeout_ms.unwrap_or(60_000);
+
         let response = Self::pretty_json(&json!({
             "ok": true,
             "stage": "preview",
@@ -4989,7 +4991,7 @@
                     "hash": hash,
                     "network": network_str,
                     "commitment": commitment,
-                    "timeout_ms": 60000
+                    "timeout_ms": confirm_timeout_ms
                 }
             },
             "transaction_base64": tx_base64,

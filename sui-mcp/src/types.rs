@@ -1167,6 +1167,9 @@ pub struct SolanaTxPreviewRequest {
 
     #[schemars(description = "Optional override: ttl for confirmation token in ms (default 300000 = 5min). Max 900000.")]
     pub confirm_ttl_ms: Option<u64>,
+
+    #[schemars(description = "Optional: timeout used by the suggested confirm step (ms). Default 60000.")]
+    pub confirm_timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
