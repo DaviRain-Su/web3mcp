@@ -9,9 +9,9 @@
 **核心理念**: 通过 MCP (Model Context Protocol) 协议，让 Claude Code、Cursor 等 AI 工具能用自然语言直接操作 **全链 Web3**，从 DeFi 起步，扩展到 NFT、治理、数据、存储、身份、消息等服务。
 
 **近期优先支持的区块链（可扩展至所有链）**:
-- 🟣 **Solana** - 超高性能（65k TPS）
-- 🔴 **Avalanche** - 子网生态（4.5k TPS）
-- 🟡 **BNB Chain** - 最大用户群（300k DAU）
+- 🟦 **Sui** - Move 生态（当前 Rust MCP 已集成）
+- 🟣 **Solana** - SVM 生态（当前 Rust MCP 已支持 Solana IDL 动态调用）
+- 🟠 **EVM** - 以 chain_id/RPC 方式支持 Base / Ethereum / Arbitrum / BSC 等（当前 Rust MCP 已集成基础能力）
 
 **远景（架构预留）**:
 - 其他 EVM 公链与 L2（Ethereum, Arbitrum, Optimism, Base, Polygon 等）
@@ -66,13 +66,13 @@
 | **Marginfi** | $800M | 50k+ | ❌ 完全缺失 |
 | **Kamino** | $600M | 20k+ | ❌ 完全缺失 |
 
-#### Avalanche 生态
+#### EVM 生态（示例：Avalanche / BNB / Base 等；具体协议集成按路线逐步落地）
 | 协议 | TVL | 日活用户 | 状态 |
 |------|-----|---------|------|
 | **AAVE** | $400M | 15k+ | ❌ 完全缺失 |
 | **Trader Joe** | $150M | 10k+ | ❌ 完全缺失 |
 
-#### BNB Chain 生态
+#### EVM 生态（更多示例）
 | 协议 | TVL | 日活用户 | 状态 |
 |------|-----|---------|------|
 | **PancakeSwap** | $1.5B | 150k+ | ❌ 完全缺失 |
@@ -102,7 +102,7 @@
 ### 我们的方案 🚀
 > **"DeFi Anywhere - Cross-Chain DeFi Operations via Natural Language"**
 
-- ✅ **真正的多链支持** - Solana + Avalanche + BNB Chain
+- ✅ **真正的多链支持** - Sui + Solana + EVM（Base / Ethereum / Arbitrum / BSC …）
 - ✅ **统一接口** - 一套 API 操作三条链
 - ✅ **深度集成** - 12+ DeFi 协议支持
 - ✅ **AI 原生** - 为 AI Agent 设计的接口
@@ -112,7 +112,7 @@
 
 **独特优势**:
 1. 🏆 **市场首创** - 目前无同类产品
-2. 🌐 **三链统一** - Solana (非EVM) + Avalanche + BNB (EVM)
+2. 🌐 **多链统一** - Sui（Move）+ Solana（SVM）+ EVM（按 chain_id 扩展）
 3. 🤖 **AI 友好** - 自然语言 → DeFi 操作
 4. 💰 **巨大市场** - 500k+ DAU, $15B+ TVL
 
@@ -206,14 +206,14 @@ web3mcp_repo/
    - 发布 v0.1.0 (Solana Only)
 
 **Month 2: 多链扩展**
-3. **Week 5-6**: Avalanche 集成
-   - EVM 适配器
-   - AAVE 协议集成
+3. **Week 5-6**: EVM 扩展（以 Base / Arbitrum / BSC / Avalanche 等为样例链）
+   - 完善 EVM 适配器（按 chain_id/RPC）
+   - 接入 1-2 个核心协议（例如 Aave / Uniswap 系）
    - 统一接口设计
 
-4. **Week 7-8**: BNB Chain 集成
-   - 复用 EVM 代码
-   - Venus + PancakeSwap 集成
+4. **Week 7-8**: 更多链与协议扩展
+   - 复用 EVM 代码扩展更多 EVM 链
+   - 增加更多交易/DeFi 工具覆盖
    - 发布 v0.2.0 (Multi-Chain)
 
 ---
@@ -248,7 +248,7 @@ web3mcp_repo/
 > **"DeFi Anywhere"**
 > 
 > Cross-Chain DeFi Operations via Natural Language  
-> Solana · Avalanche · BNB Chain
+> Sui · Solana · EVM (Base/Ethereum/Arbitrum/BSC …)
 
 ### 为什么多链更有价值？
 
@@ -312,7 +312,7 @@ Enterprise ($99/月):
 ### 核心技术
 
 - **协议**: MCP (Model Context Protocol)
-- **区块链**: Solana + Avalanche + BNB Chain
+- **区块链**: Sui + Solana + EVM（可扩展更多链）
 - **SDK**: 
   - Solana: `@solana/web3.js`
   - EVM: `ethers.js`, `viem`
@@ -322,24 +322,21 @@ Enterprise ($99/月):
 
 **Phase 1: 多链基础** (Month 1-2):
 - ✅ Solana 基础操作（转账、余额）
-- ✅ Avalanche 基础操作
-- ✅ BNB Chain 基础操作
+- ✅ EVM 基础操作（按 chain_id 支持多条 EVM 链：Base/Ethereum/Arbitrum/BSC …）
 - ✅ 统一 MCP 接口
 
 **Phase 2: Lending 协议** (Month 3-4):
 - ✅ Marginfi (Solana)
-- ✅ AAVE (Avalanche)
-- ✅ Venus (BNB Chain)
+- 🚧 EVM Lending（例如 Aave 系；优先选择与当前 EVM 工具链匹配的链）
 
 **Phase 3: Swap & Yield** (Month 5-6):
-- ✅ Trader Joe (Avalanche)
-- ✅ PancakeSwap (BNB Chain)
+- 🚧 EVM DEX / Swap（例如 Uniswap 系、PancakeSwap、Trader Joe 等候选）
 - ✅ Kamino Yield (Solana)
 
 **Phase 4: 跨链功能** (Month 7-8):
-- ✅ 跨链桥集成
-- ✅ 套利发现引擎
-- ✅ 自动路由优化
+- 🚧 跨链桥集成
+- 🚧 套利发现引擎
+- 🚧 自动路由优化
 
 ---
 

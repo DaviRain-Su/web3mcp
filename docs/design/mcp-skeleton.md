@@ -5,7 +5,9 @@
 - 工程化：build.zig / build.zig.zon
 - MCP Server 启动（stdio），可 listTools
 - 基础工具：ping（回声）、get_balance（占位）
-- 核心抽象：链/协议/交易/钱包接口，**面向全链 Web3**，当前优先 Solana/Avalanche/BNB，但需可扩展到 EVM 全家桶、Rollup、Cosmos/Polkadot、BTC L2、Move 生态等
+- 核心抽象：链/协议/交易/钱包接口，**面向全链 Web3**。
+  - 当前实现优先：Sui + Solana + EVM（通过 chain_id 映射支持 Base/Ethereum/Arbitrum/BSC 等）
+  - 未来目标：扩展到更多 EVM、Rollup、Cosmos/Polkadot、BTC L2、Move 生态等
 
 ## Scope
 - 只做骨架，不接入真实链 RPC

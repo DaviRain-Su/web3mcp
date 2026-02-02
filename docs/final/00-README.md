@@ -4,7 +4,9 @@
 
 本目录包含跨链 DeFi MCP Server 的完整市场调研、技术分析和执行计划。
 
-**最新更新**: ⭐ 项目已升级为多链支持（Solana + Avalanche + BNB Chain）
+**最新更新**: ⭐ 现行实现已落地为 Rust 多链 MCP Server（`web3mcp/`）：Sui + Solana（含 Solana IDL 动态调用）+ EVM（按 chain_id 选择 RPC，如 Base / Ethereum / Arbitrum / BSC 等）。
+
+> 注：本 `docs/final/` 目录主要是调研/方案文档，其中关于 Avalanche/BNB 的部分属于 **EVM 扩展路线**（可通过配置对应 chain_id/RPC 逐步落地），不代表已完成全部协议集成。
 
 ### 🎯 快速开始（按顺序阅读）
 
@@ -15,7 +17,7 @@
 ### 📖 详细文档
 
 #### 市场分析
-- **[多链扩展分析](./MULTI_CHAIN_ANALYSIS.md)** ⭐ **新增** - Avalanche & BNB Chain 分析
+- **[多链扩展分析](./MULTI_CHAIN_ANALYSIS.md)** - EVM 扩展分析（含 Avalanche / BNB 等作为样例链）
 - **[竞品深度分析](./COMPETITOR_ANALYSIS.md)** - 官方 Solana MCP 详细对比
 - **[市场机会分析](./OPPORTUNITY_ANALYSIS.md)** - 真正的市场空白
 
@@ -40,10 +42,10 @@
    - 插件系统不稳定
    - 缺少关键功能（Marginfi, Kamino）
 
-3. **EVM 链技术栈成熟** ✅ **新增**
-   - Avalanche 和 BNB Chain 可复用 ethers.js
-   - 协议接口标准化
-   - 降低平均开发复杂度
+3. **EVM 链技术栈成熟** ✅
+   - 多数 EVM 链可复用同一套工具链（按 chain_id + RPC 配置）
+   - 协议接口相对标准化
+   - 有利于在 `web3mcp` 上持续扩展更多链
 
 4. **技术可行性已验证** ✅
    - 本地测试网转账成功
@@ -71,8 +73,8 @@
 3. 发布 v0.1.0 验证概念
 
 **Month 2: 多链扩展**
-4. 添加 Avalanche 支持（AAVE）
-5. 添加 BNB Chain 支持（Venus, PancakeSwap）
+4. 完善 EVM 多链支持（按 chain_id/RPC 扩展 Base/Ethereum/Arbitrum/BSC/Avalanche 等）
+5. 接入 1-2 个核心 EVM 协议（例如 Aave / Uniswap 系）
 6. 发布 v0.2.0 跨链版本
 
 **预期收入**: $150k MRR (Year 1) vs 单链 $50k MRR
