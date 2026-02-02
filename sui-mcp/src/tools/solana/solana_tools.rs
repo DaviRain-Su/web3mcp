@@ -5058,8 +5058,10 @@
             )?;
 
             let response = Self::pretty_json(&json!({
+                "ok": true,
+                "stage": "send",
                 "status": "pending",
-                "confirmation_id": confirmation_id,
+                "pending_confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
                 "summary": summary,
                 "expires_in_ms": ttl,
@@ -5087,6 +5089,47 @@
             .and_then(|p| Self::solana_read_keypair_from_json_file(&p).ok());
         Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
 
+        fn classify_solana_send_error(msg: &str) -> (String, Option<String>) {
+            let m = msg.to_lowercase();
+            if m.contains("blockhash") {
+                return (
+                    "ProgramError".to_string(),
+                    Some(
+                        "Blockhash not found/expired. Rebuild the tx with a fresh recentBlockhash."
+                            .to_string(),
+                    ),
+                );
+            }
+            if m.contains("insufficient") {
+                return (
+                    "ProgramError".to_string(),
+                    Some(
+                        "Insufficient funds for fees or rent. Top up fee payer and retry."
+                            .to_string(),
+                    ),
+                );
+            }
+            if m.contains("signature") && (m.contains("verify") || m.contains("missing")) {
+                return (
+                    "TypeError".to_string(),
+                    Some(
+                        "Transaction appears unsigned or has invalid signatures. Ensure SOLANA_KEYPAIR_PATH is set or provide a fully signed tx."
+                            .to_string(),
+                    ),
+                );
+            }
+            if m.contains("account not found") || m.contains("could not find account") {
+                return (
+                    "MissingAccount".to_string(),
+                    Some(
+                        "One or more accounts were missing on-chain. Ensure all accounts exist (ATA/PDA creation may be required)."
+                            .to_string(),
+                    ),
+                );
+            }
+            ("ProgramError".to_string(), None)
+        }
+
         let skip_preflight = request.skip_preflight.unwrap_or(false);
         let sig = client
             .send_transaction_with_config(
@@ -5102,13 +5145,41 @@
                 },
             )
             .await
-            .map_err(|e| Self::sdk_error("solana_send_transaction", e))?;
+            .map_err(|e| {
+                let msg = e.to_string();
+                let (error_class, suggest_fix) = classify_solana_send_error(&msg);
+                ErrorData {
+                    code: ErrorCode(-32000),
+                    message: Cow::from(format!("solana_send_transaction send error: {}", msg)),
+                    data: Some(json!({
+                        "error_class": error_class,
+                        "suggest_fix": suggest_fix,
+                        "skip_preflight": skip_preflight
+                    })),
+                }
+            })?;
 
         let timeout_ms = request.timeout_ms.unwrap_or(60_000);
         let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
-        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms)
+            .await
+            .map_err(|e| {
+                let msg = e.message.to_string();
+                let (error_class, suggest_fix) = classify_solana_send_error(&msg);
+                ErrorData {
+                    code: e.code,
+                    message: e.message,
+                    data: Some(json!({
+                        "error_class": error_class,
+                        "suggest_fix": suggest_fix,
+                        "timeout_ms": timeout_ms
+                    })),
+                }
+            })?;
 
         let response = Self::pretty_json(&json!({
+            "ok": true,
+            "stage": "send",
             "status": "sent",
             "rpc_url": rpc_url,
             "network": request.network.unwrap_or("mainnet".to_string()),
@@ -5266,6 +5337,47 @@
             .and_then(|p| Self::solana_read_keypair_from_json_file(p).ok());
         Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
 
+        fn classify_solana_send_error(msg: &str) -> (String, Option<String>) {
+            let m = msg.to_lowercase();
+            if m.contains("blockhash") {
+                return (
+                    "ProgramError".to_string(),
+                    Some(
+                        "Blockhash not found/expired. Rebuild the tx with a fresh recentBlockhash."
+                            .to_string(),
+                    ),
+                );
+            }
+            if m.contains("insufficient") {
+                return (
+                    "ProgramError".to_string(),
+                    Some(
+                        "Insufficient funds for fees or rent. Top up fee payer and retry."
+                            .to_string(),
+                    ),
+                );
+            }
+            if m.contains("signature") && (m.contains("verify") || m.contains("missing")) {
+                return (
+                    "TypeError".to_string(),
+                    Some(
+                        "Transaction appears unsigned or has invalid signatures. Ensure SOLANA_KEYPAIR_PATH is set or provide a fully signed tx."
+                            .to_string(),
+                    ),
+                );
+            }
+            if m.contains("account not found") || m.contains("could not find account") {
+                return (
+                    "MissingAccount".to_string(),
+                    Some(
+                        "One or more accounts were missing on-chain. Ensure all accounts exist (ATA/PDA creation may be required)."
+                            .to_string(),
+                    ),
+                );
+            }
+            ("ProgramError".to_string(), None)
+        }
+
         let skip_preflight = request.skip_preflight.unwrap_or(false);
         let sig = client
             .send_transaction_with_config(
@@ -5281,11 +5393,37 @@
                 },
             )
             .await
-            .map_err(|e| Self::sdk_error("solana_confirm_transaction", e))?;
+            .map_err(|e| {
+                let msg = e.to_string();
+                let (error_class, suggest_fix) = classify_solana_send_error(&msg);
+                ErrorData {
+                    code: ErrorCode(-32000),
+                    message: Cow::from(format!("solana_confirm_transaction send error: {}", msg)),
+                    data: Some(json!({
+                        "error_class": error_class,
+                        "suggest_fix": suggest_fix,
+                        "skip_preflight": skip_preflight
+                    })),
+                }
+            })?;
 
         let timeout_ms = request.timeout_ms.unwrap_or(60_000);
         let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
-        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
+        let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms)
+            .await
+            .map_err(|e| {
+                let msg = e.message.to_string();
+                let (error_class, suggest_fix) = classify_solana_send_error(&msg);
+                ErrorData {
+                    code: e.code,
+                    message: e.message,
+                    data: Some(json!({
+                        "error_class": error_class,
+                        "suggest_fix": suggest_fix,
+                        "timeout_ms": timeout_ms
+                    })),
+                }
+            })?;
 
         // If we got ok, remove pending; if timeout, keep it for retry.
         if waited.get("status").and_then(|v| v.as_str()) == Some("ok") {
@@ -5293,9 +5431,11 @@
         }
 
         let response = Self::pretty_json(&json!({
+            "ok": true,
+            "stage": "confirm",
             "rpc_url": rpc_url,
             "network": network,
-            "confirmation_id": request.id,
+            "pending_confirmation_id": request.id,
             "tx_summary_hash": request.hash,
             "signature": sig.to_string(),
             "skip_preflight": skip_preflight,
