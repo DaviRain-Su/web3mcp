@@ -350,16 +350,9 @@ def main() -> int:
         trades_v = trades[0] if trades else None
         tvl_v = tvl[0] if tvl else None
 
-        # Score preference (before enrichment): fee_24h, else volume_24h, else trades_24h, else tvl
-        score = (
-            fee_v
-            if fee_v is not None
-            else (
-                vol_v
-                if vol_v is not None
-                else (trades_v if trades_v is not None else (tvl_v if tvl_v is not None else 0.0))
-            )
-        )
+        # Initial score before enrichment: use fee_24h so we can pick candidates,
+        # then (optionally) re-rank after details enrichment.
+        score = fee_v if fee_v is not None else 0.0
 
         fee_over_tvl = float(fee_v) / float(tvl_v) if (fee_v is not None and tvl_v) else None
 
@@ -400,6 +393,26 @@ def main() -> int:
                     r["max_fee_percentage"] = detail.get("max_fee_percentage")
             except Exception:
                 continue
+
+        # Re-rank after enrichment using fee/vol (your preference)
+        for r in ranked:
+            fee = r.get("fee_24h")
+            vol = r.get("volume_24h")
+            if isinstance(fee, (int, float)) and isinstance(vol, (int, float)) and vol > 0:
+                r["fee_over_vol"] = float(fee) / float(vol)
+                r["score"] = r["fee_over_vol"]
+            else:
+                r["fee_over_vol"] = None
+                # fallback score: fee/tvl if possible else fee
+                tvl = r.get("tvl")
+                if isinstance(fee, (int, float)) and isinstance(tvl, (int, float)) and tvl > 0:
+                    r["score"] = float(fee) / float(tvl)
+                elif isinstance(fee, (int, float)):
+                    r["score"] = float(fee)
+                else:
+                    r["score"] = 0.0
+
+        ranked.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
 
     # Volume top 10 among the ranked list (fallback: trades_24h if volume missing)
     vol_sorted = sorted(
@@ -563,6 +576,10 @@ def main() -> int:
     state["last_alert_ms"] = last_alert_ms
     save_state(args.state, state)
 
+    volume_present = sum(
+        1 for r in ranked if isinstance(r.get("volume_24h"), (int, float)) and (r.get("volume_24h") or 0) > 0
+    )
+
     out = {
         "source": {
             "url": url,
@@ -579,6 +596,8 @@ def main() -> int:
             "triggered_before_cooldown": triggered_before_cooldown,
             "suppressed_by_cooldown": suppressed_by_cooldown,
             "triggers_count": triggers_count,
+            "volume_24h_present": volume_present,
+            "scoring": "fee_over_vol (fallback fee_over_tvl, then fee)",
         },
         "token_list": {
             "url": token_source_url,
