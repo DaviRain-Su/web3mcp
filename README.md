@@ -46,11 +46,19 @@ cargo build --release
 Binary:
 - `web3mcp/target/release/web3mcp`
 
-## Example prompts
+## Example prompts (copy/paste)
 
-- Sui: “Get the SUI balance of 0x… on testnet.”
-- Solana: “Call the <program> IDL instruction <ix_name> with args … (simulate first).”
-- EVM: “On Base Sepolia (chain_id 84532), get the ETH balance of 0x….”
+### Sui
+- "Set SUI_RPC_URL to testnet and get the SUI balance of 0x..."
+- "On Sui testnet, list the owned objects for 0x..."
+
+### Solana
+- "On Solana devnet, get the SOL balance of <base58_pubkey>."
+- "Load the IDL for program <PROGRAM_ID> (from registry or URL), plan instruction <IX_NAME>, then simulate it (do not send)."
+
+### EVM
+- "On Base Sepolia (chain_id 84532), get the ETH balance of 0x..."
+- "Build a native transfer tx on Base Sepolia from 0xSENDER to 0xRECIPIENT for 0.001 ETH, preflight it, and show me the tx_summary_hash (do not broadcast)."
 
 ## Docs
 
