@@ -17,6 +17,17 @@ This document is a quick reference for **transaction/broadcast-related tools** a
   1) Build/preflight or create a pending confirmation (no broadcast)
   2) Confirm/retry/broadcast (requires `confirm_token` on mainnet)
 
+## Response status contract (for agents / integrations)
+
+When using write-capable tools, prefer branching on **`status`** in the tool output:
+
+- `sent` (or similar): broadcast completed.
+- `pending`: created a pending confirmation; do not broadcast yet.
+- `needs_confirmation`: a **safety guard** blocked the action. This is **not a hard error**.
+  - Read `guard.guard_class` and follow `guard.next`.
+  - Common guard classes: `CONFIRM_TOKEN_REQUIRED`, `SECOND_CONFIRM_REQUIRED`, `SAFETY_GUARD_BLOCKED`, `SIGNED_TX_REQUIRED`, `TX_SUMMARY_HASH_MISMATCH`, `PENDING_EXPIRED`, `UNKNOWN_CONFIRMATION_ID`.
+- If the tool call fails with an RPC error (`ErrorData`), treat it as an actual error and consider retrying / switching RPC.
+
 ## Pending stores
 
 - **EVM**: sqlite `evm_pending_confirmations` (under repo cwd)
