@@ -13,13 +13,24 @@
 
 ## What’s implemented today
 
-### Chains
-- **Sui** ✅
-- **Solana** ✅ (incl. IDL-driven dynamic instruction calling)
-- **EVM** ✅ (Base/Ethereum/Arbitrum/BSC/Avalanche/etc via `chain_id` + `EVM_RPC_URL_<chain_id>`)
+### Capability matrix (high level)
+
+- Sui
+  - Read/query ✅
+  - Tx build + pending confirmation ✅
+  - Mainnet broadcast ✅ (requires `confirm_token`)
+- Solana
+  - Read/query ✅
+  - IDL planning/simulation ✅
+  - Mainnet broadcast ✅ (requires `confirm_token`)
+- EVM
+  - Read/query ✅
+  - Tx build + preflight ✅
+  - Mainnet broadcast ✅ (requires `confirm_token`; one-step transfer returns pending)
 
 ### Safety / ops
 - **Audit log** ✅ (`WEB3MCP_AUDIT_LOG`, back-compat: `SUI_MCP_AUDIT_LOG`)
+- **Mainnet safety** ✅ (pending confirmation + `confirm_token`)
 - **Two-phase templates** ✅ (see `web3mcp/docs/acp-*` and examples)
 
 ## Quickstart (5 minutes)

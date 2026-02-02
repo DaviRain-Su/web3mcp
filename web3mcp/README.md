@@ -78,6 +78,26 @@ For **mainnet** transactions, the server enforces a stricter workflow:
 
 This is designed to reduce accidental mainnet sends.
 
+### Quick flows (copy/paste)
+
+EVM (mainnet):
+1) Build + preflight (safe)
+2) Confirm (requires token on mainnet)
+
+Example (Base mainnet `chain_id=8453`):
+- Build: `evm_build_transfer_native`
+- Preflight: `evm_preflight`
+- Create pending: use a safe-default flow (or any tool that returns a `confirmation_id`)
+- Send: `evm_retry_pending_confirmation` with `id`, `tx_summary_hash`, `confirm_token`
+
+Solana (mainnet):
+1) `solana_send_transaction` with `confirm=false` (returns `pending_confirmation_id` + `tx_summary_hash`)
+2) `solana_confirm_transaction` with `id`, `hash`, `confirm_token`
+
+Sui (mainnet):
+1) Run a safe-default tx tool that returns a `confirmation_id` / `tx_summary_hash`
+2) `sui_confirm_execution` with `id`, `tx_summary_hash`, `confirm_token`, `keystore_path`
+
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
 
 Sui:
