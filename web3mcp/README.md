@@ -258,7 +258,9 @@ See `docs/claude-prompts.md` for ready-to-use prompts.
 - Quick check: `system_network_context`
 - Full diagnostics bundle: `system_debug_bundle` (optionally `out_path=./debug_bundle.json`)
 
-See `docs/troubleshooting.md`.
+See:
+- `docs/troubleshooting.md`
+- `docs/tx-tools.md` (transaction tools & safety model)
 
 ## Multi-chain adapters
 
