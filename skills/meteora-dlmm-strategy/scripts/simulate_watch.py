@@ -222,6 +222,11 @@ def resolve_token_map(
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-url", default=os.environ.get("SOLANA_METEORA_DLMM_API_BASE_URL", "https://dlmm-api.meteora.ag"))
+    ap.add_argument(
+        "--enrich-details",
+        action="store_true",
+        help="fetch /pair/<address> for top-N candidates to enrich trade_volume_24h and other fields",
+    )
     ap.add_argument("--top-n", type=int, default=50)
     ap.add_argument("--limit", type=int, default=50, help="alias for --top-n")
     ap.add_argument("--min-tvl", type=float, default=1_000_000.0)
@@ -345,7 +350,7 @@ def main() -> int:
         trades_v = trades[0] if trades else None
         tvl_v = tvl[0] if tvl else None
 
-        # Score preference: fee_24h, else volume_24h, else trades_24h, else tvl
+        # Score preference (before enrichment): fee_24h, else volume_24h, else trades_24h, else tvl
         score = (
             fee_v
             if fee_v is not None
@@ -356,6 +361,8 @@ def main() -> int:
             )
         )
 
+        fee_over_tvl = float(fee_v) / float(tvl_v) if (fee_v is not None and tvl_v) else None
+
         rows.append({
             "pair_address": addr[0] if addr else None,
             "mint_x": mint_x[0] if mint_x else None,
@@ -364,11 +371,35 @@ def main() -> int:
             "volume_24h": vol_v,
             "trades_24h": trades_v,
             "tvl": tvl_v,
+            "fee_over_tvl": fee_over_tvl,
             "score": score,
         })
 
     rows.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
     ranked = rows[:top_n]
+
+    # Optional: enrich candidates via /pair/<address> (gives trade_volume_24h, base_fee_percentage, etc.)
+    if args.enrich_details:
+        for r in ranked:
+            addr = r.get("pair_address")
+            if not isinstance(addr, str) or not addr:
+                continue
+            try:
+                detail = http_get_json(f"{args.base_url.rstrip('/')}/pair/{addr}", timeout_s=20)
+                if isinstance(detail, dict):
+                    # Standardize detail fields into our row
+                    # Prefer trade_volume_24h if present
+                    tv24 = detail.get("trade_volume_24h")
+                    if isinstance(tv24, (int, float)):
+                        r["volume_24h"] = float(tv24)
+                    # Sometimes volume is nested
+                    vol = detail.get("volume")
+                    if isinstance(vol, dict) and isinstance(vol.get("hour_24"), (int, float)):
+                        r["volume_24h"] = float(vol.get("hour_24"))
+                    r["base_fee_percentage"] = detail.get("base_fee_percentage")
+                    r["max_fee_percentage"] = detail.get("max_fee_percentage")
+            except Exception:
+                continue
 
     # Volume top 10 among the ranked list (fallback: trades_24h if volume missing)
     vol_sorted = sorted(
