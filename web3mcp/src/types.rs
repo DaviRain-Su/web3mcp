@@ -1771,6 +1771,29 @@ pub struct EvmWaitForConfirmationsRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmSendAndWaitRequest {
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+
+    #[schemars(description = "Raw signed transaction hex (0x...)")]
+    pub raw_tx: String,
+
+    #[schemars(description = "Confirmations required (default: from chain registry)")]
+    pub confirmations: Option<u64>,
+
+    #[schemars(description = "Timeout in milliseconds (default 120000)")]
+    pub timeout_ms: Option<u64>,
+
+    #[schemars(description = "Poll interval in milliseconds (default 1500)")]
+    pub poll_interval_ms: Option<u64>,
+
+    #[schemars(
+        description = "If true, allow this tool on mainnet (default false). NOTE: bypasses mainnet pending-confirm safety if used with raw_tx."
+    )]
+    pub allow_mainnet: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmSimulateTransactionRequest {
     #[schemars(description = "Optional chain id")]
     pub chain_id: Option<u64>,

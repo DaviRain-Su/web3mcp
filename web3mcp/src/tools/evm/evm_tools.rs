@@ -2288,6 +2288,68 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM: send a raw signed tx and wait for confirmations (convenience).")]
+    async fn evm_send_and_wait(
+        &self,
+        Parameters(request): Parameters<EvmSendAndWaitRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+
+        if Self::evm_is_mainnet_chain_id(chain_id) && !request.allow_mainnet.unwrap_or(false) {
+            return Err(Self::structured_error(
+                "Refusing to send+wait on mainnet by default",
+                "evm_send_and_wait",
+                "MAINNET_GUARD",
+                false,
+                Some("Use the pending-confirm flow, or set allow_mainnet=true if you really mean it"),
+                None,
+                Some(json!({"chain_id": chain_id})),
+            ));
+        }
+
+        // 1) send
+        let sent = self
+            .evm_send_raw_transaction(Parameters(EvmSendRawTransactionRequest {
+                raw_tx: request.raw_tx.clone(),
+                chain_id: Some(chain_id),
+            }))
+            .await?;
+        let sent_json = Self::evm_extract_first_json(&sent).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from("Failed to parse evm_send_raw_transaction result"),
+            data: None,
+        })?;
+        let tx_hash = sent_json
+            .get("tx_hash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("Missing tx_hash from send result"),
+                data: None,
+            })?
+            .to_string();
+
+        // 2) wait
+        let waited = self
+            .evm_wait_for_confirmations(Parameters(EvmWaitForConfirmationsRequest {
+                chain_id: Some(chain_id),
+                tx_hash: tx_hash.clone(),
+                confirmations: request.confirmations,
+                timeout_ms: request.timeout_ms,
+                poll_interval_ms: request.poll_interval_ms,
+            }))
+            .await?;
+        let waited_json = Self::evm_extract_first_json(&waited);
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "tx_hash": tx_hash,
+            "send": sent_json,
+            "wait": waited_json
+        }))?;
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: wait for a transaction to reach N confirmations")]
     async fn evm_wait_for_confirmations(
         &self,
@@ -5057,6 +5119,9 @@ fn abi_entry_json(
         &self,
         Parameters(request): Parameters<EvmSendRawTransactionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
+        // NOTE: This tool intentionally does NOT enforce mainnet pending-confirm safety,
+        // because raw_tx is already signed. Prefer higher-level tools for mainnet.
+
         let chain_id = request
             .chain_id
             .unwrap_or(Self::evm_default_chain_id()?);
@@ -5399,6 +5464,7 @@ fn abi_entry_json(
             "tx_summary": summary,
             "tx_summary_hash": hash,
             "expires_in_ms": ttl,
+            "confirmations_required_default": crate::utils::evm_chain_registry::confirmations_for_chain(request.chain_id),
             "web3mcp": {
                 "debug": {
                     "decision": "evm_speed_up_tx",
@@ -5531,6 +5597,7 @@ fn abi_entry_json(
             "tx_summary": summary,
             "tx_summary_hash": hash,
             "expires_in_ms": ttl,
+            "confirmations_required_default": crate::utils::evm_chain_registry::confirmations_for_chain(request.chain_id),
             "web3mcp": {
                 "debug": {
                     "decision": "evm_cancel_tx",
