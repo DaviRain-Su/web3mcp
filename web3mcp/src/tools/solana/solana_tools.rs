@@ -1126,13 +1126,18 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
-                ),
-                data: None,
-            });
+            return Err(Self::structured_error(
+                "confirm=true requires a signed transaction",
+                "solana_send_transaction",
+                "SIGNED_TX_REQUIRED",
+                false,
+                Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
+                None,
+                Some(json!({
+                    "safer_default": "Use confirm=false to create a pending confirmation first",
+                    "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
+                })),
+            ));
         }
 
         let sig = client
@@ -1473,13 +1478,18 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
-                ),
-                data: None,
-            });
+            return Err(Self::structured_error(
+                "confirm=true requires a signed transaction",
+                "solana_send_transaction",
+                "SIGNED_TX_REQUIRED",
+                false,
+                Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
+                None,
+                Some(serde_json::json!({
+                    "safer_default": "Use confirm=false to create a pending confirmation first",
+                    "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
+                })),
+            ));
         }
 
         let sig = client
@@ -1719,13 +1729,18 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
-                ),
-                data: None,
-            });
+            return Err(Self::structured_error(
+                "confirm=true requires a signed transaction",
+                "solana_send_transaction",
+                "SIGNED_TX_REQUIRED",
+                false,
+                Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
+                None,
+                Some(serde_json::json!({
+                    "safer_default": "Use confirm=false to create a pending confirmation first",
+                    "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
+                })),
+            ));
         }
 
         let sig = client
@@ -1978,13 +1993,18 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
-                ),
-                data: None,
-            });
+            return Err(Self::structured_error(
+                "confirm=true requires a signed transaction",
+                "solana_send_transaction",
+                "SIGNED_TX_REQUIRED",
+                false,
+                Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
+                None,
+                Some(serde_json::json!({
+                    "safer_default": "Use confirm=false to create a pending confirmation first",
+                    "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
+                })),
+            ));
         }
 
         let sig = client
@@ -2377,13 +2397,18 @@
                 .iter()
                 .all(|s| *s == solana_sdk::signature::Signature::default())
         {
-            return Err(ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "confirm=true requires a signed transaction. Set sign=true (and SOLANA_KEYPAIR_PATH), or sign externally then use solana_send_transaction",
-                ),
-                data: None,
-            });
+            return Err(Self::structured_error(
+                "confirm=true requires a signed transaction",
+                "solana_send_transaction",
+                "SIGNED_TX_REQUIRED",
+                false,
+                Some("Set sign=true (and configure SOLANA_KEYPAIR_PATH), or sign externally then call solana_send_transaction again"),
+                None,
+                Some(serde_json::json!({
+                    "safer_default": "Use confirm=false to create a pending confirmation first",
+                    "how_to": "solana_send_transaction(confirm=false) -> solana_confirm_transaction(confirm_token)"
+                })),
+            ));
         }
 
         let sig = client
