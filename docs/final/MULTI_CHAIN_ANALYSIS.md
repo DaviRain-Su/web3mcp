@@ -616,7 +616,8 @@ AI Agent:
 
 ## 🚀 新标语
 
-> **"DeFi Anywhere"**
+> **"Web3 Anywhere"**
+> *DeFi-first, chain-agnostic*
 > 
 > Cross-Chain DeFi Operations via Natural Language
 > 

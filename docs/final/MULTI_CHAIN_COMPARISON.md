@@ -114,7 +114,7 @@
 - 无明显劣势
 
 **差异化**:
-> "DeFi Anywhere - The Only Cross-Chain DeFi MCP Server"
+> "Web3 Anywhere - Cross-Chain MCP Server for AI Agents (DeFi-first)"
 
 **结论**: 多链版本是**市场首创**，单链版本只是"改良版"
 

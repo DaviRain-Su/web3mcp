@@ -1,4 +1,6 @@
-# DeFi Anywhere - 跨链 AI Agent 完整调研文档
+# Web3 Anywhere - 跨链 AI Agent 完整调研文档
+
+> 定位：Web3 Anywhere（DeFi-first），未来目标接入所有链与更多 Web3 能力。
 
 ## 📚 文档导航
 

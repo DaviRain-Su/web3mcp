@@ -100,7 +100,9 @@
 | **多链 DeFi MCP** | - | **不存在** ⚠️ |
 
 ### 我们的方案 🚀
-> **"DeFi Anywhere - Cross-Chain DeFi Operations via Natural Language"**
+> **"Web3 Anywhere - Cross-Chain Web3 Operations via Natural Language"**
+>
+> *DeFi-first, chain-agnostic*
 
 - ✅ **真正的多链支持** - Sui + Solana + EVM（Base / Ethereum / Arbitrum / BSC …）
 - ✅ **统一接口** - 一套 API 操作三条链
@@ -245,7 +247,8 @@ web3mcp_repo/
 > "The Solana MCP Server that Actually Works"
 
 **v3.0 (多链) ⭐当前**：
-> **"DeFi Anywhere"**
+> **"Web3 Anywhere"**
+> *DeFi-first, chain-agnostic*
 > 
 > Cross-Chain DeFi Operations via Natural Language  
 > Sui · Solana · EVM (Base/Ethereum/Arbitrum/BSC …)
