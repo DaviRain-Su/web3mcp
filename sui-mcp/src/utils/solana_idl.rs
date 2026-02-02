@@ -441,24 +441,24 @@ fn encode_defined_enum(
 fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
     match t {
         "bool" => Ok(vec![if v.as_bool().unwrap_or(false) { 1 } else { 0 }]),
-        "u8" => Ok(vec![as_u64(v).ok_or_else(|| err_expected(t))? as u8]),
-        "i8" => Ok(vec![as_i64(v).ok_or_else(|| err_expected(t))? as i8 as u8]),
-        "u16" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u16)
+        "u8" => Ok(vec![as_u64(v).ok_or_else(|| err_expected(t, v))? as u8]),
+        "i8" => Ok(vec![as_i64(v).ok_or_else(|| err_expected(t, v))? as i8 as u8]),
+        "u16" => Ok((as_u64(v).ok_or_else(|| err_expected(t, v))? as u16)
             .to_le_bytes()
             .to_vec()),
-        "i16" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i16)
+        "i16" => Ok((as_i64(v).ok_or_else(|| err_expected(t, v))? as i16)
             .to_le_bytes()
             .to_vec()),
-        "u32" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u32)
+        "u32" => Ok((as_u64(v).ok_or_else(|| err_expected(t, v))? as u32)
             .to_le_bytes()
             .to_vec()),
-        "i32" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i32)
+        "i32" => Ok((as_i64(v).ok_or_else(|| err_expected(t, v))? as i32)
             .to_le_bytes()
             .to_vec()),
-        "u64" => Ok((as_u64(v).ok_or_else(|| err_expected(t))? as u64)
+        "u64" => Ok((as_u64(v).ok_or_else(|| err_expected(t, v))? as u64)
             .to_le_bytes()
             .to_vec()),
-        "i64" => Ok((as_i64(v).ok_or_else(|| err_expected(t))? as i64)
+        "i64" => Ok((as_i64(v).ok_or_else(|| err_expected(t, v))? as i64)
             .to_le_bytes()
             .to_vec()),
         "u128" => {
@@ -466,7 +466,7 @@ fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
                 .as_str()
                 .and_then(|s| s.parse::<u128>().ok())
                 .or_else(|| v.as_u64().map(|x| x as u128))
-                .ok_or_else(|| err_expected(t))?;
+                .ok_or_else(|| err_expected(t, v))?;
             Ok(n.to_le_bytes().to_vec())
         }
         "i128" => {
@@ -474,18 +474,18 @@ fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
                 .as_str()
                 .and_then(|s| s.parse::<i128>().ok())
                 .or_else(|| v.as_i64().map(|x| x as i128))
-                .ok_or_else(|| err_expected(t))?;
+                .ok_or_else(|| err_expected(t, v))?;
             Ok(n.to_le_bytes().to_vec())
         }
         "string" => {
-            let s = v.as_str().ok_or_else(|| err_expected(t))?;
+            let s = v.as_str().ok_or_else(|| err_expected(t, v))?;
             let mut out = Vec::new();
             out.extend_from_slice(&(s.len() as u32).to_le_bytes());
             out.extend_from_slice(s.as_bytes());
             Ok(out)
         }
         "publicKey" | "pubkey" => {
-            let s = v.as_str().ok_or_else(|| err_expected(t))?;
+            let s = v.as_str().ok_or_else(|| err_expected(t, v))?;
             let pk = solana_sdk::pubkey::Pubkey::from_str(s).map_err(|e| ErrorData {
                 code: ErrorCode(-32602),
                 message: Cow::from(format!("Invalid publicKey: {}", e)),
@@ -494,7 +494,7 @@ fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
             Ok(pk.to_bytes().to_vec())
         }
         "bytes" => {
-            let b = as_bytes(v).ok_or_else(|| err_expected(t))?;
+            let b = as_bytes(v).ok_or_else(|| err_expected(t, v))?;
             let mut out = Vec::new();
             out.extend_from_slice(&(b.len() as u32).to_le_bytes());
             out.extend_from_slice(&b);
@@ -508,11 +508,25 @@ fn encode_borsh_primitive(t: &str, v: &Value) -> Result<Vec<u8>, ErrorData> {
     }
 }
 
-fn err_expected(t: &str) -> ErrorData {
+fn err_expected(t: &str, v: &Value) -> ErrorData {
+    // Improve debuggability for agent workflows.
+    let hint = if v.is_number() {
+        Some(
+            "If this is an integer type, do not pass floats. Use an integer JSON number or a decimal string (e.g. \"1000000\")."
+                .to_string(),
+        )
+    } else {
+        None
+    };
+
     ErrorData {
         code: ErrorCode(-32602),
         message: Cow::from(format!("Invalid value for type {}", t)),
-        data: None,
+        data: Some(json!({
+            "expected_type": t,
+            "provided": v,
+            "hint": hint
+        })),
     }
 }
 
