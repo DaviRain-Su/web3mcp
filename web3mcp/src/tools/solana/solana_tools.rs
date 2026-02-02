@@ -565,13 +565,13 @@
         #[cfg(not(feature = "solana-extended-tools"))]
         {
             let _ = request;
-            return Err(ErrorData {
+            Err(ErrorData {
                 code: ErrorCode(-32601),
                 message: Cow::from(
                     "Tool not available: built without feature solana-extended-tools (rebuild with --features solana-extended-tools)",
                 ),
                 data: None,
-            });
+            })
         }
 
         #[cfg(feature = "solana-extended-tools")]
@@ -697,13 +697,13 @@
         #[cfg(not(feature = "solana-extended-tools"))]
         {
             let _ = request;
-            return Err(ErrorData {
+            Err(ErrorData {
                 code: ErrorCode(-32601),
                 message: Cow::from(
                     "Tool not available: built without feature solana-extended-tools (rebuild with --features solana-extended-tools)",
                 ),
                 data: None,
-            });
+            })
         }
 
         #[cfg(feature = "solana-extended-tools")]
@@ -910,13 +910,13 @@
         #[cfg(not(feature = "solana-extended-tools"))]
         {
             let _ = request;
-            return Err(ErrorData {
+            Err(ErrorData {
                 code: ErrorCode(-32601),
                 message: Cow::from(
                     "Tool not available: built without feature solana-extended-tools (rebuild with --features solana-extended-tools)",
                 ),
                 data: None,
-            });
+            })
         }
 
         #[cfg(feature = "solana-extended-tools")]
@@ -1281,10 +1281,8 @@
         let mut diag_minty: Option<String> = None;
 
         for p in pairs.iter() {
-            if filter == "sol_usdc" {
-                if !Self::meteora_pair_has_mints(p, &[wsol, usdc]) {
-                    continue;
-                }
+            if filter == "sol_usdc" && !Self::meteora_pair_has_mints(p, &[wsol, usdc]) {
+                continue;
             }
 
             let (pair_address, addr_key) = match Self::meteora_first_string(p, &addr_keys) {

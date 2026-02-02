@@ -57,6 +57,9 @@ fn main() {
     content.push_str("}\n\n");
 
     // 2) Tool router impl block (tools only)
+    // Note: some tools are behind optional cargo features. When those features are OFF,
+    // the generated methods may not be referenced by the router, triggering dead_code under -D warnings.
+    content.push_str("#[allow(dead_code)]\n");
     content.push_str("#[allow(clippy::empty_line_after_outer_attr, clippy::manual_find, clippy::bool_comparison, clippy::get_first, clippy::too_many_arguments, clippy::unnecessary_to_owned, clippy::type_complexity, clippy::redundant_locals, clippy::bind_instead_of_map, clippy::unwrap_or_default)]\n");
     content.push_str("#[tool_router]\nimpl Web3McpServer {\n");
     for section in sections {
