@@ -1394,6 +1394,73 @@
         url.contains("mainnet") && !url.contains("testnet") && !url.contains("devnet")
     }
 
+    #[tool(description = "Sui: create a pending confirmation from tx_bytes_b64 (BCS TransactionData). Does not broadcast.")]
+    async fn sui_create_pending_confirmation(
+        &self,
+        Parameters(request): Parameters<SuiCreatePendingConfirmationRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tx_bytes = Self::decode_base64("tx_bytes_b64", &request.tx_bytes_b64)?;
+
+        // Validate BCS TransactionData
+        let _tx_data: TransactionData = bcs::from_bytes(&tx_bytes).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid tx bytes (expected BCS TransactionData): {}", e)),
+            data: None,
+        })?;
+
+        let hash = crate::utils::sui_confirm_store::tx_summary_hash(&tx_bytes);
+
+        let created = crate::utils::evm_confirm_store::now_ms();
+        let ttl_ms = request.ttl_ms.unwrap_or(crate::utils::sui_confirm_store::default_ttl_ms() as u64);
+        let expires = created.saturating_add(ttl_ms as u128);
+
+        let label = request.label.clone().unwrap_or_else(|| "tx".to_string());
+        let label_s = label
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .take(16)
+            .collect::<String>();
+        let confirmation_id = format!("sui_confirm_{}_{}", created, label_s);
+
+        let tool_context = request.tool_context.clone().unwrap_or_else(|| "sui_create_pending_confirmation".to_string());
+
+        crate::utils::sui_confirm_store::insert_pending(
+            &confirmation_id,
+            request.tx_bytes_b64.trim(),
+            created,
+            expires,
+            &hash,
+            &tool_context,
+            request.summary.clone(),
+        )?;
+
+        let confirm_token = crate::utils::sui_confirm_store::make_confirm_token(&confirmation_id, &hash);
+
+        let response = Self::pretty_json(&json!({
+            "status": "pending",
+            "confirmation_id": confirmation_id,
+            "tx_summary_hash": hash,
+            "confirm_token": confirm_token,
+            "expires_in_ms": ttl_ms,
+            "note": "Not broadcast. Call sui_confirm_execution to sign+broadcast (mainnet requires confirm_token).",
+            "next": {
+                "how_to_confirm": if self.sui_is_mainnet_rpc_url() {
+                    format!(
+                        "sui_confirm_execution id:{} tx_summary_hash:{} confirm_token:{} keystore_path:<path>",
+                        confirmation_id, hash, confirm_token
+                    )
+                } else {
+                    format!(
+                        "sui_confirm_execution id:{} tx_summary_hash:{} keystore_path:<path>",
+                        confirmation_id, hash
+                    )
+                }
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     /// Confirm and execute a previously prepared Sui transaction.
     #[tool(description = "Sui: confirm and execute a pending transaction created by a safe-default tool (e.g. execute_pay_sui without confirm)")]
     async fn sui_confirm_execution(

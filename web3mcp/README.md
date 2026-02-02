@@ -172,8 +172,9 @@ Sui (mainnet):
 { "tool": "sui_list_networks", "args": {} }
 ```
 
-1) Create a pending confirmation using a safe-default Sui tx tool (does not broadcast)
-- Run the tool with `confirm=false` (it will return `confirmation_id` + `tx_summary_hash`).
+1) Create a pending confirmation
+- Option A (recommended, generic): `sui_create_pending_confirmation` from `tx_bytes_b64`
+- Option B: run a safe-default Sui tx tool with `confirm=false`
 
 2) Broadcast (mainnet requires confirm_token)
 ```json

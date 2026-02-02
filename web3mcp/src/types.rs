@@ -1972,6 +1972,20 @@ pub struct SuiConfirmExecutionRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SuiCreatePendingConfirmationRequest {
+    #[schemars(description = "Transaction bytes (BCS TransactionData) encoded as base64")]
+    pub tx_bytes_b64: String,
+    #[schemars(description = "Optional label for debugging")]
+    pub label: Option<String>,
+    #[schemars(description = "Optional tool_context string stored with the pending record")]
+    pub tool_context: Option<String>,
+    #[schemars(description = "Optional summary JSON stored with the pending record")]
+    pub summary: Option<Value>,
+    #[schemars(description = "Optional TTL in ms (defaults to 10 minutes)")]
+    pub ttl_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SuiListPendingConfirmationsRequest {
     #[schemars(description = "Max items (default 20, max 200)")]
     pub limit: Option<u64>,
