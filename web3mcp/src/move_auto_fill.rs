@@ -1,4 +1,4 @@
-use crate::{AutoFillMoveCallRequest, SuiMcpServer};
+use crate::{AutoFillMoveCallRequest, Web3McpServer};
 use move_core_types::language_storage::{StructTag, TypeTag};
 use rmcp::model::*;
 use serde_json::{json, Value};
@@ -19,7 +19,7 @@ pub(crate) struct AutoFilledMoveCall {
     pub gas: Option<Value>,
 }
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub(crate) async fn auto_fill_move_call_internal(
         &self,
         request: &AutoFillMoveCallRequest,

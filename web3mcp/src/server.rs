@@ -5,7 +5,7 @@ use sui_sdk::{SuiClient, SuiClientBuilder};
 
 /// Sui MCP Server - provides tools for interacting with the Sui blockchain via RPC
 #[derive(Clone)]
-pub struct SuiMcpServer {
+pub struct Web3McpServer {
     pub rpc_url: String,
     pub client: SuiClient,
     pub tool_router: ToolRouter<Self>,
@@ -14,7 +14,7 @@ pub struct SuiMcpServer {
     pub solana_idl_cache: Arc<crate::utils::solana_idl_cache::SolanaIdlCache>,
 }
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub async fn new(rpc_url: Option<String>, network: Option<String>) -> Result<Self> {
         let url = Self::resolve_rpc_url(rpc_url, network)?;
         let client = SuiClientBuilder::default().build(&url).await?;

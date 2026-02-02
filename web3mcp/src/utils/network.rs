@@ -1,6 +1,6 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn resolve_network(network: Option<String>) -> String {
         network
             .or_else(|| std::env::var("SUI_NETWORK").ok())

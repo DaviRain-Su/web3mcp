@@ -1,4 +1,4 @@
-use crate::{ObjectOptionsRequest, SuiMcpServer, TransactionResponseOptionsRequest};
+use crate::{ObjectOptionsRequest, TransactionResponseOptionsRequest, Web3McpServer};
 // rmcp::model::* not needed here (kept functions pure)
 use serde_json::{json, Value};
 use sui_json_rpc_types::{
@@ -6,7 +6,7 @@ use sui_json_rpc_types::{
     SuiTransactionBlockResponseOptions,
 };
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn summarize_transaction(response: &SuiTransactionBlockResponse) -> Value {
         let (status, error) = response
             .effects

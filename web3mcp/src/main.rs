@@ -16,15 +16,15 @@ use rmcp::{
 // (moved) SimpleVerifier/Verifier + GraphQL client imported via router_prelude
 // (moved) SuiJsonValue parsing in utils/sui_parse.rs
 // (moved) Many Sui/Sui-types imports are provided via router_prelude for generated router_impl.rs
-// SuiClient is part of SuiMcpServer in src/server.rs
+// SuiClient is part of Web3McpServer in src/server.rs
 // (moved) digests parsing in utils/sui_parse.rs
 // (moved) dynamic_field helpers in src/sui/dynamic_fields.rs
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-// SuiMcpServer struct moved to src/server.rs
+// Web3McpServer struct moved to src/server.rs
 
-impl SuiMcpServer {
+impl Web3McpServer {
     // Utilities moved to src/utils/* (json/errors)
 
     async fn preflight_tx_data(
@@ -84,7 +84,7 @@ use router_prelude::*;
 
 // AutoFilledMoveCall type lives in move_auto_fill.rs (router_impl can still see it via crate path)
 
-pub use server::SuiMcpServer;
+pub use server::Web3McpServer;
 pub use types::*;
 pub use types_solana_idl_dynamic::*;
 
@@ -92,7 +92,7 @@ pub use types_solana_idl_dynamic::*;
 
 include!(concat!(env!("OUT_DIR"), "/router_impl.rs"));
 #[tool_handler]
-impl ServerHandler for SuiMcpServer {
+impl ServerHandler for Web3McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
     let network = std::env::var("SUI_NETWORK").ok();
 
     // Create Sui MCP server
-    let server = SuiMcpServer::new(rpc_url, network).await?;
+    let server = Web3McpServer::new(rpc_url, network).await?;
 
     info!("Starting Sui MCP Server");
     info!("Using RPC URL: {}", server.rpc_url);

@@ -1,8 +1,8 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use rmcp::model::*;
 use std::borrow::Cow;
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn clamp_limit(limit: Option<usize>, default: usize, max: usize) -> usize {
         limit.unwrap_or(default).min(max)
     }

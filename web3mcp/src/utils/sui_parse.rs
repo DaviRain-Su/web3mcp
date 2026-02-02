@@ -1,4 +1,4 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use rmcp::model::*;
 use serde_json::Value;
 use std::borrow::Cow;
@@ -7,7 +7,7 @@ use sui_json::SuiJsonValue;
 use sui_types::base_types::{ObjectID, SuiAddress};
 use sui_types::digests::{CheckpointDigest, TransactionDigest};
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn parse_address(address: &str) -> Result<SuiAddress, ErrorData> {
         SuiAddress::from_str(address).map_err(|e| ErrorData {
             code: ErrorCode(-32602),

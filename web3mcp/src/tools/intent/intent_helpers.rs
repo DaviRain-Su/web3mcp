@@ -1,6 +1,6 @@
 // Helper methods for intent tools.
 //
-// This file is stitched into `router_impl.rs` by build.rs in a plain `impl SuiMcpServer { ... }`
+// This file is stitched into `router_impl.rs` by build.rs in a plain `impl Web3McpServer { ... }`
 // block (NOT the #[tool_router] impl), so it can freely define helper methods.
 
     fn wrap_resolved_network_result(

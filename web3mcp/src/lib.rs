@@ -4,7 +4,7 @@
 
 pub mod types;
 
-// Keep the library surface minimal: many utils are implemented as `impl SuiMcpServer` methods
+// Keep the library surface minimal: many utils are implemented as `impl Web3McpServer` methods
 // and therefore only compile in the binary crate.
 #[path = "utils/evm_confirm_store.rs"]
 pub mod evm_confirm_store;

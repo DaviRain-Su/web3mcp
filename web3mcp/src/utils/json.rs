@@ -1,11 +1,11 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use rmcp::model::*;
 use serde::Serialize;
 use serde_json::json;
 use std::borrow::Cow;
 use sui_types::transaction::TransactionData;
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn pretty_json<T: Serialize>(value: &T) -> Result<String, ErrorData> {
         serde_json::to_string_pretty(value).map_err(|e| ErrorData {
             code: ErrorCode(-32603),

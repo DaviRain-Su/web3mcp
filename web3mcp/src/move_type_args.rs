@@ -1,9 +1,9 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use move_core_types::language_storage::{StructTag, TypeTag};
 use std::collections::HashMap;
 use sui_json_rpc_types::SuiMoveNormalizedType;
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn is_object_param_match(param: &SuiMoveNormalizedType, tag: &StructTag) -> bool {
         let inner = match param {
             SuiMoveNormalizedType::Reference(inner)

@@ -1,4 +1,4 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use rmcp::model::*;
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -7,7 +7,7 @@ use sui_json_rpc_types::{
 };
 use sui_types::object::Owner;
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn format_move_type(ty: &SuiMoveNormalizedType) -> String {
         match ty {
             SuiMoveNormalizedType::Bool => "bool".to_string(),

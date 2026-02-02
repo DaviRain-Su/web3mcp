@@ -1,6 +1,6 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 
-impl SuiMcpServer {
+impl Web3McpServer {
     /// Resolve a Sui coin type from a human token symbol (e.g. "USDC").
     ///
     /// Resolution order:

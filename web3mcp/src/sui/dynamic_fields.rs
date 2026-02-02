@@ -1,4 +1,4 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use rmcp::model::*;
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -8,7 +8,7 @@ use sui_json_rpc_types::SuiTypeTag;
 use sui_types::base_types::ObjectID;
 use sui_types::dynamic_field::{DynamicFieldName, DynamicFieldType};
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn parse_dynamic_field_name(
         name_type: &str,
         name_value: Value,

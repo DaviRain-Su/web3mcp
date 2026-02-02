@@ -1,9 +1,9 @@
-use crate::SuiMcpServer;
+use crate::Web3McpServer;
 use serde_json::{json, Value};
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-impl SuiMcpServer {
+impl Web3McpServer {
     pub fn write_audit_log(&self, tool: &str, entry: Value) {
         // Preferred env var (post-rename): WEB3MCP_AUDIT_LOG
         // Back-compat (pre-rename): SUI_MCP_AUDIT_LOG
