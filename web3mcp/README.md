@@ -1,10 +1,16 @@
 # Web3MCP Server
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for interacting with the Sui blockchain. Built using the official [Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk).
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for interacting with multiple chains:
+
+- **Sui**
+- **Solana** (including Solana IDL-driven dynamic calls)
+- **EVM** (multi-chain via `chain_id` + per-chain RPC env vars)
+
+Built using the official [Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk).
 
 ## Features
 
-This MCP server provides tools for querying the Sui blockchain:
+This MCP server provides tools across chains (the list below is not exhaustive):
 
 - **get_balance** - Get the balance of SUI or other coins for an address
 - **get_all_balances** - Get all coin balances for an address
@@ -53,12 +59,16 @@ Add this to your Claude Desktop configuration file:
 
 ### Environment Variables
 
-- `SUI_RPC_URL` - The Sui RPC endpoint to use (defaults to `https://fullnode.mainnet.sui.io:443`)
+Sui:
+- `SUI_RPC_URL` - Sui RPC endpoint (defaults to `https://fullnode.mainnet.sui.io:443`)
 
 EVM:
-- `EVM_DEFAULT_CHAIN_ID` - Default EVM chain id (defaults to Base Sepolia 84532)
+- `EVM_DEFAULT_CHAIN_ID` - Default EVM chain id (defaults to Base Sepolia `84532`)
 - `EVM_RPC_URL_<chain_id>` - Override the RPC URL for an EVM chain (e.g. `EVM_RPC_URL_8453=https://mainnet.base.org`).
-  If not set, the server falls back to built-in public RPC defaults for common chains (see `evm_rpc_url`).
+  If not set, the server falls back to built-in public RPC defaults for common chains.
+
+Tip:
+- Use the tool `evm_list_rpc_defaults` to see which chain IDs have built-in defaults.
 
 Token helpers (optional, used by the intent router for `get_coins` when the user says "USDC" / "USDT"):
 
