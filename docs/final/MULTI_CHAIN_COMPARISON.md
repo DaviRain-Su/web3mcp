@@ -1,5 +1,9 @@
 # 📊 单链 vs 多链对比分析
 
+> 说明：本篇属于调研对比文档。
+> 现行实现以 `web3mcp/` 为准：已支持 Sui + Solana + EVM（按 chain_id/RPC 配置扩展多条 EVM 链）。
+> 文中涉及 Avalanche/BNB 等链与具体协议为路线样例，便于评估市场与技术取舍。
+
 ## TL;DR
 
 **结论**: 多链版本在各方面都显著优于单链版本
@@ -27,7 +31,7 @@
   - Marinade ($1B)
   - Solend ($200M)
 
-#### 多链版本 (Solana + Avalanche + BNB)
+#### 多链版本（现行实现口径）: Sui + Solana + EVM
 - **日活用户**: 500k+ DAU (+270%)
 - **TVL**: $15B+ (+150%)
 - **目标协议**:

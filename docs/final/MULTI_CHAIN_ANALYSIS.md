@@ -1,8 +1,12 @@
-# 🌐 多链扩展分析：Avalanche & BNB Chain
+# 🌐 多链扩展分析（EVM 扩展样例）：Avalanche & BNB Chain
+
+> 说明：本篇属于调研/路线文档，使用 Avalanche/BNB 作为 **EVM 扩展的样例链**。
+> 现行代码实现以 `web3mcp/` 为准：已支持 Sui + Solana + EVM（按 chain_id/RPC 配置扩展 Base/Ethereum/Arbitrum/BSC/Avalanche/BNB 等）。
+> 文中提到的具体协议（Aave/Trader Joe/PancakeSwap/Venus…）为候选路线，不代表已全部落地。
 
 ## 📊 执行摘要
 
-**升级决策**: 从单链（Solana）扩展到多链（Solana + Avalanche + BNB Chain）
+**升级决策**: 从单链（Solana）扩展到多链（Sui + Solana + EVM）
 
 **新定位**:
 > "Cross-Chain DeFi MCP Server  
@@ -16,7 +20,7 @@
 
 ### 1. 市场规模大幅增加
 
-| 指标 | Solana Only | + Avalanche + BNB | 增长 |
+| 指标 | Solana Only | 多链（Sui + Solana + EVM） | 增长 |
 |------|-------------|-------------------|------|
 | **总 TVL** | $6B | **$15B+** | +150% |
 | **日活用户** | 135k+ | **500k+** | +270% |
@@ -616,7 +620,7 @@ AI Agent:
 > 
 > Cross-Chain DeFi Operations via Natural Language
 > 
-> Solana · Avalanche · BNB Chain
+> Sui · Solana · EVM (Base/Ethereum/Arbitrum/BSC/Avalanche/BNB …)
 
 ---
 
