@@ -65,3 +65,14 @@ Common Solana classes:
 - `SIMULATION_FAILED`: inspect simulation logs (preview/simulate), fix accounts/params, rebuild
 - `INVALID_ACCOUNT_DATA`: account layout/type mismatch; verify ATA/program/accounts
 - `ACCOUNT_NOT_FOUND`: missing account (often missing ATA); create required account and retry
+
+## Interpreting structured Sui errors (`error_class`)
+
+When a Sui tool fails, `ErrorData.data` may include `error_class` + `retryable` + `suggest_fix`.
+
+Common Sui classes:
+- `GAS_TOO_LOW`: increase gas_budget / rerun preflight
+- `INSUFFICIENT_GAS`: fund the signer with enough SUI for gas
+- `OBJECT_NOT_FOUND`: verify object id/ownership
+- `OBJECT_LOCKED`: retry later or refetch latest object version and rebuild
+- `MOVE_ABORT`: inspect module/function/code, fix params/state, dry-run then rebuild

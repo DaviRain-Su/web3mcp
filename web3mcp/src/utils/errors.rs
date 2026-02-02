@@ -337,17 +337,44 @@ impl Web3McpServer {
                 suggest_fix =
                     Some("Increase gas_budget or rerun with preflight/estimation and retry");
             }
+
+            if lower.contains("insufficient gas") || lower.contains("insufficientgas") {
+                error_class = "INSUFFICIENT_GAS";
+                retryable = false;
+                suggest_fix = Some("Ensure you have enough SUI for gas; select different gas coin or fund the signer");
+            }
+
             if lower.contains("objectnotfound") || lower.contains("object not found") {
                 error_class = "OBJECT_NOT_FOUND";
                 retryable = false;
                 suggest_fix =
                     Some("Verify the object id and ownership, and ensure it still exists");
             }
-            if lower.contains("object locked") || lower.contains("objectlocked") {
+
+            if lower.contains("moveabort") || (lower.contains("move") && lower.contains("abort")) {
+                error_class = "MOVE_ABORT";
+                retryable = false;
+                suggest_fix = Some("Inspect Move abort details (module/function/code) and fix parameters/state; dry-run first, then rebuild");
+            }
+
+            if lower.contains("locked")
+                || lower.contains("sequencenumber")
+                || lower.contains("version") && lower.contains("mismatch")
+                || lower.contains("object locked")
+                || lower.contains("objectlocked")
+            {
                 error_class = "OBJECT_LOCKED";
                 retryable = true;
+                suggest_fix = Some("The object may be locked/outdated; retry later or refetch the latest object version and rebuild");
+            }
+
+            if lower.contains("invalid")
+                && (lower.contains("signature") || lower.contains("signer"))
+            {
+                error_class = "SIGNATURE_INVALID";
+                retryable = false;
                 suggest_fix =
-                    Some("Object is locked by another transaction; retry after it completes");
+                    Some("Ensure the signer matches the tx sender and the signature is correct");
             }
         }
 
@@ -575,6 +602,37 @@ mod tests {
         assert_eq!(
             v.get("error_class").and_then(|x| x.as_str()),
             Some("ACCOUNT_NOT_FOUND")
+        );
+    }
+
+    #[test]
+    fn sui_move_abort_is_classified() {
+        let v = Web3McpServer::classify_error(
+            "sui_confirm_execution",
+            "MoveAbort(0x2::coin::transfer, 1)",
+        );
+        assert_eq!(v.get("chain").and_then(|x| x.as_str()), Some("sui"));
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("MOVE_ABORT")
+        );
+    }
+
+    #[test]
+    fn sui_object_locked_is_classified() {
+        let v = Web3McpServer::classify_error("sui_confirm_execution", "ObjectLocked");
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("OBJECT_LOCKED")
+        );
+    }
+
+    #[test]
+    fn sui_insufficient_gas_is_classified() {
+        let v = Web3McpServer::classify_error("sui_confirm_execution", "InsufficientGas");
+        assert_eq!(
+            v.get("error_class").and_then(|x| x.as_str()),
+            Some("INSUFFICIENT_GAS")
         );
     }
 }
