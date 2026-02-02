@@ -17,7 +17,7 @@ pub fn example_for_type(idl: &Value, ty: &Value) -> Option<Value> {
             "u128" => Some(json!("123")),
             "i128" => Some(json!("-123")),
             "string" => Some(json!("...")),
-            "publicKey" | "pubkey" => Some(json!("<BASE58_PUBKEY>")),
+            "publicKey" | "pubkey" => Some(json!({"_pubkey": "<BASE58_PUBKEY>"})),
             "bytes" => Some(json!({"_bytes": {"hex": "0x...", "base64": "..."}})),
             _ => None,
         };
@@ -34,11 +34,17 @@ pub fn example_for_type(idl: &Value, ty: &Value) -> Option<Value> {
             }));
         }
         if let Some(inner) = obj.get("vec") {
-            return Some(json!([example_for_type(idl, inner).unwrap_or(json!(null))]));
+            return Some(json!({
+                "_note": "vec<T> expects a JSON array. Example below shows a single element.",
+                "value": [example_for_type(idl, inner).unwrap_or(json!(null))]
+            }));
         }
         if let Some(arrspec) = obj.get("array").and_then(|a| a.as_array()) {
             if !arrspec.is_empty() {
-                return Some(json!([example_for_type(idl, &arrspec[0]).unwrap_or(json!(null))]));
+                return Some(json!({
+                    "_note": "array<[T,len]> expects a fixed-length JSON array. Example below shows one element; real length must match the IDL.",
+                    "value": [example_for_type(idl, &arrspec[0]).unwrap_or(json!(null))]
+                }));
             }
         }
         if let Some(def) = obj.get("defined").and_then(|d| d.as_str()) {
