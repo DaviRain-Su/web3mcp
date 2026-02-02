@@ -37,6 +37,16 @@ STABLE_MINTS = {
     "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
 }
 
+# Bluechip assets to optionally exclude from meme focus.
+BLUECHIP_MINTS = {
+    # SOL
+    "So11111111111111111111111111111111111111112",
+    # wBTC (Solana)
+    "qfnqNqs3j7yKpQ7J1xY9v7xYk4J3oV1uT7u4QmKX2pT",  # placeholder; will rely on token list symbol fallback
+    # wETH (Solana)
+    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",  # ETH (Wormhole)
+}
+
 
 def human_usd(x: Optional[float]) -> str:
     if x is None:
@@ -233,7 +243,12 @@ def main() -> int:
         "--focus",
         default="all",
         choices=["all", "meme"],
-        help="pool focus: all (default) or meme (exclude stable pairs like SOL/USDC)",
+        help="pool focus: all (default) or meme (exclude stable pairs; keep non-stable long-tail)",
+    )
+    ap.add_argument(
+        "--exclude-bluechip",
+        action="store_true",
+        help="when --focus=meme, also exclude bluechip pairs like SOL/ETH/BTC",
     )
     ap.add_argument(
         "--token-cache-ttl-min",
@@ -390,13 +405,25 @@ def main() -> int:
             my = r.get("mint_y")
             if not isinstance(mx, str) or not isinstance(my, str):
                 return True
-            # Exclude stablecoin pairs
+
+            # 1) Hard exclude stablecoin participation
             if mx in STABLE_MINTS or my in STABLE_MINTS:
                 return False
-            # Prefer pump.fun-style mints
-            if mx.lower().endswith("pump") or my.lower().endswith("pump"):
-                return True
-            # Otherwise treat as non-stable alt pair = acceptable meme-ish universe
+
+            # 2) Optionally exclude obvious bluechips (SOL/ETH/BTC-like)
+            if args.exclude_bluechip:
+                # Use mint set first
+                if mx in BLUECHIP_MINTS or my in BLUECHIP_MINTS:
+                    return False
+                # Also use symbol if available
+                mxs = (r.get("mint_x_symbol") or "").upper()
+                mys = (r.get("mint_y_symbol") or "").upper()
+                if mxs in ("SOL", "ETH", "BTC", "WBTC", "WETH"):
+                    return False
+                if mys in ("SOL", "ETH", "BTC", "WBTC", "WETH"):
+                    return False
+
+            # Keep everything else (non-stable long-tail, including non-pump memes)
             return True
 
         ranked = [r for r in ranked if is_meme_pair(r)]
