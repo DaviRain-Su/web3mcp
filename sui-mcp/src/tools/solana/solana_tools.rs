@@ -5933,11 +5933,14 @@
         let mut missing_args: Vec<String> = Vec::new();
         let mut args_schema: Vec<Value> = Vec::new();
         for a in &ix.args {
-            let allowed_enum_variants = crate::utils::solana_idl_enum_hints::enum_variants_for_type(&idl, &a.ty);
+            let allowed_enum_variants =
+                crate::utils::solana_idl_enum_hints::enum_variants_for_type(&idl, &a.ty);
+            let example_value = crate::utils::solana_idl_arg_examples::example_for_type(&idl, &a.ty);
             args_schema.push(json!({
                 "name": a.name,
                 "type": a.ty,
-                "allowed_enum_variants": allowed_enum_variants
+                "allowed_enum_variants": allowed_enum_variants,
+                "example": example_value
             }));
             if args_obj.get(&a.name).is_none() {
                 missing_args.push(a.name.clone());
