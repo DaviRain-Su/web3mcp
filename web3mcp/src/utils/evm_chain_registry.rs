@@ -69,6 +69,66 @@ pub fn evm_default_chains() -> Vec<EvmChainInfo> {
             explorer_base: Some("https://testnet.bscscan.com"),
             confirmations: 2,
         },
+        // Linea
+        EvmChainInfo {
+            chain_id: 59144,
+            name: "linea",
+            default_rpc_url: "https://rpc.linea.build",
+            explorer_base: Some("https://lineascan.build"),
+            confirmations: 3,
+        },
+        EvmChainInfo {
+            chain_id: 59141,
+            name: "linea-sepolia",
+            default_rpc_url: "https://rpc.sepolia.linea.build",
+            explorer_base: Some("https://sepolia.lineascan.build"),
+            confirmations: 2,
+        },
+        // Scroll
+        EvmChainInfo {
+            chain_id: 534352,
+            name: "scroll",
+            default_rpc_url: "https://rpc.scroll.io",
+            explorer_base: Some("https://scrollscan.com"),
+            confirmations: 3,
+        },
+        EvmChainInfo {
+            chain_id: 534351,
+            name: "scroll-sepolia",
+            default_rpc_url: "https://sepolia-rpc.scroll.io",
+            explorer_base: Some("https://sepolia.scrollscan.com"),
+            confirmations: 2,
+        },
+        // zkSync Era
+        EvmChainInfo {
+            chain_id: 324,
+            name: "zksync-era",
+            default_rpc_url: "https://mainnet.era.zksync.io",
+            explorer_base: Some("https://explorer.zksync.io"),
+            confirmations: 3,
+        },
+        EvmChainInfo {
+            chain_id: 300,
+            name: "zksync-era-sepolia",
+            default_rpc_url: "https://sepolia.era.zksync.dev",
+            explorer_base: Some("https://sepolia.explorer.zksync.io"),
+            confirmations: 2,
+        },
+        // Blast
+        EvmChainInfo {
+            chain_id: 81457,
+            name: "blast",
+            default_rpc_url: "https://rpc.blast.io",
+            explorer_base: Some("https://blastscan.io"),
+            confirmations: 3,
+        },
+        EvmChainInfo {
+            chain_id: 168587773,
+            name: "blast-sepolia",
+            default_rpc_url: "https://sepolia.blast.io",
+            explorer_base: Some("https://sepolia.blastscan.io"),
+            confirmations: 2,
+        },
         EvmChainInfo {
             chain_id: 10,
             name: "optimism",

@@ -582,14 +582,28 @@
         }
 
         if row.status == "sent" {
+            let required_confirmations = crate::utils::evm_chain_registry::confirmations_for_chain(row.chain_id);
+            let explorer_url = row
+                .tx_hash
+                .as_ref()
+                .and_then(|h| Self::evm_explorer_tx_url(row.chain_id, h));
+
             let response = Self::pretty_json(&json!({
                 "status": "sent",
                 "confirmation_id": row.id,
                 "chain_id": row.chain_id,
                 "tx_hash": row.tx_hash,
+                "explorer_url": explorer_url,
                 "tx_summary_hash": row.tx_summary_hash,
                 "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                 "tool_context": tool_context,
+                "confirmations_required_default": required_confirmations,
+                "next": {
+                    "how_to_wait": match (&row.tx_hash, required_confirmations) {
+                        (Some(h), Some(c)) => Some(format!("Call evm_wait_for_confirmations chain_id:{} tx_hash:{} confirmations:{}", row.chain_id, h, c)),
+                        _ => None
+                    }
+                },
                 "note": "Already broadcast"
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -2557,6 +2571,21 @@
             .await
             .map_err(|e| Self::sdk_error("evm_get_transaction_receipt:get_transaction_receipt", e))?;
 
+        // Best-effort confirmations computation (adds one extra RPC call).
+        let tip = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_block_number(&provider)
+            .await
+            .ok();
+        let confirmations = receipt.as_ref().and_then(|r| {
+            let included = r.block_number?;
+            let tip = tip?;
+            if tip >= included {
+                Some(tip.as_u64().saturating_sub(included.as_u64()) + 1)
+            } else {
+                Some(0)
+            }
+        });
+        let required_confirmations = crate::utils::evm_chain_registry::confirmations_for_chain(chain_id);
+
         let limit = request.decoded_logs_limit.unwrap_or(50);
         let (decoded_logs, decoded_logs_truncated, decoded_logs_total) = if let Some(receipt) = &receipt {
             Self::decode_receipt_logs(
@@ -2578,6 +2607,14 @@
             "decoded_logs": decoded_logs,
             "decoded_logs_truncated": decoded_logs_truncated,
             "decoded_logs_total": decoded_logs_total,
+            "confirmations": confirmations,
+            "confirmations_required_default": required_confirmations,
+            "next": {
+                "how_to_wait": match (required_confirmations, request.tx_hash.as_str()) {
+                    (Some(c), h) => Some(format!("Call evm_wait_for_confirmations chain_id:{} tx_hash:{} confirmations:{}", chain_id, h, c)),
+                    _ => None
+                }
+            },
             "receipt": if include_receipt { receipt } else { None }
         }))?;
 
