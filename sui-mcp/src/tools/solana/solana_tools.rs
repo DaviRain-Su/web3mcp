@@ -37,6 +37,60 @@
     }
 
     #[cfg(feature = "solana-extended-tools")]
+    fn solana_classify_simulation(err: &Value, logs: &[String]) -> (String, Option<String>) {
+        // error_class values are intentionally stable strings for downstream agents:
+        // - MissingAccount
+        // - TypeError
+        // - AnchorConstraint
+        // - ProgramError
+        // - Ok
+
+        // Intentionally heuristic.
+        let err_s = err.to_string();
+        let mut error_class = "ProgramError".to_string();
+
+        if err_s.contains("AccountNotFound") || err_s.contains("MissingAccount") {
+            error_class = "MissingAccount".to_string();
+        } else if err_s.contains("InvalidArgument")
+            || err_s.contains("InvalidInstructionData")
+            || err_s.contains("InvalidAccountData")
+        {
+            error_class = "TypeError".to_string();
+        }
+
+        if logs
+            .iter()
+            .any(|l| l.contains("AnchorError") || l.contains("AnchorError occurred"))
+        {
+            error_class = "AnchorConstraint".to_string();
+        }
+
+        let suggest_fix = if error_class == "MissingAccount" {
+            Some(
+                "One or more required accounts were not provided or are invalid. Re-run plan and fill missing accounts (ATA/PDA/system/token program IDs)."
+                    .to_string(),
+            )
+        } else if error_class == "TypeError" {
+            Some(
+                "Instruction data likely failed to decode. Check IDL arg types; ensure all u64/u128 amounts are strings; ensure enums/options match the IDL."
+                    .to_string(),
+            )
+        } else if error_class == "AnchorConstraint" {
+            Some(
+                "Anchor constraint failed (has_one/constraint/owner/seeds). Check accounts correspond to the expected PDA/ATA and signers are correct."
+                    .to_string(),
+            )
+        } else {
+            logs.iter()
+                .rev()
+                .find(|l| l.contains("custom program error") || l.contains("Program log:"))
+                .map(|l| format!("Review program logs; last relevant line: {}", l))
+        };
+
+        (error_class, suggest_fix)
+    }
+
+    #[cfg(feature = "solana-extended-tools")]
     fn solana_known_program_label(pid: &str) -> Option<&'static str> { 
         match pid {
             // Core
@@ -6551,62 +6605,9 @@
             .take(80)
             .collect();
 
-        fn classify_solana_simulation(err: &Value, logs: &[String]) -> (String, Option<String>) {
-            // error_class values are intentionally stable strings for downstream agents:
-            // - MissingAccount
-            // - TypeError
-            // - AnchorConstraint
-            // - ProgramError
-            // - Ok
-
-            // Intentionally heuristic.
-            let err_s = err.to_string();
-            let mut error_class = "ProgramError".to_string();
-
-            if err_s.contains("AccountNotFound") || err_s.contains("MissingAccount") {
-                error_class = "MissingAccount".to_string();
-            } else if err_s.contains("InvalidArgument")
-                || err_s.contains("InvalidInstructionData")
-                || err_s.contains("InvalidAccountData")
-            {
-                error_class = "TypeError".to_string();
-            }
-
-            if logs
-                .iter()
-                .any(|l| l.contains("AnchorError") || l.contains("AnchorError occurred"))
-            {
-                error_class = "AnchorConstraint".to_string();
-            }
-
-            let suggest_fix = if error_class == "MissingAccount" {
-                Some(
-                    "One or more required accounts were not provided or are invalid. Re-run plan and fill missing accounts (ATA/PDA/system/token program IDs)."
-                        .to_string(),
-                )
-            } else if error_class == "TypeError" {
-                Some(
-                    "Instruction data likely failed to decode. Check IDL arg types; ensure all u64/u128 amounts are strings; ensure enums/options match the IDL."
-                        .to_string(),
-                )
-            } else if error_class == "AnchorConstraint" {
-                Some(
-                    "Anchor constraint failed (has_one/constraint/owner/seeds). Check accounts correspond to the expected PDA/ATA and signers are correct."
-                        .to_string(),
-                )
-            } else {
-                logs.iter()
-                    .rev()
-                    .find(|l| l.contains("custom program error") || l.contains("Program log:"))
-                    .map(|l| format!("Review program logs; last relevant line: {}", l))
-            };
-
-            (error_class, suggest_fix)
-        }
-
         let (error_class, suggest_fix) = if let Some(ref err) = sim.value.err {
             let v = serde_json::to_value(err).unwrap_or_else(|_| json!({ "err": err.to_string() }));
-            classify_solana_simulation(&v, &logs)
+            Self::solana_classify_simulation(&v, &logs)
         } else {
             ("Ok".to_string(), None)
         };
