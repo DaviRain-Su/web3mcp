@@ -45,11 +45,10 @@ Envelope:
 
 ```json
 {
-  "kind": "tx_2phase",
-  "chain": "solana",
+  "kind": "solana_idl_2phase",
   "network": "mainnet",
   "mode": "plan",
-  "action": { /* chain-specific */ },
+  "action": { /* solana-specific */ },
   "safety": {
     "require_simulate_ok": true,
     "send": false,
@@ -75,7 +74,7 @@ Solana arbitrary IDL action:
 
 Copy/paste and adapt:
 
-- Only accept JSON jobs.
+- Only accept JSON jobs with `kind=solana_idl_2phase`.
 - On `mode=plan`: determine missing args/accounts; do not broadcast.
 - On `mode=simulate`: build and simulate; return structured error summaries.
 - On `mode=send`: only if simulate ok; create pending tx by default.

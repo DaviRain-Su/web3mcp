@@ -49,17 +49,16 @@ It provides tools:
 
 ## Recommended ACP Job protocol (MVP)
 
-Use a single payload shape so the executor agent can be deterministic.
+Use a single **explicit** payload shape so the executor agent can be deterministic.
 
 ### Envelope
 
 ```json
 {
-  "kind": "tx_2phase",
-  "chain": "solana",
+  "kind": "solana_idl_2phase",
   "network": "mainnet",
   "mode": "plan",
-  "action": { /* chain-specific */ },
+  "action": { /* solana-specific */ },
   "safety": {
     "require_simulate_ok": true,
     "send": false,
@@ -68,6 +67,7 @@ Use a single payload shape so the executor agent can be deterministic.
 }
 ```
 
+- `kind`: fixed `solana_idl_2phase`
 - `mode`: `plan | simulate | send | confirm`
 - `safety.send`: default `false`
 - `safety.confirm`: default `false` (prefer pending-confirm UX)
@@ -95,7 +95,6 @@ Use a single payload shape so the executor agent can be deterministic.
 {
   "ok": true,
   "stage": "plan",
-  "chain": "solana",
   "network": "mainnet",
   "result": { /* stage-specific */ },
   "missing": { "args": [], "accounts": [] },
