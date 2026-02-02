@@ -127,7 +127,47 @@ See `docs/claude-prompts.md` for ready-to-use prompts.
 
 ## Multi-chain adapters
 
-Stub adapters live at `src/intent/adapters.rs` for future EVM/Solana integration.
+Adapters live at `src/intent/adapters.rs`.
+
+## Solana (overview)
+
+This server includes **Solana** tooling oriented around:
+
+- keeping Claude Desktop tool lists small (minimal default surface)
+- enabling more advanced Solana workflows (IDL planning/simulation) behind an optional feature
+- safer execution defaults via **pending confirmation** (confirm/broadcast is a separate step)
+
+### Minimal Solana tool surface (Claude Desktop-friendly)
+
+Default builds expose a small set of Solana tools, including:
+
+- `solana_rpc_call` (raw JSON-RPC; defaults to `result_only=true`, supports `result_path`)
+- `solana_send_transaction` (safe default: creates a pending confirmation)
+- `solana_confirm_transaction` (broadcast a pending tx)
+- pending store helpers (`solana_list_pending_confirmations`, `solana_get_pending_confirmation`, `solana_cleanup_pending_confirmations`)
+
+### Enable extended Solana tools (for agents / power users)
+
+Build with:
+
+```bash
+cargo build --release --features solana-extended-tools
+```
+
+This enables additional Solana tools including **IDL helpers** such as:
+
+- `solana_idl_plan_instruction` (returns missing args/accounts, enum variants, example arg shapes)
+- `solana_idl_simulate_instruction` (returns ok/error_class/suggest_fix/logs_excerpt)
+- `solana_idl_execute` (pending-confirm safe default)
+
+### ACP (Agent Commerce Protocol) integration
+
+If you are integrating with Virtuals ACP and using an executor agent pattern, see:
+
+- `docs/acp-integration.md`
+- `docs/acp-executor-prompt.md`
+- `docs/acp-main-agent-template.md`
+- `examples/acp/`
 
 ## Human-friendly EVM network mapping (testnet-first)
 
