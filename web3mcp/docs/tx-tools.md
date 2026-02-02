@@ -2,6 +2,14 @@
 
 This document is a quick reference for **transaction/broadcast-related tools** and how the server enforces safety, especially on **mainnet**.
 
+## TL;DR matrix
+
+| Chain | Create pending (no broadcast) | Broadcast / confirm | Mainnet requires `confirm_token` | Store |
+|------|-------------------------------|---------------------|----------------------------------|-------|
+| EVM | `evm_create_pending_confirmation` | `evm_retry_pending_confirmation` | Yes | sqlite (`evm_pending_confirmations`) |
+| Solana | `solana_send_transaction` (`confirm=false`) | `solana_confirm_transaction` | Yes | file (`confirm_store/solana_confirm_store.json`) |
+| Sui | any safe-default Sui tx tool (`confirm=false`) | `sui_confirm_execution` / `sui_retry_pending_confirmation` | Yes | sqlite (`sui_pending_confirmations`) |
+
 ## Safety model (summary)
 
 - **Mainnet** broadcasts require a second-step `confirm_token`.
