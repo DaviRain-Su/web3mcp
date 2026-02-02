@@ -846,6 +846,9 @@
             }
             Err(e) => {
                 let _ = crate::utils::evm_confirm_store::mark_failed(&conn, id, &e.message);
+                let required_confirmations =
+                    crate::utils::evm_chain_registry::confirmations_for_chain(row.chain_id);
+
                 Err(ErrorData {
                     code: e.code,
                     message: e.message,
@@ -855,6 +858,7 @@
                         "tx_summary_hash": provided_hash,
                         "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                         "tool_context": tool_context,
+                        "confirmations_required_default": required_confirmations,
                         "note": "Retry broadcast failed. You can inspect the pending record via evm_get_pending_confirmation or retry again."
                     })),
                 })
