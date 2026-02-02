@@ -6387,6 +6387,70 @@
 
         let suggested_cu_limit = Self::solana_suggest_compute_unit_limit(sim.value.units_consumed);
 
+        // -------- Error classification (best-effort) --------
+        let ok = sim.value.err.is_none();
+        let logs: Vec<String> = sim
+            .value
+            .logs
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .take(80)
+            .collect();
+
+        fn classify_solana_simulation(err: &Value, logs: &[String]) -> (String, Option<String>) {
+            // Intentionally heuristic.
+            let err_s = err.to_string();
+            let mut error_class = "ProgramError".to_string();
+
+            if err_s.contains("AccountNotFound") || err_s.contains("MissingAccount") {
+                error_class = "MissingAccount".to_string();
+            } else if err_s.contains("InvalidArgument")
+                || err_s.contains("InvalidInstructionData")
+                || err_s.contains("InvalidAccountData")
+            {
+                error_class = "TypeError".to_string();
+            }
+
+            if logs
+                .iter()
+                .any(|l| l.contains("AnchorError") || l.contains("AnchorError occurred"))
+            {
+                error_class = "AnchorConstraint".to_string();
+            }
+
+            let suggest_fix = if error_class == "MissingAccount" {
+                Some(
+                    "One or more required accounts were not provided or are invalid. Re-run plan and fill missing accounts (ATA/PDA/system/token program IDs)."
+                        .to_string(),
+                )
+            } else if error_class == "TypeError" {
+                Some(
+                    "Instruction data likely failed to decode. Check IDL arg types; ensure all u64/u128 amounts are strings; ensure enums/options match the IDL."
+                        .to_string(),
+                )
+            } else if error_class == "AnchorConstraint" {
+                Some(
+                    "Anchor constraint failed (has_one/constraint/owner/seeds). Check accounts correspond to the expected PDA/ATA and signers are correct."
+                        .to_string(),
+                )
+            } else {
+                logs.iter()
+                    .rev()
+                    .find(|l| l.contains("custom program error") || l.contains("Program log:"))
+                    .map(|l| format!("Review program logs; last relevant line: {}", l))
+            };
+
+            (error_class, suggest_fix)
+        }
+
+        let (error_class, suggest_fix) = if let Some(ref err) = sim.value.err {
+            let v = serde_json::to_value(err).unwrap_or_else(|_| json!({ "err": err.to_string() }));
+            classify_solana_simulation(&v, &logs)
+        } else {
+            ("Ok".to_string(), None)
+        };
+
         let suggest_price = cfg
             .as_ref()
             .and_then(|c| c.suggest_compute_unit_price)
@@ -6432,6 +6496,12 @@
         }
 
         let response = Self::pretty_json(&json!({
+            "ok": ok,
+            "stage": "simulate",
+            "error_class": if ok { null } else { error_class },
+            "suggest_fix": if ok { null } else { suggest_fix },
+            "logs_excerpt": if logs.is_empty() { null } else { logs },
+
             "rpc_url": rpc_url,
             "network": network_str,
             "program_id": program_id,
