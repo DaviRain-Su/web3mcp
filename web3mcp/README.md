@@ -261,6 +261,7 @@ See `docs/claude-prompts.md` for ready-to-use prompts.
 See:
 - `docs/troubleshooting.md`
 - `docs/tx-tools.md` (transaction tools & safety model)
+- `docs/prompts/` (prompt packs)
 
 ## Multi-chain adapters
 

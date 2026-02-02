@@ -123,6 +123,115 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "Run a quick healthcheck for configured networks and local stores (no secrets).")]
+    async fn system_healthcheck(
+        &self,
+        Parameters(request): Parameters<SystemHealthcheckRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // ---- Sui ----
+        let sui_rpc_url = self.rpc_url.clone();
+        let sui_ok = self
+            .client
+            .read_api()
+            .get_chain_identifier()
+            .await
+            .map(|_| true)
+            .unwrap_or(false);
+
+        // ---- Solana ----
+        let solana_network = request
+            .solana_network
+            .as_deref()
+            .unwrap_or("mainnet")
+            .to_string();
+        let solana_rpc_url = Self::solana_rpc_url_for_network(Some(&solana_network)).unwrap_or_else(|_| "".to_string());
+        let solana_ok = if solana_rpc_url.is_empty() {
+            false
+        } else {
+            let client = Self::solana_rpc(Some(&solana_network))?;
+            // getHealth returns "ok" when healthy.
+            client.get_health().await.is_ok()
+        };
+
+        // ---- EVM ----
+        let evm_chain_id = request.evm_chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let evm_rpc_url = Self::evm_rpc_url(evm_chain_id).unwrap_or_else(|_| "".to_string());
+        let evm_ok = if evm_rpc_url.is_empty() {
+            false
+        } else {
+            match self.evm_provider(evm_chain_id).await {
+                Ok(provider) => {
+                    let bn = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_block_number(&provider).await;
+                    bn.is_ok()
+                }
+                Err(_) => false,
+            }
+        };
+
+        // ---- Stores writability ----
+        let solana_store_ok = crate::utils::solana_confirm_store::cleanup_expired().is_ok();
+        let evm_store_ok = crate::utils::evm_confirm_store::connect().is_ok();
+        let sui_store_ok = crate::utils::sui_confirm_store::connect().is_ok();
+
+        let response = Self::pretty_json(&serde_json::json!({
+            "sui": { "rpc_url": sui_rpc_url, "ok": sui_ok },
+            "solana": { "network": solana_network, "rpc_url": solana_rpc_url, "ok": solana_ok },
+            "evm": { "chain_id": evm_chain_id, "rpc_url": evm_rpc_url, "ok": evm_ok },
+            "stores": {
+                "solana_store_ok": solana_store_ok,
+                "evm_store_ok": evm_store_ok,
+                "sui_store_ok": sui_store_ok
+            },
+            "next": {
+                "debug_bundle": "system_debug_bundle out_path=./debug_bundle.json"
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "Show a safe, mainnet-oriented demo flow (2-phase + confirm_token). Does not broadcast.")]
+    async fn system_demo_safe_mainnet_flow(
+        &self,
+        Parameters(request): Parameters<SystemDemoSafeMainnetFlowRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let evm_chain_id = request.evm_chain_id.unwrap_or(8453);
+        let solana_network = request
+            .solana_network
+            .clone()
+            .unwrap_or_else(|| "mainnet".to_string());
+        let sui_rpc_url = request.sui_rpc_url.unwrap_or_else(|| self.rpc_url.clone());
+
+        let response = Self::pretty_json(&serde_json::json!({
+            "note": "This demo prints a safe 2-phase mainnet flow. It does NOT broadcast any transaction.",
+            "evm": {
+                "chain_id": evm_chain_id,
+                "flow": [
+                    "evm_build_transfer_native",
+                    "evm_preflight",
+                    "evm_create_pending_confirmation",
+                    "(then) evm_retry_pending_confirmation with confirm_token"
+                ]
+            },
+            "solana": {
+                "network": solana_network,
+                "flow": [
+                    "solana_send_transaction (confirm=false)",
+                    "(then) solana_confirm_transaction with confirm_token"
+                ]
+            },
+            "sui": {
+                "rpc_url": sui_rpc_url,
+                "flow": [
+                    "run a safe-default Sui tx tool with confirm=false to get pending",
+                    "(then) sui_confirm_execution with confirm_token"
+                ]
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "Write a diagnostic bundle (JSON) with network context and pending confirmation summaries. Optionally writes to out_path.")]
     async fn system_debug_bundle(
         &self,

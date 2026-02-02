@@ -2781,3 +2781,23 @@ pub struct SystemDebugBundleRequest {
     #[schemars(description = "Include a small sample of pending confirmations. Default true.")]
     pub include_pending_samples: Option<bool>,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SystemHealthcheckRequest {
+    #[schemars(description = "Optional EVM chain id to probe (defaults to EVM_DEFAULT_CHAIN_ID)")]
+    pub evm_chain_id: Option<u64>,
+    #[schemars(
+        description = "Optional Solana network to probe: mainnet|testnet|devnet (default mainnet)"
+    )]
+    pub solana_network: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SystemDemoSafeMainnetFlowRequest {
+    #[schemars(description = "EVM chain id to use for demo (default 8453 Base mainnet)")]
+    pub evm_chain_id: Option<u64>,
+    #[schemars(description = "Sui rpc_url to mention in demo (default current server rpc_url)")]
+    pub sui_rpc_url: Option<String>,
+    #[schemars(description = "Solana network to mention in demo (default mainnet)")]
+    pub solana_network: Option<String>,
+}
