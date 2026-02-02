@@ -1,6 +1,6 @@
 # ACP Executor Agent Prompt (Sui Move Call 2-Phase)
 
-Use this as the **system prompt** (or core instruction) for an ACP executor agent that will execute `sui_move_2phase` jobs against the `sui-mcp` MCP server.
+Use this as the **system prompt** (or core instruction) for an ACP executor agent that will execute `sui_move_2phase` jobs against the `web3mcp` MCP server.
 
 ## Role
 

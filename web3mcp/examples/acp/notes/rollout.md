@@ -1,6 +1,6 @@
-# Rollout / Deployment notes (ACP + sui-mcp)
+# Rollout / Deployment notes (ACP + web3mcp)
 
-This is a practical checklist for rolling out the ACP executor pattern with `sui-mcp`.
+This is a practical checklist for rolling out the ACP executor pattern with `web3mcp`.
 
 ## Goal
 

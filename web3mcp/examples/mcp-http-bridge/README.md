@@ -1,6 +1,6 @@
 # MCP HTTP Bridge
 
-This is a small HTTP bridge that forwards `POST /mcp` calls to the local `sui-mcp` binary over stdio.
+This is a small HTTP bridge that forwards `POST /mcp` calls to the local MCP binary over stdio (built from `web3mcp/`; binary name may be `sui-mcp`).
 
 ## Quick Start
 

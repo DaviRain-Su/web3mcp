@@ -3,7 +3,7 @@
 When you're ready to split the ACP integration into a standalone repo, this is a suggested structure.
 
 ```
-acp-sui-mcp-integration/
+acp-web3mcp-integration/
   README.md
   prompts/
     executor/

@@ -42,7 +42,7 @@ Add this to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "sui": {
-      "command": "/path/to/sui-mcp/target/release/sui-mcp",
+      "command": "/path/to/web3mcp/target/release/sui-mcp",
       "env": {
         "SUI_RPC_URL": "https://fullnode.mainnet.sui.io:443"
       }

@@ -1,4 +1,4 @@
-# ACP Integration Example (sui-mcp + openclaw-acp)
+# ACP Integration Example (web3mcp + openclaw-acp)
 
 This folder is a **documentation-only example** showing how to structure an integration where:
 
@@ -6,7 +6,7 @@ This folder is a **documentation-only example** showing how to structure an inte
 - `notes/security.md` documents executor vs main-agent separation and key handling.
 
 - Your *main agent* (human-facing) creates ACP jobs.
-- A dedicated *executor agent* executes a strict 2-phase workflow against `sui-mcp`.
+- A dedicated *executor agent* executes a strict 2-phase workflow against `web3mcp`.
 
 This is intended as a starting point for a separate “integration repo” later.
 
@@ -16,19 +16,19 @@ This is intended as a starting point for a separate “integration repo” later
 Human → Claude Desktop/Main Agent
    → (execute_acp_job)
       → ACP Executor Agent
-         → sui-mcp (MCP tools)
+         → web3mcp (MCP tools)
          → Solana/Sui/EVM RPCs
 ```
 
 ## Requirements
 
-1) You have `sui-mcp` built and runnable.
+1) You have `web3mcp` built and runnable.
 2) You have OpenClaw configured with the `virtuals-protocol-acp` skill:
    - <https://github.com/Virtual-Protocol/openclaw-acp>
 
 ## Important: enable Solana extended tools only in executor environment
 
-For arbitrary Solana IDL flows, the executor must run `sui-mcp` with:
+For arbitrary Solana IDL flows, the executor must run the `web3mcp` repo build with:
 
 - Cargo feature: `solana-extended-tools`
 

@@ -1,6 +1,6 @@
 # ACP Executor Agent Prompt (EVM Call 2-Phase)
 
-Use this as the **system prompt** (or core instruction) for an ACP executor agent that will execute `evm_call_2phase` jobs against the `sui-mcp` MCP server.
+Use this as the **system prompt** (or core instruction) for an ACP executor agent that will execute `evm_call_2phase` jobs against the `web3mcp` MCP server.
 
 ## Role
 

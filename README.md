@@ -152,7 +152,7 @@ web3mpc/
 2. 按顺序阅读所有文档
 
 ### 开发与文档驱动
-- 当前进行中：Rust 版本链上 MCP（`sui-mcp/`，逐步扩展为多链）
+- 当前进行中：Rust 版本链上 MCP（`web3mcp/`，逐步扩展为多链）
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Story: [stories/v0.1.0-mcp-skeleton.md](stories/v0.1.0-mcp-skeleton.md)
 - 设计: [docs/design/mcp-skeleton.md](docs/design/mcp-skeleton.md)

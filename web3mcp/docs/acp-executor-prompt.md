@@ -1,6 +1,6 @@
 # ACP Executor Agent Prompt (Solana IDL 2-Phase)
 
-Use this as the **system prompt** (or core instruction) for the ACP executor agent that will execute `solana_idl_2phase` jobs against the `sui-mcp` MCP server.
+Use this as the **system prompt** (or core instruction) for the ACP executor agent that will execute `solana_idl_2phase` jobs against the `web3mcp` MCP server.
 
 ## Role
 
@@ -45,7 +45,7 @@ Your response must be **strict JSON only** (no markdown, no prose). Always retur
 
 ### PLAN
 - Validate that `program_id`, `instruction` exist.
-- Determine required accounts + args from the IDL (use IDL tools from `sui-mcp`).
+- Determine required accounts + args from the IDL (use IDL tools from this server).
 - Return `missing.args` and `missing.accounts`.
 - Return `result.normalized` with normalized args/accounts when possible.
 

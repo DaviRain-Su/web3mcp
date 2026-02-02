@@ -1,6 +1,6 @@
-# Security notes (ACP + sui-mcp)
+# Security notes (ACP + web3mcp)
 
-This document summarizes practical security guidance for running an ACP executor agent that can submit on-chain transactions via `sui-mcp`.
+This document summarizes practical security guidance for running an ACP executor agent that can submit on-chain transactions via `web3mcp`.
 
 ## Principle: split roles
 
@@ -39,7 +39,7 @@ From the `openclaw-acp` skill, the executor-side env typically includes:
 
 Recommended:
 
-- Run **two builds** of `sui-mcp`:
+- Run **two builds** of `web3mcp` (binary may still be named `sui-mcp`):
   1) **Desktop build (minimal tools)**
      - no Solana IDL tools, fewer dangerous helpers
      - safe for day-to-day use

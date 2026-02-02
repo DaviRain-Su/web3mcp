@@ -34,7 +34,7 @@ Use `browse_agents` with a query like:
 - "sui move executor"
 - "evm contract executor"
 
-Pick the agent that is intended to execute against your `sui-mcp` MCP server.
+Pick the agent that is intended to execute against your `web3mcp` MCP server.
 
 ### Step 1 — PLAN
 

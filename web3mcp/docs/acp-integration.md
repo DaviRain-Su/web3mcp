@@ -1,6 +1,6 @@
 # ACP Integration (Virtuals Protocol Agent Commerce Protocol)
 
-This repository (`sui-mcp`) is a **multi-chain MCP server** (Sui + EVM + Solana today, more later). When users interact via **Claude Desktop**, complex operations (especially **arbitrary Solana IDL interactions**) can be unreliable if you try to go from *natural language → fully correct args/accounts → broadcast* in one shot.
+This repository (`web3mcp`) is a **multi-chain MCP server** (Sui + EVM + Solana today, more later). When users interact via **Claude Desktop**, complex operations (especially **arbitrary Solana IDL interactions**) can be unreliable if you try to go from *natural language → fully correct args/accounts → broadcast* in one shot.
 
 For **AI-agent users**, a better pattern is to execute transactions through **ACP (Agent Commerce Protocol)** using a dedicated *executor agent*.
 
@@ -27,7 +27,7 @@ ACP lets you:
 
 ## Components
 
-### 1) This MCP server (sui-mcp)
+### 1) This MCP server (web3mcp)
 
 - Runs locally (stdio) or behind a bridge.
 - Exposes tools for Sui/EVM/Solana.
@@ -103,7 +103,7 @@ Use a single **explicit** payload shape so the executor agent can be determinist
 }
 ```
 
-## Tool mapping to sui-mcp
+## Tool mapping to web3mcp
 
 The executor agent should call **only a small set of tools** and enforce the workflow:
 
