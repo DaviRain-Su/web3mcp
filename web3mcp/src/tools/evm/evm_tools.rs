@@ -568,6 +568,8 @@
             "swap_confirmation_id": row.swap_confirmation_id,
         });
 
+        let required_confirmations = crate::utils::evm_chain_registry::confirmations_for_chain(row.chain_id);
+
         if let Some(cid) = request.chain_id {
             if cid != row.chain_id {
                 return Err(ErrorData {
@@ -626,6 +628,7 @@
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
                     "status": row.status,
+                    "confirmations_required_default": required_confirmations
                 })),
             );
         }
@@ -652,6 +655,7 @@
                     "provided": provided_hash,
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
+                    "confirmations_required_default": required_confirmations
                 })),
             );
         }
@@ -676,6 +680,7 @@
                     "tx_summary_hash": row.tx_summary_hash,
                     "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&row.tx),
                     "tool_context": tool_context,
+                    "confirmations_required_default": required_confirmations
                 })),
             );
         }
@@ -725,6 +730,8 @@
                 "tx_summary_hash": new_hash,
                 "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
                 "tool_context": tool_context,
+                "simulation": sim_json,
+                "confirmations_required_default": required_confirmations,
                 "note": "Tx changed during preflight (nonce/fees). Re-confirm/retry with new tx_summary_hash."
             }))?;
             return Ok(CallToolResult::success(vec![Content::text(response)]));
@@ -765,7 +772,9 @@
                         "chain_id": row.chain_id,
                         "tx_summary_hash": provided_hash,
                         "summary": crate::utils::evm_confirm_store::tx_summary_for_response(&tx),
-                        "tool_context": tool_context
+                        "tool_context": tool_context,
+                        "simulation": sim_json,
+                        "confirmations_required_default": required_confirmations
                     })),
                 );
             }
