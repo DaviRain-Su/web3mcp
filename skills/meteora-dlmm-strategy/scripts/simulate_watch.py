@@ -386,7 +386,13 @@ def main() -> int:
             "score": score,
         })
 
-    rows.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
+    # Deterministic ordering: tie-break by pair_address.
+    rows.sort(
+        key=lambda r: (
+            -(float(r.get("score") or 0.0)),
+            str(r.get("pair_address") or ""),
+        )
+    )
     ranked = rows[:top_n]
 
     # Optional: enrich candidates via /pair/<address> (gives volume buckets + fee_tvl_ratio buckets, base_fee_percentage, etc.)
@@ -454,18 +460,21 @@ def main() -> int:
                 else:
                     r["score"] = 0.0
 
-        ranked.sort(key=lambda r: (r.get("score") or 0.0), reverse=True)
+        ranked.sort(
+            key=lambda r: (
+                -(float(r.get("score") or 0.0)),
+                str(r.get("pair_address") or ""),
+            )
+        )
 
     # Volume top 10 among the ranked list (uses enriched window volume when available)
     vol_sorted = sorted(
         [r for r in ranked if isinstance(r.get("volume_window"), (int, float))],
-        key=lambda r: r.get("volume_window") or 0.0,
-        reverse=True,
+        key=lambda r: (-(float(r.get("volume_window") or 0.0)), str(r.get("pair_address") or "")),
     )
     trades_sorted = sorted(
         [r for r in ranked if isinstance(r.get("trades_24h"), (int, float))],
-        key=lambda r: r.get("trades_24h") or 0.0,
-        reverse=True,
+        key=lambda r: (-(float(r.get("trades_24h") or 0.0)), str(r.get("pair_address") or "")),
     )
 
     top10_vol_addrs = set(
