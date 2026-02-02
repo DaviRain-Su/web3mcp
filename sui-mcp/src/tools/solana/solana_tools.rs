@@ -5888,9 +5888,26 @@
 
         // Always provide offline hints (best-effort) to avoid common footguns.
         let mut hints: Vec<Value> = Vec::new();
+        let mut suggested_defaults: serde_json::Map<String, Value> = serde_json::Map::new();
+
         for a in &ix.accounts {
             let expected = expected_program_id_for_account_name(&a.name).map(|p| p.to_string());
             let note = hint_for_account_name(&a.name);
+
+            // If the account is missing and we can provide a safe, well-known default, suggest it.
+            let is_missing = accounts_obj.get(&a.name).and_then(|v| v.as_str()).is_none();
+            if is_missing {
+                if let Some(ref pid) = expected {
+                    suggested_defaults.insert(
+                        a.name.clone(),
+                        json!({
+                            "kind": "well_known_program_id",
+                            "pubkey": pid
+                        }),
+                    );
+                }
+            }
+
             if expected.is_some() || note.is_some() {
                 hints.push(json!({
                     "name": a.name,
@@ -5984,6 +6001,7 @@
                 "accounts": missing_accounts
             },
             "hints": hints,
+            "suggested_defaults": suggested_defaults,
             "validate_on_chain": validate,
             "onchain": onchain,
             "tool_context": json!({
@@ -6726,10 +6744,12 @@
             )?;
 
             let response = Self::pretty_json(&json!({
+                "ok": true,
+                "stage": "send",
                 "status": "pending",
                 "rpc_url": rpc_url,
                 "network": summary.get("network").unwrap(),
-                "confirmation_id": confirmation_id,
+                "pending_confirmation_id": confirmation_id,
                 "tx_summary_hash": hash,
                 "instruction": {
                     "program_id": program_id,
@@ -6783,6 +6803,8 @@
         let waited = Self::solana_wait_for_signature(&client, &sig, &commitment, timeout_ms).await?;
 
         let response = Self::pretty_json(&json!({
+            "ok": true,
+            "stage": "send",
             "status": "sent",
             "rpc_url": rpc_url,
             "network": network_str,
