@@ -2475,6 +2475,267 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
+    #[tool(description = "EVM: decode logs (receipt.logs or explicit logs array) using optional ABI and standard ERC ABIs")]
+    async fn evm_decode_logs(
+        &self,
+        Parameters(request): Parameters<EvmDecodeLogsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+
+        let logs_value = if let Some(v) = request.logs_json {
+            v
+        } else if let Some(v) = request.receipt_json {
+            v.get("logs").cloned().unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+
+        if logs_value.is_null() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Must provide logs_json or receipt_json"),
+                data: None,
+            });
+        }
+
+        let logs: Vec<ethers::types::Log> = serde_json::from_value(logs_value).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid logs JSON: {}", e)),
+            data: None,
+        })?;
+
+        let limit = request.decoded_logs_limit.unwrap_or(50) as usize;
+
+        let user_abi = if let Some(abi_json) = request.abi_json.as_deref() {
+            Self::evm_parse_abi_json(abi_json)?
+        } else {
+            None
+        };
+        let standard_abi = Self::evm_standard_event_abi()?;
+
+        let normalized_allowlist = request.only_addresses.clone().map(|addrs| {
+            addrs
+                .into_iter()
+                .filter_map(|a| Self::normalize_evm_address(&a).ok())
+                .collect::<std::collections::BTreeSet<_>>()
+        });
+
+        let normalized_topics0 = request.only_topics0.clone().map(|topics| {
+            topics
+                .into_iter()
+                .filter_map(|t| {
+                    let t = t.trim();
+                    let t = t.strip_prefix("0x").unwrap_or(t);
+                    if t.len() != 64 {
+                        return None;
+                    }
+                    Some(format!("0x{}", t.to_lowercase()))
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+        });
+
+        let mut decoded = Vec::new();
+        let mut considered_total = 0usize;
+        let mut decoded_total = 0usize;
+
+        for log in logs.iter() {
+            if let Some(allow) = &normalized_allowlist {
+                let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
+                if !allow.contains(&addr) {
+                    continue;
+                }
+            }
+
+            if let Some(allow) = &normalized_topics0 {
+                let topic0 = log
+                    .topics
+                    .get(0)
+                    .map(|t| format!("0x{}", hex::encode(t.as_bytes())));
+                match topic0 {
+                    Some(t0) => {
+                        if !allow.contains(&t0.to_lowercase()) {
+                            continue;
+                        }
+                    }
+                    None => continue,
+                }
+            }
+
+            considered_total += 1;
+            if decoded.len() >= limit {
+                break;
+            }
+
+            // 1) try user ABI
+            if let Some(abi) = &user_abi {
+                if let Some(v) = Self::evm_decode_log_with_abi(log, abi) {
+                    decoded.push(v);
+                    decoded_total += 1;
+                    continue;
+                }
+            }
+
+            // 2) try standard ERC event ABI
+            if let Some(v) = Self::evm_decode_log_with_abi(log, &standard_abi) {
+                decoded.push(v);
+                decoded_total += 1;
+                continue;
+            }
+
+            // 3) try local ABI registry if available
+            let addr = format!("0x{}", hex::encode(log.address.as_bytes()));
+            if let Ok(Some(abi)) = Self::evm_load_contract_abi(chain_id, &addr) {
+                if let Some(v) = Self::evm_decode_log_with_abi(log, &abi) {
+                    decoded.push(v);
+                    decoded_total += 1;
+                }
+            }
+        }
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "decoded_logs": decoded,
+            "decoded_logs_limit": limit,
+            "considered_total": considered_total,
+            "decoded_total": decoded_total,
+            "truncated": considered_total > limit
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: decode transaction input calldata using optional ABI")]
+    async fn evm_decode_transaction_input(
+        &self,
+        Parameters(request): Parameters<EvmDecodeTransactionInputRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let data_hex = request.data.trim();
+        let data_hex = data_hex.strip_prefix("0x").unwrap_or(data_hex);
+        let data = hex::decode(data_hex).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid calldata hex: {}", e)),
+            data: None,
+        })?;
+
+        if data.len() < 4 {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("Calldata too short (need at least 4 bytes selector)"),
+                data: None,
+            });
+        }
+
+        let selector = &data[..4];
+
+        let abi = if let Some(abi_json) = request.abi_json.as_deref() {
+            Self::evm_parse_abi_json(abi_json)?
+        } else {
+            None
+        };
+
+        let mut matched: Option<Value> = None;
+        if let Some(abi) = &abi {
+            for func in abi.functions() {
+                let sig = func.short_signature();
+                if sig == selector {
+                    let decoded_tokens = func.decode_input(&data[4..]).ok();
+                    let decoded_named = decoded_tokens.as_ref().map(|tokens| {
+                        func.inputs
+                            .iter()
+                            .zip(tokens.iter())
+                            .map(|(p, t)| (p.name.clone(), Self::evm_token_to_json(t)))
+                            .collect::<serde_json::Map<String, Value>>()
+                    });
+
+                    matched = Some(json!({
+                        "function": func.signature(),
+                        "decoded": decoded_tokens.as_ref().map(|t| t.iter().map(Self::evm_token_to_json).collect::<Vec<_>>()),
+                        "decoded_named": decoded_named
+                    }));
+                    break;
+                }
+            }
+        }
+
+        let response = Self::pretty_json(&json!({
+            "to": request.to,
+            "selector": format!("0x{}", hex::encode(selector)),
+            "decoded": matched
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[tool(description = "EVM: simulate a transaction (eth_call + estimateGas)")]
+    async fn evm_simulate_transaction(
+        &self,
+        Parameters(request): Parameters<EvmSimulateTransactionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let chain_id = request.chain_id.unwrap_or(Self::evm_default_chain_id()?);
+        let provider = self.evm_provider(chain_id).await?;
+
+        let from = Self::parse_evm_address(&request.from)?;
+        let to = Self::parse_evm_address(&request.to)?;
+
+        let value = if let Some(v) = request.value_wei.as_deref() {
+            Some(Self::parse_evm_u256("value_wei", v)?)
+        } else {
+            None
+        };
+
+        let data = if let Some(d) = request.data.as_deref() {
+            let dh = d.trim().strip_prefix("0x").unwrap_or(d.trim());
+            Some(ethers::types::Bytes::from(hex::decode(dh).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid data hex: {}", e)),
+                data: None,
+            })?))
+        } else {
+            None
+        };
+
+        let call_req = ethers::types::TransactionRequest {
+            from: Some(from),
+            to: Some(ethers::types::NameOrAddress::Address(to)),
+            value,
+            data: data.clone(),
+            ..Default::default()
+        };
+        let typed: ethers::types::transaction::eip2718::TypedTransaction = call_req.clone().into();
+
+        let call_res = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::call(
+            &provider,
+            &typed,
+            None,
+        )
+        .await;
+
+        let estimate_res = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::estimate_gas(
+            &provider,
+            &typed,
+            None,
+        )
+        .await;
+
+        let (estimate_gas, estimate_gas_error) = match estimate_res {
+            Ok(g) => (Some(g.to_string()), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+
+        let response = Self::pretty_json(&json!({
+            "chain_id": chain_id,
+            "from": request.from,
+            "to": request.to,
+            "value_wei": request.value_wei,
+            "call_ok": call_res.is_ok(),
+            "call_error": call_res.as_ref().err().map(|e| e.to_string()),
+            "estimate_gas": estimate_gas,
+            "estimate_gas_error": estimate_gas_error
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "EVM: decode a transaction receipt JSON using the local ABI registry")]
     async fn evm_decode_transaction_receipt(
         &self,
@@ -3000,6 +3261,80 @@
 
         let truncated = total > limit;
         Ok((out, truncated, total))
+    }
+
+    fn evm_token_to_json(t: &ethers::abi::Token) -> Value {
+        match t {
+            ethers::abi::Token::Address(a) => json!(format!("0x{}", hex::encode(a.as_bytes()))),
+            ethers::abi::Token::Uint(u) => json!(u.to_string()),
+            ethers::abi::Token::Int(i) => json!(i.to_string()),
+            ethers::abi::Token::Bool(b) => json!(*b),
+            ethers::abi::Token::String(s) => json!(s),
+            ethers::abi::Token::Bytes(b) => json!(format!("0x{}", hex::encode(b))),
+            ethers::abi::Token::FixedBytes(b) => json!(format!("0x{}", hex::encode(b))),
+            ethers::abi::Token::Array(arr) => {
+                json!(arr.iter().map(Self::evm_token_to_json).collect::<Vec<_>>())
+            }
+            ethers::abi::Token::FixedArray(arr) => {
+                json!(arr.iter().map(Self::evm_token_to_json).collect::<Vec<_>>())
+            }
+            ethers::abi::Token::Tuple(arr) => {
+                json!(arr.iter().map(Self::evm_token_to_json).collect::<Vec<_>>())
+            }
+        }
+    }
+
+    fn evm_standard_event_abi() -> Result<ethers::abi::Abi, ErrorData> {
+        // A minimal, self-contained ABI containing the most common standard events.
+        // This allows decoding without any external ABI registry.
+        let abi_json = r#"[
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"approved","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"Approval","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"TransferSingle","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"indexed":false,"internalType":"uint256[]","name":"values","type":"uint256[]"}],"name":"TransferBatch","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":false,"internalType":"string","name":"value","type":"string"},{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"URI","type":"event"}
+]"#;
+
+        serde_json::from_str::<ethers::abi::Abi>(abi_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32603),
+            message: Cow::from(format!("Failed to build standard ABI: {}", e)),
+            data: None,
+        })
+    }
+
+    fn evm_parse_abi_json(abi_json: &str) -> Result<Option<ethers::abi::Abi>, ErrorData> {
+        let abi_json = abi_json.trim();
+        if abi_json.is_empty() {
+            return Ok(None);
+        }
+
+        let v: Value = serde_json::from_str(abi_json).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid abi_json: {}", e)),
+            data: None,
+        })?;
+
+        // Accept either an ABI array or an object with an `abi` field.
+        let abi_value = if v.is_array() {
+            v
+        } else {
+            v.get("abi").cloned().unwrap_or(Value::Null)
+        };
+
+        if abi_value.is_null() {
+            return Ok(None);
+        }
+
+        let abi: ethers::abi::Abi = serde_json::from_value(abi_value).map_err(|e| ErrorData {
+            code: ErrorCode(-32602),
+            message: Cow::from(format!("Invalid ABI JSON: {}", e)),
+            data: None,
+        })?;
+
+        Ok(Some(abi))
     }
 
     fn evm_decode_log_with_abi(

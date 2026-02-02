@@ -1690,6 +1690,73 @@ pub struct PromptExplainEvmConceptRequest {
     #[schemars(description = "Concept to explain (e.g. gas, nonce, allowance, EIP-1559)")]
     pub concept: String,
 }
+
+// ---------- EVM decode / simulation helpers ----------
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmDecodeLogsRequest {
+    #[schemars(
+        description = "Optional chain id (only used for address-based local ABI registry lookups)"
+    )]
+    pub chain_id: Option<u64>,
+
+    #[schemars(description = "Logs JSON array (ethers::types::Log JSON)")]
+    pub logs_json: Option<Value>,
+
+    #[schemars(
+        description = "Receipt JSON that contains a `logs` array (ethers::types::TransactionReceipt JSON)"
+    )]
+    pub receipt_json: Option<Value>,
+
+    #[schemars(description = "Optional ABI JSON (string). If provided, used to decode logs.")]
+    pub abi_json: Option<String>,
+
+    #[schemars(description = "Decode at most this many logs")]
+    pub decoded_logs_limit: Option<u64>,
+
+    #[schemars(description = "Only decode logs emitted by these addresses")]
+    pub only_addresses: Option<Vec<String>>,
+
+    #[schemars(
+        description = "Only decode logs whose topic0 matches one of these 0x... 32-byte hashes"
+    )]
+    pub only_topics0: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmDecodeTransactionInputRequest {
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+
+    #[schemars(description = "Target contract address (optional; informational)")]
+    pub to: Option<String>,
+
+    #[schemars(description = "Calldata hex (0x...)")]
+    pub data: String,
+
+    #[schemars(
+        description = "Optional ABI JSON (string). If provided, used to decode function selector + args"
+    )]
+    pub abi_json: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EvmSimulateTransactionRequest {
+    #[schemars(description = "Optional chain id")]
+    pub chain_id: Option<u64>,
+
+    #[schemars(description = "From address")]
+    pub from: String,
+
+    #[schemars(description = "To address")]
+    pub to: String,
+
+    #[schemars(description = "Optional calldata (0x...)")]
+    pub data: Option<String>,
+
+    #[schemars(description = "Optional value in wei (string u256)")]
+    pub value_wei: Option<String>,
+}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmBuildErc20ApproveTxRequest {
     #[schemars(description = "Owner/sender address")]
