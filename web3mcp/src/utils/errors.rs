@@ -281,3 +281,48 @@ impl Web3McpServer {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn guard_result_has_stable_shape() {
+        let res = Web3McpServer::guard_result(
+            "test_context",
+            "SAFETY_GUARD_BLOCKED",
+            "blocked",
+            false,
+            Some("do x"),
+            Some(serde_json::json!({"tool": "t", "args": {"a": 1}})),
+            Some(serde_json::json!({"extra_k": "v"})),
+        )
+        .expect("guard_result should succeed");
+
+        assert!(!res.content.is_empty());
+        let text = res.content[0]
+            .raw
+            .as_text()
+            .map(|t| t.text.clone())
+            .unwrap_or_else(|| panic!("expected text content, got: {:?}", res.content[0]));
+
+        let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+        assert_eq!(
+            v.get("status").and_then(|x| x.as_str()),
+            Some("needs_confirmation")
+        );
+        assert_eq!(
+            v.get("context").and_then(|x| x.as_str()),
+            Some("test_context")
+        );
+
+        let guard = v.get("guard").expect("guard object");
+        assert_eq!(
+            guard.get("guard_class").and_then(|x| x.as_str()),
+            Some("SAFETY_GUARD_BLOCKED")
+        );
+
+        // `next` is included when provided.
+        assert!(guard.get("next").is_some());
+    }
+}
