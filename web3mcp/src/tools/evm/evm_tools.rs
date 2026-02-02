@@ -2666,7 +2666,7 @@
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 
-    #[tool(description = "EVM: simulate a transaction (eth_call + estimateGas)")]
+    #[tool(description = "EVM: simulate a transaction (eth_call + estimateGas + fee suggestions)")]
     async fn evm_simulate_transaction(
         &self,
         Parameters(request): Parameters<EvmSimulateTransactionRequest>,
@@ -2699,6 +2699,7 @@
             to: Some(ethers::types::NameOrAddress::Address(to)),
             value,
             data: data.clone(),
+            gas: request.gas_limit.map(Self::u256_from_u64),
             ..Default::default()
         };
         let typed: ethers::types::transaction::eip2718::TypedTransaction = call_req.clone().into();
@@ -2717,20 +2718,42 @@
         )
         .await;
 
-        let (estimate_gas, estimate_gas_error) = match estimate_res {
-            Ok(g) => (Some(g.to_string()), None),
-            Err(e) => (None, Some(e.to_string())),
+        let (estimate_gas, estimate_gas_error, estimate_gas_with_buffer) = match estimate_res {
+            Ok(g) => {
+                let buffered = g
+                    .checked_mul(ethers::types::U256::from(12u64))
+                    .and_then(|x| x.checked_div(ethers::types::U256::from(10u64)))
+                    .unwrap_or(g);
+                (Some(g.to_string()), None, Some(buffered.to_string()))
+            }
+            Err(e) => (None, Some(e.to_string()), None),
         };
+
+        let gas_price = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::get_gas_price(&provider)
+            .await
+            .ok();
+
+        // Best-effort EIP-1559 suggestion (some chains/RPCs might not support it)
+        let eip1559 = <ethers::providers::Provider<ethers::providers::Http> as ethers::providers::Middleware>::estimate_eip1559_fees(&provider, None)
+            .await
+            .ok();
 
         let response = Self::pretty_json(&json!({
             "chain_id": chain_id,
             "from": request.from,
             "to": request.to,
             "value_wei": request.value_wei,
+            "gas_limit": request.gas_limit,
             "call_ok": call_res.is_ok(),
             "call_error": call_res.as_ref().err().map(|e| e.to_string()),
             "estimate_gas": estimate_gas,
-            "estimate_gas_error": estimate_gas_error
+            "estimate_gas_with_buffer": estimate_gas_with_buffer,
+            "estimate_gas_error": estimate_gas_error,
+            "fee_suggestion": {
+                "gas_price": gas_price.map(|v| v.to_string()),
+                "max_fee_per_gas": eip1559.as_ref().map(|(max_fee, _)| max_fee.to_string()),
+                "max_priority_fee_per_gas": eip1559.as_ref().map(|(_, tip)| tip.to_string())
+            }
         }))?;
 
         Ok(CallToolResult::success(vec![Content::text(response)]))

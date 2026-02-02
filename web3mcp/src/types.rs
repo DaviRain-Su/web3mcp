@@ -1756,6 +1756,9 @@ pub struct EvmSimulateTransactionRequest {
 
     #[schemars(description = "Optional value in wei (string u256)")]
     pub value_wei: Option<String>,
+
+    #[schemars(description = "Optional gas limit override (u64)")]
+    pub gas_limit: Option<u64>,
 }
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EvmBuildErc20ApproveTxRequest {
