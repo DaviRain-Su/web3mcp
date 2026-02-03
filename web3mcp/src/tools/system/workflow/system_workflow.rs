@@ -794,12 +794,44 @@
                 // Best-effort parse the JSON payload returned by tool.
                 let parsed: Value = serde_json::from_str(&send_res).unwrap_or_else(|_| json!({ "raw": send_res }));
 
+                let pending_id = parsed.get("pending_confirmation_id").and_then(Value::as_str);
+                let tx_hash = parsed.get("tx_summary_hash").and_then(Value::as_str);
+                let confirm_token = parsed.get("confirm_token").and_then(Value::as_str);
+
+                let mut next: Value = json!({});
+                if let (Some(id), Some(h)) = (pending_id, tx_hash) {
+                    // Provide a copy/paste next step.
+                    let args = if confirm_token.is_some() {
+                        json!({
+                            "id": id,
+                            "hash": h,
+                            "confirm_token": confirm_token,
+                            "commitment": "confirmed"
+                        })
+                    } else {
+                        json!({
+                            "id": id,
+                            "hash": h,
+                            "commitment": "confirmed"
+                        })
+                    };
+
+                    next = json!({
+                        "confirm": {
+                            "tool": "solana_confirm_transaction",
+                            "args": args
+                        }
+                    });
+                }
+
                 json!({
                     "stage": "execute",
                     "status": "pending_confirmation_created",
                     "network": network,
+                    "approval": approval,
                     "result": parsed,
-                    "note": "Pending confirmation created (safe default). Use solana_confirm_transaction to broadcast (mainnet requires confirm_token)."
+                    "next": next,
+                    "note": "Pending confirmation created (safe default). On mainnet you must call solana_confirm_transaction with confirm_token to broadcast."
                 })
             }
         } else {
