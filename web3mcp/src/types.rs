@@ -3417,6 +3417,14 @@ pub struct SystemRunWorkflowV0Request {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct W3rtGetRunRequest {
+    #[schemars(description = "Run id returned by w3rt_run_workflow_v0")]
+    pub run_id: String,
+    #[schemars(description = "If true, also load and include stage JSON (default true)")]
+    pub include_artifacts: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct IntentExecuteRequest {
     #[schemars(description = "Natural language instruction")]
     pub text: String,

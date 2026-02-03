@@ -1,5 +1,69 @@
     /// W3RT: run a deterministic workflow skeleton (v0).
     /// Stages: analysis → simulate → approval → execute
+    #[tool(description = "W3RT: get a workflow run by run_id (reads stage artifacts from disk).")]
+    async fn w3rt_get_run(
+        &self,
+        Parameters(request): Parameters<W3rtGetRunRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let store = crate::utils::run_store::RunStore::new();
+        let run_id = request.run_id.trim().to_string();
+        if run_id.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("run_id is required"),
+                data: None,
+            });
+        }
+
+        let run_dir = store.root().join(&run_id);
+        let analysis_path = run_dir.join("stage_analysis.json");
+        let simulate_path = run_dir.join("stage_simulate.json");
+        let approval_path = run_dir.join("stage_approval.json");
+        let execute_path = run_dir.join("stage_execute.json");
+
+        let include = request.include_artifacts.unwrap_or(true);
+
+        fn read_json(path: &std::path::Path) -> Value {
+            let bytes = std::fs::read(path).unwrap_or_default();
+            serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null)
+        }
+
+        let response = if include {
+            json!({
+                "ok": true,
+                "run_id": run_id,
+                "runs_dir": store.root(),
+                "paths": {
+                    "analysis": analysis_path,
+                    "simulate": simulate_path,
+                    "approval": approval_path,
+                    "execute": execute_path
+                },
+                "artifacts": {
+                    "analysis": if analysis_path.exists() { read_json(&analysis_path) } else { Value::Null },
+                    "simulate": if simulate_path.exists() { read_json(&simulate_path) } else { Value::Null },
+                    "approval": if approval_path.exists() { read_json(&approval_path) } else { Value::Null },
+                    "execute": if execute_path.exists() { read_json(&execute_path) } else { Value::Null }
+                }
+            })
+        } else {
+            json!({
+                "ok": true,
+                "run_id": run_id,
+                "runs_dir": store.root(),
+                "paths": {
+                    "analysis": analysis_path,
+                    "simulate": simulate_path,
+                    "approval": approval_path,
+                    "execute": execute_path
+                }
+            })
+        };
+
+        let out = Self::pretty_json(&response)?;
+        Ok(CallToolResult::success(vec![Content::text(out)]))
+    }
+
     #[tool(description = "W3RT: run a deterministic workflow skeleton (v0) and write stage artifacts (run_id).")]
     async fn w3rt_run_workflow_v0(
         &self,
