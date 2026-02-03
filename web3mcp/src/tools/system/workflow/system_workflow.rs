@@ -9,10 +9,64 @@
         let run_id = store.new_run_id();
 
         // Stage 1: analysis (accept/echo intent)
+        // Allow either a validated intent object OR intent_text (NL) to be provided.
+        let mut intent_value = request.intent.clone().unwrap_or(Value::Null);
+
+        if intent_value.is_null() {
+            if let Some(text) = request.intent_text.clone() {
+                let lower = text.to_lowercase();
+                let sender = request
+                    .sender
+                    .clone()
+                    .unwrap_or_else(|| "<sender>".to_string());
+                let (intent, _action, entities, confidence, _plan) =
+                    Self::parse_intent_plan(&text, &lower, sender.clone(), request.network.clone());
+
+                // Minimal Solana swap intent schema (same as M1 intent output).
+                if intent == "swap" && entities["network"]["family"] == "solana" {
+                    let sell = entities
+                        .get("from_coin")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<sell_token>")
+                        .to_lowercase();
+                    let buy = entities
+                        .get("to_coin")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<buy_token>")
+                        .to_lowercase();
+                    let amount_in = entities
+                        .get("amount")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<amount>")
+                        .to_string();
+
+                    intent_value = json!({
+                        "chain": "solana",
+                        "action": "swap_exact_in",
+                        "input_token": sell,
+                        "output_token": buy,
+                        "amount_in": amount_in,
+                        "slippage_bps": 100,
+                        "user_pubkey": sender,
+                        "resolved_network": entities["network"],
+                        "confidence": confidence
+                    });
+                } else {
+                    // Generic: store parsing result (still useful for artifacts).
+                    intent_value = json!({
+                        "intent": intent,
+                        "confidence": confidence,
+                        "entities": entities,
+                        "raw": text
+                    });
+                }
+            }
+        }
+
         let analysis = json!({
             "stage": "analysis",
             "label": request.label,
-            "intent": request.intent,
+            "intent": intent_value,
         });
         let analysis_path = store.write_stage_artifact(&run_id, "analysis", &analysis).map_err(|e| {
             ErrorData {

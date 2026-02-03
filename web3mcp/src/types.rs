@@ -3405,7 +3405,13 @@ pub struct IntentRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SystemRunWorkflowV0Request {
     #[schemars(description = "A validated intent object (usually produced by intent tools)")]
-    pub intent: Value,
+    pub intent: Option<Value>,
+    #[schemars(description = "Natural language instruction (optional alternative to intent)")]
+    pub intent_text: Option<String>,
+    #[schemars(description = "Optional sender/address for intent parsing")]
+    pub sender: Option<String>,
+    #[schemars(description = "Optional network override for intent parsing")]
+    pub network: Option<String>,
     #[schemars(description = "Optional label for UX/debugging")]
     pub label: Option<String>,
 }
