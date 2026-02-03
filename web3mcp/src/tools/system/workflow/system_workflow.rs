@@ -1,5 +1,77 @@
     /// W3RT: run a deterministic workflow skeleton (v0).
     /// Stages: analysis → simulate → approval → execute
+    #[tool(description = "W3RT: request a short-lived override token to bypass approval_required (power users / agents).")]
+    async fn w3rt_request_override(
+        &self,
+        Parameters(request): Parameters<W3rtRequestOverrideRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let store = crate::utils::run_store::RunStore::new();
+        let run_id = request.run_id.trim().to_string();
+        if run_id.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("run_id is required"),
+                data: None,
+            });
+        }
+
+        let reason = request.reason.trim().to_string();
+        if reason.is_empty() {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("reason is required"),
+                data: None,
+            });
+        }
+
+        // Load approval artifact if present.
+        let run_dir = store.root().join(&run_id);
+        let approval_path = run_dir.join("stage_approval.json");
+        let approval: Value = if approval_path.exists() {
+            let bytes = std::fs::read(&approval_path).unwrap_or_default();
+            serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+
+        // Only allow override if approval says needs_review (or otherwise not ok).
+        let status = approval.get("status").and_then(Value::as_str).unwrap_or("unknown");
+        if status == "ok" {
+            return Err(ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from("override not needed: approval.status is ok"),
+                data: Some(json!({"run_id": run_id, "approval_status": status})),
+            });
+        }
+
+        let rec = crate::utils::override_store::create_override(
+            &run_id,
+            &reason,
+            request.ttl_ms,
+            Some(approval.clone()),
+        )?;
+
+        let response = Self::pretty_json(&json!({
+            "ok": true,
+            "run_id": run_id,
+            "override_token": rec.token,
+            "expires_ms": rec.expires_ms,
+            "note": "Use override_token in w3rt_run_workflow_v0 to bypass approval_required and continue to pending confirmation.",
+            "next": {
+                "tool": "w3rt_run_workflow_v0",
+                "args": {
+                    "intent": Value::Null,
+                    "intent_text": Value::Null,
+                    "override_token": "<paste override_token>",
+                    "sender": "<sender>",
+                    "network": "mainnet"
+                }
+            }
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
     #[tool(description = "W3RT: get a workflow run by run_id (reads stage artifacts from disk).")]
     async fn w3rt_get_run(
         &self,
@@ -768,9 +840,19 @@
 
         let approval_ok = approval.get("status").and_then(Value::as_str) == Some("ok");
 
+        // Optional approval override.
+        let provided_override = request.override_token.clone().unwrap_or_default();
+        let (override_ok, override_diag) = if provided_override.is_empty() {
+            (false, None)
+        } else {
+            crate::utils::override_store::validate_override(&run_id, &provided_override)
+                .unwrap_or((false, None))
+        };
+
+        let approval_gate_passed = approval_ok || override_ok;
+
         let execute = if !simulation_ok {
             // Guard 1: no-sim-no-send
-
             json!({
                 "stage": "execute",
                 "status": "blocked",
@@ -783,7 +865,7 @@
                 },
                 "note": "Execution blocked: simulation not OK (safety)."
             })
-        } else if !approval_ok {
+        } else if !approval_gate_passed {
             // Guard 2: approval policy says review is needed.
             json!({
                 "stage": "execute",
@@ -792,10 +874,22 @@
                     "guard_class": "approval_required",
                     "next": {
                         "mode": "review",
-                        "how_to": "Review approval warnings (price impact / slippage / route). Adjust slippage/amount or pick a different pair and re-run. (Override flag can be added later.)"
+                        "how_to": "Review approval warnings (price impact / slippage / route). Adjust slippage/amount or pick a different pair and re-run.",
+                        "request_override": {
+                            "tool": "w3rt_request_override",
+                            "args": {
+                                "run_id": run_id,
+                                "reason": "<why you accept the risk>",
+                                "ttl_ms": 300000
+                            }
+                        }
                     }
                 },
                 "approval": approval,
+                "override": {
+                    "provided": if provided_override.is_empty() { Value::Null } else { json!("<redacted>") },
+                    "validation": override_diag
+                },
                 "note": "Execution blocked: approval.status != ok (policy)."
             })
         } else if intent_value["chain"] == "solana" && intent_value["action"] == "swap_exact_in" {

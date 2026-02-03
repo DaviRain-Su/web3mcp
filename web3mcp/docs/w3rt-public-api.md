@@ -16,7 +16,13 @@ Only these tools are exposed:
 - Writes stage artifacts to disk (run_id).
 - Enforces safety guards.
 
-2) `solana_confirm_transaction`
+2) `w3rt_get_run`
+- Fetch artifacts by `run_id` (agent/power-user friendly).
+
+3) `w3rt_request_override`
+- Request a short-lived `override_token` to bypass `approval_required`.
+
+4) `solana_confirm_transaction`
 - Explicit final confirmation for broadcasting a pending tx.
 - On mainnet requires `confirm_token`.
 
@@ -74,7 +80,7 @@ For Solana swap (Jupiter v6):
 Possible statuses:
 - `blocked` with `guard`
   - `no_sim_no_send`
-  - `approval_required`
+  - `approval_required` (use `w3rt_request_override` to obtain `override_token`)
 - `pending_confirmation_created`
   - includes `result` and `next.confirm` template
 

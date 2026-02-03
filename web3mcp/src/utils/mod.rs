@@ -11,6 +11,7 @@ pub mod evm_tx_replace;
 pub mod json;
 pub mod network;
 pub mod run_store;
+pub mod override_store;
 pub mod solana_confirm_store;
 #[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl;

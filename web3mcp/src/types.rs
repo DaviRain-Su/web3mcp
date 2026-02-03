@@ -3414,6 +3414,8 @@ pub struct SystemRunWorkflowV0Request {
     pub network: Option<String>,
     #[schemars(description = "Optional label for UX/debugging")]
     pub label: Option<String>,
+    #[schemars(description = "Optional override token to bypass approval_required guard (short-lived; issued by w3rt_request_override)")]
+    pub override_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -3422,6 +3424,16 @@ pub struct W3rtGetRunRequest {
     pub run_id: String,
     #[schemars(description = "If true, also load and include stage JSON (default true)")]
     pub include_artifacts: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct W3rtRequestOverrideRequest {
+    #[schemars(description = "Run id that is currently blocked by approval_required")]
+    pub run_id: String,
+    #[schemars(description = "Human/agent reason for overriding approval warnings")]
+    pub reason: String,
+    #[schemars(description = "Optional TTL in ms for the override token (default 5 minutes)")]
+    pub ttl_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
