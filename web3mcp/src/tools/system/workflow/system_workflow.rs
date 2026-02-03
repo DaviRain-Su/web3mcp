@@ -116,11 +116,126 @@
         }
 
         fn solana_token_to_mint(token: &str) -> Option<&'static str> {
-            // MVP mapping (extend as needed)
+            // Fast-path mapping for common tokens.
+            // NOTE: This is only a fallback; for general symbols we resolve via Jupiter token list.
             match token.trim().to_lowercase().as_str() {
                 "sol" | "wsol" | "wrapped sol" => Some("So11111111111111111111111111111111111111112"),
                 "usdc" => Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+                "usdt" => Some("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),
+                "jup" => Some("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"),
+                "bonk" => Some("DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"),
                 _ => None,
+            }
+        }
+
+        fn solana_is_pubkey(s: &str) -> bool {
+            use std::str::FromStr;
+            let t = s.trim();
+            if t.len() < 32 || t.len() > 64 {
+                return false;
+            }
+            solana_sdk::pubkey::Pubkey::from_str(t).is_ok()
+        }
+
+        async fn solana_resolve_symbol_via_jupiter_tokens(symbol: &str) -> Result<Option<Value>, ErrorData> {
+            // Jupiter token list (large). We only do a best-effort single fetch per run.
+            // Env override for mirrors/self-hosted lists.
+            let url = std::env::var("SOLANA_JUPITER_TOKENS_URL")
+                .unwrap_or_else(|_| "https://tokens.jup.ag/tokens?tags=verified".to_string());
+
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_millis(15_000))
+                .build()
+                .map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("jup_tokens: failed to build client: {e}")),
+                    data: None,
+                })?;
+
+            let resp = client.get(&url).send().await.map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("jup_tokens: request failed: {e}")),
+                data: Some(json!({"url": url})),
+            })?;
+
+            let status = resp.status();
+            let text = resp.text().await.map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("jup_tokens: failed to read body: {e}")),
+                data: None,
+            })?;
+
+            let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({"raw": text}));
+            if !status.is_success() {
+                return Err(ErrorData {
+                    code: ErrorCode(i32::from(status.as_u16())),
+                    message: Cow::from("HTTP error from Jupiter tokens API"),
+                    data: Some(json!({"url": url, "status": status.as_u16(), "body": parsed})),
+                });
+            }
+
+            let want = symbol.trim().to_lowercase();
+            let arr = parsed.as_array().ok_or_else(|| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from("unexpected Jupiter tokens response (expected array)"),
+                data: Some(json!({"url": url, "body": parsed})),
+            })?;
+
+            for t in arr {
+                let sym = t.get("symbol").and_then(Value::as_str).unwrap_or("").to_lowercase();
+                if sym == want {
+                    return Ok(Some(t.clone()));
+                }
+            }
+
+            Ok(None)
+        }
+
+        async fn solana_get_mint_decimals(
+            rpc: &solana_client::nonblocking::rpc_client::RpcClient,
+            mint: &str,
+        ) -> Result<u8, ErrorData> {
+            use std::str::FromStr;
+            let pk = solana_sdk::pubkey::Pubkey::from_str(mint).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("invalid mint pubkey: {e}")),
+                data: Some(json!({"mint": mint})),
+            })?;
+
+            let acct = rpc.get_account(&pk).await.map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("failed to fetch mint account: {e}")),
+                data: Some(json!({"mint": mint})),
+            })?;
+
+            // Detect which token program owns the mint.
+            // NOTE: spl-token(-2022) may compile against different solana pubkey types,
+            // so we compare by string to avoid type mismatches.
+            use solana_program_pack::Pack;
+
+            let owner = acct.owner.to_string();
+            let spl_token_owner = spl_token::id().to_string();
+            let spl_token_2022_owner = spl_token_2022::id().to_string();
+
+            if owner == spl_token_owner {
+                let m = spl_token::state::Mint::unpack(&acct.data).map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("failed to decode spl-token Mint: {e}")),
+                    data: Some(json!({"mint": mint, "program": "spl-token"})),
+                })?;
+                Ok(m.decimals)
+            } else if owner == spl_token_2022_owner {
+                Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("token-2022 mint decimals lookup not supported yet in workflow (provide amount as base units or use spl-token mint)"),
+                    data: Some(json!({"mint": mint, "owner": owner})),
+                })
+            } else {
+                Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("mint account is not owned by spl-token"),
+                    data: Some(json!({"mint": mint, "owner": owner})),
+                })
             }
         }
 
@@ -349,47 +464,92 @@
                 .and_then(Value::as_u64)
                 .unwrap_or(100);
 
-            // Support either direct mint strings OR common symbols.
-            let input_mint = if input_token.len() >= 32 && input_token.chars().all(|c| c.is_ascii_alphanumeric()) {
-                input_token
+            let network = solana_network_from_intent(&intent_value);
+            let rpc = Self::solana_rpc(network.as_deref())?;
+
+            // Resolve input/output tokens to mints.
+            let mut input_token_info: Option<Value> = None;
+            let input_mint: String = if solana_is_pubkey(input_token) {
+                input_token.trim().to_string()
+            } else if let Some(m) = solana_token_to_mint(input_token) {
+                input_token_info = Some(json!({"symbol": input_token, "address": m, "source": "builtin"}));
+                m.to_string()
             } else {
-                solana_token_to_mint(input_token).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("unsupported input_token symbol (provide SPL mint address for now)"),
-                    data: Some(json!({"input_token": input_token})),
-                })?
-            };
-            let output_mint = if output_token.len() >= 32 && output_token.chars().all(|c| c.is_ascii_alphanumeric()) {
-                output_token
-            } else {
-                solana_token_to_mint(output_token).ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("unsupported output_token symbol (provide SPL mint address for now)"),
-                    data: Some(json!({"output_token": output_token})),
-                })?
+                let found = solana_resolve_symbol_via_jupiter_tokens(input_token)
+                    .await?
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("unsupported input_token symbol (provide SPL mint address or known symbol)"),
+                        data: Some(json!({"input_token": input_token})),
+                    })?;
+                input_token_info = Some(json!({
+                    "symbol": found.get("symbol"),
+                    "name": found.get("name"),
+                    "address": found.get("address"),
+                    "decimals": found.get("decimals"),
+                    "source": "jupiter_tokens"
+                }));
+                found
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Jupiter tokens entry missing address"),
+                        data: Some(found.clone()),
+                    })?
+                    .to_string()
             };
 
-            // Amount: accept base units (u64 string); additionally accept decimals for SOL/USDC.
-            let decimals = if input_mint == "So11111111111111111111111111111111111111112" {
+            let mut output_token_info: Option<Value> = None;
+            let output_mint: String = if solana_is_pubkey(output_token) {
+                output_token.trim().to_string()
+            } else if let Some(m) = solana_token_to_mint(output_token) {
+                output_token_info = Some(json!({"symbol": output_token, "address": m, "source": "builtin"}));
+                m.to_string()
+            } else {
+                let found = solana_resolve_symbol_via_jupiter_tokens(output_token)
+                    .await?
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("unsupported output_token symbol (provide SPL mint address or known symbol)"),
+                        data: Some(json!({"output_token": output_token})),
+                    })?;
+                output_token_info = Some(json!({
+                    "symbol": found.get("symbol"),
+                    "name": found.get("name"),
+                    "address": found.get("address"),
+                    "decimals": found.get("decimals"),
+                    "source": "jupiter_tokens"
+                }));
+                found
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Jupiter tokens entry missing address"),
+                        data: Some(found.clone()),
+                    })?
+                    .to_string()
+            };
+
+            // Resolve input decimals (for UI amount parsing).
+            let decimals: u8 = if input_mint == "So11111111111111111111111111111111111111112" {
                 9
             } else if input_mint == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" {
                 6
+            } else if let Some(d) = input_token_info
+                .as_ref()
+                .and_then(|v| v.get("decimals"))
+                .and_then(Value::as_u64)
+            {
+                d as u8
             } else {
-                // MVP: require integer base units for other tokens.
-                0
+                solana_get_mint_decimals(&rpc, &input_mint).await?
             };
 
-            let amount_in = if decimals == 0 {
-                amount_in_s.parse::<u64>().map_err(|_| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("amount_in must be base units integer for this token (provide lamports/token base units)"),
-                    data: Some(json!({"amount_in": amount_in_s, "input_mint": input_mint})),
-                })?
-            } else {
-                parse_amount_to_base_units(amount_in_s, decimals)?
-            };
+            let amount_in = parse_amount_to_base_units(amount_in_s, decimals as u32)?;
 
-            let quote = jup_quote(input_mint, output_mint, amount_in, slippage_bps).await?;
+            let quote = jup_quote(&input_mint, &output_mint, amount_in, slippage_bps).await?;
             let swap = jup_swap(&quote, user).await?;
             let tx_b64 = swap
                 .get("swapTransaction")
@@ -431,8 +591,13 @@
                 "simulation_performed": true,
                 "adapter": "jupiter_v6",
                 "network": network,
+                "input_token": input_token,
+                "output_token": output_token,
+                "input_token_info": input_token_info,
+                "output_token_info": output_token_info,
                 "input_mint": input_mint,
                 "output_mint": output_mint,
+                "input_decimals": decimals,
                 "amount_in": amount_in.to_string(),
                 "slippage_bps": slippage_bps,
                 "quote": quote,
@@ -463,12 +628,102 @@
             }
         })?;
 
-        // Stage 3: approval (placeholder)
-        let approval = json!({
-            "stage": "approval",
-            "status": "todo",
-            "note": "M3+: approval/policy can be applied here (amount thresholds, allowlists, etc).",
-        });
+        // Stage 3: approval (policy)
+        fn format_base_units_ui(amount: &str, decimals: u8) -> String {
+            let s = amount.trim();
+            if decimals == 0 {
+                return s.to_string();
+            }
+            // Normalize: ensure only digits.
+            if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+                return s.to_string();
+            }
+            let d = decimals as usize;
+            if s.len() <= d {
+                let mut out = String::from("0.");
+                out.push_str(&"0".repeat(d - s.len()));
+                out.push_str(s);
+                out
+            } else {
+                let (a, b) = s.split_at(s.len() - d);
+                format!("{}.{}", a, b)
+            }
+        }
+
+        let approval = if simulate.get("adapter").and_then(Value::as_str) == Some("jupiter_v6")
+            && simulate.get("status").and_then(Value::as_str) == Some("ok")
+        {
+            let network = simulate.get("network").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let input_decimals = simulate.get("input_decimals").and_then(Value::as_u64).unwrap_or(0) as u8;
+
+            let output_mint = simulate.get("output_mint").and_then(Value::as_str).unwrap_or("").to_string();
+            let output_decimals: u8 = if output_mint == "So11111111111111111111111111111111111111112" {
+                9
+            } else if output_mint == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" {
+                6
+            } else {
+                match Self::solana_rpc(network.as_deref()) {
+                    Ok(rpc) => solana_get_mint_decimals(&rpc, &output_mint).await.unwrap_or(0),
+                    Err(_) => 0,
+                }
+            };
+
+            let quote = simulate.get("quote").cloned().unwrap_or(Value::Null);
+            let in_amount = quote.get("inAmount").and_then(Value::as_str).unwrap_or("");
+            let out_amount = quote.get("outAmount").and_then(Value::as_str).unwrap_or("");
+            let price_impact_pct = quote.get("priceImpactPct").and_then(Value::as_str);
+
+            let mut warnings: Vec<Value> = vec![];
+
+            if let Some(p) = price_impact_pct {
+                // Example strings: "0.0012" (=0.12%)
+                if let Ok(v) = p.parse::<f64>() {
+                    if v >= 0.01 {
+                        warnings.push(json!({
+                            "kind": "high_price_impact",
+                            "price_impact_pct": p,
+                            "threshold": "0.01",
+                            "note": "priceImpactPct >= 1%"
+                        }));
+                    }
+                }
+            }
+
+            let slippage_bps = simulate.get("slippage_bps").and_then(Value::as_u64).unwrap_or(100);
+            if slippage_bps >= 300 {
+                warnings.push(json!({
+                    "kind": "high_slippage",
+                    "slippage_bps": slippage_bps,
+                    "threshold": 300,
+                    "note": "slippage_bps >= 300 (3%)"
+                }));
+            }
+
+            json!({
+                "stage": "approval",
+                "status": if warnings.is_empty() { "ok" } else { "needs_review" },
+                "network": network,
+                "summary": {
+                    "in_amount_base": in_amount,
+                    "in_amount_ui": format_base_units_ui(in_amount, input_decimals),
+                    "out_amount_base": out_amount,
+                    "out_amount_ui": format_base_units_ui(out_amount, output_decimals),
+                    "input_decimals": input_decimals,
+                    "output_decimals": output_decimals,
+                    "price_impact_pct": price_impact_pct,
+                    "route_plan_steps": quote.get("routePlan").and_then(Value::as_array).map(|a| a.len()),
+                },
+                "warnings": warnings,
+                "note": "This stage is informational today. Execution still uses safe default (pending confirmation)."
+            })
+        } else {
+            json!({
+                "stage": "approval",
+                "status": "todo",
+                "note": "Approval not implemented for this intent yet."
+            })
+        };
+
         let approval_path = store.write_stage_artifact(&run_id, "approval", &approval).map_err(|e| {
             ErrorData {
                 code: ErrorCode(-32603),
