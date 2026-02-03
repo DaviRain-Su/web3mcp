@@ -39,6 +39,7 @@ fn main() {
         "src/tools/system/stats/system_stats.rs",
         "src/tools/system/coins/coin_read.rs",
         "src/tools/system/chain/chain_info.rs",
+        "src/tools/system/workflow/system_workflow.rs",
         "src/tools/evm/evm_tools.rs",
         "src/tools/solana/solana_tools.rs",
     ];
