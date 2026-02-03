@@ -86,8 +86,9 @@
         let simulate = json!({
             "stage": "simulate",
             "status": simulate_status,
+            "simulation_performed": false,
             "intent": intent_value,
-            "note": "M2 workflow skeleton: simulation stage will be implemented in M4/M5 (Jupiter adapter).",
+            "note": "M2/M3: simulation stage will be implemented in M4/M5 (Jupiter adapter). Until then, execution is blocked (no-sim-no-send).",
             "next": if simulate_status == "ready_for_jupiter" {
                 json!({
                     "mode": "simulate",
@@ -120,12 +121,32 @@
             }
         })?;
 
-        // Stage 4: execute (placeholder)
-        let execute = json!({
-            "stage": "execute",
-            "status": "todo",
-            "note": "M2 workflow skeleton: execution will be implemented in M5 (pending confirmation / confirm_token flow).",
-        });
+        // Stage 4: execute (M3 guard: no-sim-no-send)
+        let simulation_ok = simulate
+            .get("simulation_performed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let execute = if !simulation_ok {
+            json!({
+                "stage": "execute",
+                "status": "blocked",
+                "guard": {
+                    "guard_class": "no_sim_no_send",
+                    "next": {
+                        "mode": "simulate",
+                        "how_to": "Run simulation first (M4/M5 will populate simulate artifact with results)."
+                    }
+                },
+                "note": "Execution blocked: simulation_performed=false (safety)."
+            })
+        } else {
+            json!({
+                "stage": "execute",
+                "status": "todo",
+                "note": "M5: execution will be implemented with pending confirmation / confirm_token flow.",
+            })
+        };
         let execute_path = store.write_stage_artifact(&run_id, "execute", &execute).map_err(|e| {
             ErrorData {
                 code: ErrorCode(-32603),
