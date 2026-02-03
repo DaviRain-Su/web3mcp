@@ -76,11 +76,27 @@
             }
         })?;
 
-        // Stage 2: simulate (placeholder until Jupiter adapter lands)
+        // Stage 2: simulate (structured placeholder)
+        let simulate_status = if intent_value["chain"] == "solana" && intent_value["action"] == "swap_exact_in" {
+            "ready_for_jupiter"
+        } else {
+            "todo"
+        };
+
         let simulate = json!({
             "stage": "simulate",
-            "status": "todo",
+            "status": simulate_status,
+            "intent": intent_value,
             "note": "M2 workflow skeleton: simulation stage will be implemented in M4/M5 (Jupiter adapter).",
+            "next": if simulate_status == "ready_for_jupiter" {
+                json!({
+                    "mode": "simulate",
+                    "adapter": "jupiter",
+                    "how_to": "M4: use Jupiter quote+build+simulate to populate this stage artifact"
+                })
+            } else {
+                json!({"mode": "todo"})
+            }
         });
         let simulate_path = store.write_stage_artifact(&run_id, "simulate", &simulate).map_err(|e| {
             ErrorData {
