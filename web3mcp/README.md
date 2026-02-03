@@ -1,4 +1,6 @@
-# Web3MCP Server
+# Web3MCP Server (W3RT chain tool layer)
+
+This is the **chain tool layer** for **Web3 AI Runtime (W3RT)**.
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for interacting with multiple chains:
 

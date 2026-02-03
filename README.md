@@ -1,9 +1,13 @@
-# Web3 Anywhere
+# Web3 AI Runtime (W3RT)
 
-**Web3 Anywhere** is a cross-chain MCP (Model Context Protocol) server that lets AI agents operate Web3 via natural language.
+**Web3 AI Runtime (W3RT)** is a product direction: natural language → intent/plan → deterministic workflow → protocol adapters → chain tools.
 
-- **Current implementation**: `web3mcp/` (Rust) — **Sui + Solana (incl. Solana IDL dynamic calls) + EVM (chain_id/RPC)**
-- **Positioning**: *DeFi-first, chain-agnostic* (long-term goal: connect all chains and broader Web3 capabilities)
+This repo currently contains the **chain tool layer** implemented as a Rust **MCP server**:
+- **Implementation**: `web3mcp/` (Rust) — **Sui + Solana (incl. Solana IDL dynamic calls) + EVM (chain_id/RPC)**
+
+Positioning:
+- **Near-term**: DeFi-first, safe execution with deterministic flows (simulate → approve → execute)
+- **Long-term**: chain-agnostic runtime with strategy publishing + agent-to-agent execution
 
 ## TL;DR
 
