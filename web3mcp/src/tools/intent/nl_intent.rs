@@ -1,5 +1,5 @@
     /// Interpret natural language intent into tool calls
-    #[tool(description = "Interpret natural language intent into tool calls")]
+    #[cfg_attr(feature = "expose-advanced-tools", tool(description = "Interpret natural language intent into tool calls"))]
     async fn interpret_intent(
         &self,
         Parameters(request): Parameters<IntentRequest>,
@@ -27,7 +27,7 @@
     }
 
     /// Execute an intent with optional zkLogin inputs
-    #[tool(description = "Execute an intent using provided overrides (supports zkLogin)")]
+    #[cfg_attr(feature = "expose-advanced-tools", tool(description = "Execute an intent using provided overrides (supports zkLogin)"))]
     async fn execute_intent(
         &self,
         Parameters(request): Parameters<IntentExecuteRequest>,

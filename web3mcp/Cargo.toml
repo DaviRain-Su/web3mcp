@@ -62,7 +62,13 @@ carbon-jupiter-swap-decoder = "0.12.0"
 carbon-core = "0.12.0"
 
 [features]
-# Reduce MCP tool list size for Claude Desktop by compiling without extra Solana helpers.
+# Default to a small, stable, Solana-first public MCP surface.
+# Enable `--features expose-advanced-tools` to expose the full internal toolbox.
+default = []
+
+expose-advanced-tools = []
+
+# Reduce Solana tool list size even in advanced mode.
 # Enable `--features solana-extended-tools` to include the full Solana RPC/SPL helper set.
 solana-extended-tools = []
 

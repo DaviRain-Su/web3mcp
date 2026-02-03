@@ -79,7 +79,7 @@ mod router_prelude;
 mod server;
 mod sui;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "expose-advanced-tools"))]
 mod tx_build_tests;
 mod types;
 mod types_solana_idl_dynamic;

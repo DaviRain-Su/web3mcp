@@ -14,52 +14,15 @@
 
         if intent_value.is_null() {
             if let Some(text) = request.intent_text.clone() {
-                let lower = text.to_lowercase();
                 let sender = request
                     .sender
                     .clone()
                     .unwrap_or_else(|| "<sender>".to_string());
-                let (intent, _action, entities, confidence, _plan) =
-                    Self::parse_intent_plan(&text, &lower, sender.clone(), request.network.clone());
 
-                // Minimal Solana swap intent schema (same as M1 intent output).
-                if intent == "swap" && entities["network"]["family"] == "solana" {
-                    let sell = entities
-                        .get("from_coin")
-                        .and_then(Value::as_str)
-                        .unwrap_or("<sell_token>")
-                        .to_lowercase();
-                    let buy = entities
-                        .get("to_coin")
-                        .and_then(Value::as_str)
-                        .unwrap_or("<buy_token>")
-                        .to_lowercase();
-                    let amount_in = entities
-                        .get("amount")
-                        .and_then(Value::as_str)
-                        .unwrap_or("<amount>")
-                        .to_string();
+                let (_intent, parsed, _confidence) =
+                    Self::w3rt_parse_intent_plan(&text, sender.clone(), request.network.clone());
 
-                    intent_value = json!({
-                        "chain": "solana",
-                        "action": "swap_exact_in",
-                        "input_token": sell,
-                        "output_token": buy,
-                        "amount_in": amount_in,
-                        "slippage_bps": 100,
-                        "user_pubkey": sender,
-                        "resolved_network": entities["network"],
-                        "confidence": confidence
-                    });
-                } else {
-                    // Generic: store parsing result (still useful for artifacts).
-                    intent_value = json!({
-                        "intent": intent,
-                        "confidence": confidence,
-                        "entities": entities,
-                        "raw": text
-                    });
-                }
+                intent_value = parsed;
             }
         }
 
@@ -789,29 +752,20 @@
                     if v.is_string() { v.as_str().map(|s| s.to_string()) } else { None }
                 });
 
-                let send_req = SolanaSendTransactionRequest {
-                    network: network.clone(),
-                    transaction_base64: tx_b64.to_string(),
-                    commitment: Some("confirmed".to_string()),
-                    confirm: Some(false),
-                    allow_direct_send: None,
-                    skip_preflight: None,
-                    timeout_ms: None,
-                };
+                // Minimal surface: create a pending confirmation directly (do not expose solana_send_transaction).
+                let summary = Some(json!({
+                    "tool": "w3rt_run_workflow_v0",
+                    "run_id": run_id,
+                    "adapter": simulate.get("adapter"),
+                    "approval": approval
+                }));
 
-                let call_res = self.solana_send_transaction(Parameters(send_req)).await?;
-
-                let send_res = call_res
-                    .content
-                    .get(0)
-                    .and_then(|c| match &c.raw {
-                        rmcp::model::RawContent::Text(t) => Some(t.text.clone()),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| "{}".to_string());
-
-                // Best-effort parse the JSON payload returned by tool.
-                let parsed: Value = serde_json::from_str(&send_res).unwrap_or_else(|_| json!({ "raw": send_res }));
+                let parsed = Self::solana_create_pending_confirmation(
+                    network.as_deref(),
+                    tx_b64,
+                    "w3rt_run_workflow_v0",
+                    summary,
+                )?;
 
                 let pending_id = parsed.get("pending_confirmation_id").and_then(Value::as_str);
                 let tx_hash = parsed.get("tx_summary_hash").and_then(Value::as_str);
