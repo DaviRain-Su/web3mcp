@@ -90,26 +90,21 @@
                 return Self::wrap_resolved_network_result(&resolved_network, &result);
             }
             "swap" => {
-                // EVM swap uses 0x Swap API (safe: dry-run only). Sui swap not implemented.
-                if family != "evm" {
+                // MVP: support EVM (0x) + Solana (intent schema only for now).
+                if family != "evm" && family != "solana" {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
-                        message: Cow::from("swap intent is currently only supported on EVM via 0x"),
+                        message: Cow::from("swap intent is currently supported on EVM (0x) and Solana (intent schema)"),
                         data: None,
                     });
                 }
 
-                let chain_id = chain_id.ok_or_else(|| ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("chain_id is required for EVM swap"),
-                    data: None,
-                })?;
-
+                // Common required fields.
                 let sender = sender;
                 if sender.starts_with('<') {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
-                        message: Cow::from("sender is required for EVM swap"),
+                        message: Cow::from("sender is required for swap"),
                         data: None,
                     });
                 }
@@ -129,7 +124,7 @@
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
                         message: Cow::from(
-                            "swap requires two tokens in the prompt, e.g. 'swap 0.1 eth to usdc on base'",
+                            "swap requires two tokens in the prompt, e.g. 'swap 0.1 sol to usdc on solana devnet'",
                         ),
                         data: None,
                     });
@@ -152,6 +147,42 @@
 
                 // Slippage (tolerant default): 1%
                 let slippage = Self::extract_slippage_percent(&lower).or_else(|| Some("1%".to_string()));
+
+                // --- Solana swap (M1): intent schema only ---
+                if family == "solana" {
+                    // Convert percent string (e.g. "1%") to bps.
+                    let slippage_bps = slippage
+                        .as_deref()
+                        .and_then(|s| s.trim().strip_suffix('%'))
+                        .and_then(|p| p.parse::<f64>().ok())
+                        .map(|pct| (pct * 100.0).round() as u64)
+                        .unwrap_or(100);
+
+                    let response = Self::pretty_json(&json!({
+                        "resolved_network": resolved_network,
+                        "status": "ok",
+                        "kind": "intent_schema",
+                        "intent": {
+                            "chain": "solana",
+                            "action": "swap_exact_in",
+                            "input_token": sell,
+                            "output_token": buy,
+                            "amount_in": amount_for_swap,
+                            "slippage_bps": slippage_bps,
+                            "user_pubkey": sender,
+                        },
+                        "note": "MVP step (M1): Solana swap intent is supported as a validated schema. Tx building/execution via Jupiter comes in later milestones (M4/M5)."
+                    }))?;
+
+                    return Ok(CallToolResult::success(vec![Content::text(response)]));
+                }
+
+                // --- EVM swap (0x) ---
+                let chain_id = chain_id.ok_or_else(|| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("chain_id is required for EVM swap"),
+                    data: None,
+                })?;
 
                 // 1) Build swap tx via 0x.
                 let built = self
@@ -1741,6 +1772,35 @@
             key
         };
 
+        // Solana detection (keep simple and high-signal).
+        // NOTE: avoid matching "sol" too aggressively (it appears in many words).
+        if inferred.contains("solana")
+            || inferred == "sol"
+            || inferred.starts_with("solana-")
+            || (inferred.contains("devnet") && lower.contains("solana"))
+            || (inferred.contains("mainnet") && lower.contains("solana"))
+        {
+            // Solana doesn't use chain_id; we expose a normalized network string.
+            let normalized = if is_dev(&inferred) {
+                "solana-devnet"
+            } else if is_test(&inferred) {
+                // Solana "testnet" exists but devnet is more common for tooling.
+                "solana-testnet"
+            } else if is_main(&inferred) {
+                "solana-mainnet"
+            } else {
+                // Safe default: devnet.
+                "solana-devnet"
+            };
+
+            return json!({
+                "raw": raw,
+                "normalized": normalized,
+                "family": "solana",
+                "chain_id": null
+            });
+        }
+
         // Sui is the default fallback.
         if inferred.contains("sui") {
             return json!({
@@ -1806,7 +1866,7 @@
         let digests = Self::extract_digests(text);
         let resolved_network = Self::resolve_intent_network(network, lower);
 
-        let token_list = ["sui", "usdc", "usdt", "weth", "dai", "cbeth", "eth", "btc"];
+        let token_list = ["sui", "sol", "usdc", "usdt", "weth", "dai", "cbeth", "eth", "btc"];
         let mut tokens = Vec::new();
         for token in token_list.iter() {
             if let Some(pos) = lower.find(token) {
