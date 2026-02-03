@@ -732,14 +732,18 @@
             }
         })?;
 
-        // Stage 4: execute (guard: no-sim-no-send)
+        // Stage 4: execute (guards)
         let simulation_ok = simulate
             .get("simulation_performed")
             .and_then(Value::as_bool)
             .unwrap_or(false)
             && simulate.get("status").and_then(Value::as_str) == Some("ok");
 
+        let approval_ok = approval.get("status").and_then(Value::as_str) == Some("ok");
+
         let execute = if !simulation_ok {
+            // Guard 1: no-sim-no-send
+
             json!({
                 "stage": "execute",
                 "status": "blocked",
@@ -751,6 +755,21 @@
                     }
                 },
                 "note": "Execution blocked: simulation not OK (safety)."
+            })
+        } else if !approval_ok {
+            // Guard 2: approval policy says review is needed.
+            json!({
+                "stage": "execute",
+                "status": "blocked",
+                "guard": {
+                    "guard_class": "approval_required",
+                    "next": {
+                        "mode": "review",
+                        "how_to": "Review approval warnings (price impact / slippage / route). Adjust slippage/amount or pick a different pair and re-run. (Override flag can be added later.)"
+                    }
+                },
+                "approval": approval,
+                "note": "Execution blocked: approval.status != ok (policy)."
             })
         } else if intent_value["chain"] == "solana" && intent_value["action"] == "swap_exact_in" {
             // Safe default: create a pending confirmation (confirm=false). Broadcast requires confirm_token on mainnet.
