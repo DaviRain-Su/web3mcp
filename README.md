@@ -81,6 +81,10 @@ Example (Solana native SOL transfer):
 Example (Solana SPL transfer by mint address; supports token-2022 mints too):
 - "Send 10 9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump to <RECIPIENT_PUBKEY> on Solana mainnet"
 
+## Hackathon (OpenClaw USDC on Moltbook)
+
+See `HACKATHON.md` for the demo script + Moltbook submission template.
+
 ## Docs
 
 - **Public API contract (recommended)**: `web3mcp/docs/w3rt-public-api.md`
