@@ -1,6 +1,6 @@
 use base64::Engine;
 use rmcp::model::{ErrorCode, ErrorData};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::str::FromStr;
