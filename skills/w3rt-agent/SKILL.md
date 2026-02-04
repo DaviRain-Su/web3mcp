@@ -80,6 +80,87 @@ solana address -k "$SOLANA_KEYPAIR_PATH"
 
 If `SOLANA_KEYPAIR_PATH` is not set, ask the user to provide a pubkey or set it.
 
+## Scenarios (recommended implementation order)
+
+### B) Balance (most basic)
+
+User examples:
+- “查一下我主网 SOL 余额”
+- “看看我钱包里有多少 USDC”
+
+Intent (portfolio):
+```json
+{
+  "chain": "solana",
+  "action": "get_portfolio",
+  "owner": "<sender_pubkey>",
+  "resolved_network": {"family": "solana", "network_name": "mainnet"}
+}
+```
+
+If user specifies a token symbol, prefer:
+```json
+{
+  "chain": "solana",
+  "action": "get_token_balance",
+  "owner": "<sender_pubkey>",
+  "symbol": "USDC",
+  "resolved_network": {"family": "solana", "network_name": "mainnet"}
+}
+```
+
+### C) Transfer (clear safety boundary)
+
+User examples:
+- “转 0.01 SOL 到 <pubkey>”
+- “给 <pubkey> 发 1 USDC”
+
+For native SOL:
+```json
+{
+  "chain": "solana",
+  "action": "transfer_native",
+  "from": "<sender_pubkey>",
+  "to": "<recipient_pubkey>",
+  "amount": "0.01",
+  "resolved_network": {"family": "solana", "network_name": "mainnet"}
+}
+```
+
+For SPL (symbol or mint):
+```json
+{
+  "chain": "solana",
+  "action": "transfer_spl",
+  "from": "<sender_pubkey>",
+  "to": "<recipient_pubkey>",
+  "asset": "USDC",
+  "amount": "1",
+  "resolved_network": {"family": "solana", "network_name": "mainnet"}
+}
+```
+
+Always: simulate → pending → explicit confirm on mainnet.
+
+### A) Swap (most complex)
+
+User examples:
+- “把 0.01 SOL 换成 USDC，滑点 10bps”
+
+ExactIn intent:
+```json
+{
+  "chain": "solana",
+  "action": "swap_exact_in",
+  "user_pubkey": "<sender_pubkey>",
+  "input_token": "SOL",
+  "output_token": "USDC",
+  "amount_in": "0.01",
+  "slippage_bps": 10,
+  "resolved_network": {"family": "solana", "network_name": "mainnet"}
+}
+```
+
 ## Step-by-step workflow
 
 ### 1) Normalize the user request into a strict intent
