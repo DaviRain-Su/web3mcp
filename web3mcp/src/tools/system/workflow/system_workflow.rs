@@ -1467,20 +1467,59 @@
                 }
             }
 
+            // Enrich holdings with best-effort token metadata via Jupiter verified list.
+            let token_list = solana_jupiter_tokens_verified().await.unwrap_or(Value::Null);
+            let mut token_by_mint: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+            if let Some(arr) = token_list.as_array() {
+                for t in arr {
+                    if let Some(addr) = t.get("address").and_then(Value::as_str) {
+                        token_by_mint.insert(addr.to_string(), t.clone());
+                    }
+                }
+            }
+
+            let dust_threshold_ui: f64 = std::env::var("SOLANA_PORTFOLIO_DUST_UI")
+                .ok()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(0.000001);
+
             let mut holdings: Vec<Value> = per_mint
                 .into_iter()
                 .map(|(mint, (amount_raw, decimals))| {
+                    let amount_ui = format_base_units_ui(&amount_raw.to_string(), decimals);
+                    let token = token_by_mint.get(&mint).cloned();
                     json!({
                         "mint": mint,
                         "amount_raw": amount_raw.to_string(),
-                        "decimals": decimals
+                        "decimals": decimals,
+                        "amount_ui": amount_ui,
+                        "symbol": token.as_ref().and_then(|v| v.get("symbol")).cloned(),
+                        "name": token.as_ref().and_then(|v| v.get("name")).cloned(),
+                        "logo_uri": token.as_ref().and_then(|v| v.get("logoURI")).cloned(),
+                        "token_info": token
                     })
                 })
+                .filter(|h| {
+                    h.get("amount_ui")
+                        .and_then(Value::as_str)
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .unwrap_or(0.0)
+                        >= dust_threshold_ui
+                })
                 .collect();
+
             holdings.sort_by(|a, b| {
-                a.get("mint")
+                let av = a
+                    .get("amount_ui")
                     .and_then(Value::as_str)
-                    .cmp(&b.get("mint").and_then(Value::as_str))
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let bv = b
+                    .get("amount_ui")
+                    .and_then(Value::as_str)
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                bv.partial_cmp(&av).unwrap_or(std::cmp::Ordering::Equal)
             });
 
             simulate = json!({
@@ -1492,6 +1531,7 @@
                 "owner": owner,
                 "lamports": lamports,
                 "sol_ui": format_base_units_ui(&lamports.to_string(), 9),
+                "dust_threshold_ui": dust_threshold_ui,
                 "holdings": holdings,
                 "accounts": accounts,
                 "note": "Read-only portfolio snapshot (no transaction will be broadcast)."
