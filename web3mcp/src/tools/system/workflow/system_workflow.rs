@@ -1748,9 +1748,51 @@
                     amt_bytes.copy_from_slice(&data[1..9]);
                     let amount = u64::from_le_bytes(amt_bytes);
                     let decimals = data[9];
-                    return Some(json!({"kind": "token_transfer_checked", "amount": amount, "decimals": decimals}));
+                    return Some(json!({
+                        "kind": "token_transfer_checked",
+                        "amount": amount,
+                        "decimals": decimals
+                    }));
                 }
                 None
+            }
+
+            fn decode_system_transfer(data: &[u8]) -> Option<u64> {
+                // SystemProgram Transfer: tag(2 u32 LE) + lamports(u64 LE)
+                if data.len() == 12 {
+                    let mut tag = [0u8; 4];
+                    tag.copy_from_slice(&data[0..4]);
+                    let ix_tag = u32::from_le_bytes(tag);
+                    if ix_tag != 2 {
+                        return None;
+                    }
+                    let mut amt = [0u8; 8];
+                    amt.copy_from_slice(&data[4..12]);
+                    return Some(u64::from_le_bytes(amt));
+                }
+                None
+            }
+
+            fn decode_compute_budget_ix(data: &[u8]) -> Option<Value> {
+                // Best-effort decode a subset of ComputeBudget instructions.
+                if data.is_empty() {
+                    return None;
+                }
+                match data[0] {
+                    // SetComputeUnitLimit(u32)
+                    2 if data.len() == 5 => {
+                        let mut v = [0u8; 4];
+                        v.copy_from_slice(&data[1..5]);
+                        Some(json!({"kind": "set_compute_unit_limit", "units": u32::from_le_bytes(v)}))
+                    }
+                    // SetComputeUnitPrice(u64)
+                    3 if data.len() == 9 => {
+                        let mut v = [0u8; 8];
+                        v.copy_from_slice(&data[1..9]);
+                        Some(json!({"kind": "set_compute_unit_price", "micro_lamports": u64::from_le_bytes(v)}))
+                    }
+                    _ => None,
+                }
             }
 
             let system_program = solana_sdk::pubkey::Pubkey::from_str(
@@ -1803,8 +1845,28 @@
                 };
 
                 let mut decoded: Option<Value> = None;
-                if program_kind == "spl_token" || program_kind == "spl_token_2022" {
+                if program_kind == "system" {
+                    // accounts[0]=from, accounts[1]=to
+                    if let Some(lamports) = decode_system_transfer(&ix.data) {
+                        decoded = Some(json!({
+                            "kind": "system_transfer",
+                            "from": accounts.get(0),
+                            "to": accounts.get(1),
+                            "lamports": lamports,
+                            "sol_ui": format_base_units_ui(&lamports.to_string(), 9)
+                        }));
+                    }
+                } else if program_kind == "associated_token_account" {
+                    // create_associated_token_account has predictable account order, but token-2022 variant differs.
+                    decoded = Some(json!({
+                        "kind": "create_associated_token_account",
+                        "accounts": accounts,
+                        "note": "ATA create detected (decode is best-effort; account order varies by variant)"
+                    }));
+                } else if program_kind == "spl_token" || program_kind == "spl_token_2022" {
                     decoded = decode_token_transfer_checked(&ix.data);
+                } else if program_kind == "compute_budget" {
+                    decoded = decode_compute_budget_ix(&ix.data);
                 }
 
                 instructions.push(json!({
