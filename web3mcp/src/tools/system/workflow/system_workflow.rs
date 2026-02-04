@@ -2006,6 +2006,19 @@
             let out_amount = quote.get("outAmount").and_then(Value::as_str).unwrap_or("");
             let price_impact_pct = quote.get("priceImpactPct").and_then(Value::as_str);
 
+            // Compute min_out for ExactIn (best-effort) using quote.outAmount and slippage_bps.
+            let mut min_out_base: Option<String> = None;
+            let mut min_out_ui: Option<String> = None;
+            {
+                let slippage_bps = simulate.get("slippage_bps").and_then(Value::as_u64).unwrap_or(100);
+                if let Ok(out_u128) = out_amount.parse::<u128>() {
+                    let factor_num: u128 = 10_000u128.saturating_sub(slippage_bps as u128);
+                    let min_u128 = out_u128.saturating_mul(factor_num) / 10_000u128;
+                    min_out_base = Some(min_u128.to_string());
+                    min_out_ui = Some(format_base_units_ui(&min_u128.to_string(), output_decimals));
+                }
+            }
+
             let mut warnings: Vec<Value> = vec![];
 
             if let Some(p) = price_impact_pct {
@@ -2082,6 +2095,16 @@
                         "note": "ExactOut max-in budget exceeds threshold"
                     }));
                 }
+            } else {
+                // ExactIn: if computed min_out is zero, it's almost certainly not intended.
+                if let Some(m) = min_out_base.as_deref() {
+                    if m == "0" {
+                        warnings.push(json!({
+                            "kind": "min_out_zero",
+                            "note": "computed min_out is 0 (check quote/outAmount)"
+                        }));
+                    }
+                }
             }
 
             // Route complexity guard.
@@ -2117,6 +2140,8 @@
                     "in_amount_ui": format_base_units_ui(in_amount, input_decimals),
                     "out_amount_base": out_amount,
                     "out_amount_ui": format_base_units_ui(out_amount, output_decimals),
+                    "min_out_base": min_out_base,
+                    "min_out_ui": min_out_ui,
                     "input_decimals": input_decimals,
                     "output_decimals": output_decimals,
                     "price_impact_pct": price_impact_pct,
@@ -2673,6 +2698,42 @@
                         "amount_in_ui": if in_base.is_empty() { Value::Null } else { json!(format_base_units_ui(in_base, in_dec_u8)) },
                         "amount_out_base": quote.and_then(|q| q.get("outAmount")),
                         "amount_out_ui": if out_base.is_empty() { Value::Null } else { json!(format_base_units_ui(out_base, out_dec_u8)) },
+                        "min_out_base": if swap_mode == "ExactIn" {
+                            // floor(outAmount * (1 - slippage))
+                            quote
+                                .and_then(|q| q.get("outAmount"))
+                                .and_then(Value::as_str)
+                                .and_then(|s| s.parse::<u128>().ok())
+                                .map(|out_u| {
+                                    let slip = simulate.get("slippage_bps").and_then(Value::as_u64).unwrap_or(100) as u128;
+                                    (out_u.saturating_mul(10_000u128.saturating_sub(slip)) / 10_000u128).to_string()
+                                })
+                        } else {
+                            None
+                        },
+                        "min_out_ui": if swap_mode == "ExactIn" {
+                            quote
+                                .and_then(|q| q.get("outAmount"))
+                                .and_then(Value::as_str)
+                                .and_then(|s| s.parse::<u128>().ok())
+                                .map(|out_u| {
+                                    let slip = simulate.get("slippage_bps").and_then(Value::as_u64).unwrap_or(100) as u128;
+                                    let min_u = out_u.saturating_mul(10_000u128.saturating_sub(slip)) / 10_000u128;
+                                    format_base_units_ui(&min_u.to_string(), out_dec_u8)
+                                })
+                        } else {
+                            None
+                        },
+                        "max_in_base": if swap_mode == "ExactOut" {
+                            quote.and_then(|q| q.get("inAmount")).and_then(Value::as_str).map(|s| s.to_string())
+                        } else {
+                            None
+                        },
+                        "max_in_ui": if swap_mode == "ExactOut" {
+                            if in_base.is_empty() { None } else { Some(format_base_units_ui(in_base, in_dec_u8)) }
+                        } else {
+                            None
+                        },
                         "price_impact_pct": quote.and_then(|q| q.get("priceImpactPct")),
                         "slippage_bps": simulate.get("slippage_bps"),
                         "route_plan_steps": quote.and_then(|q| q.get("routePlan")).and_then(|v| v.as_array()).map(|a| a.len()),
