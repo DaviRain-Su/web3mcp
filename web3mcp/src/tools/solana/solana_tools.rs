@@ -6822,7 +6822,87 @@
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
 
-        // Best-effort: include the pending summary as a human-readable "about to broadcast" preview.
+        fn about_to_broadcast(summary: &Option<Value>, fallback_network: &str) -> Option<String> {
+            let s = summary.as_ref()?;
+
+            // transfer_native / transfer_spl
+            if let Some(t) = s.get("transfer") {
+                let kind = t.get("kind").and_then(Value::as_str).unwrap_or("transfer");
+                let network = t
+                    .get("network")
+                    .and_then(Value::as_str)
+                    .unwrap_or(fallback_network);
+                let from = t.get("from").and_then(Value::as_str).unwrap_or("<from>");
+                let to = t.get("to").and_then(Value::as_str).unwrap_or("<to>");
+
+                if kind == "native" {
+                    let amount_ui = t.get("amount_ui").and_then(Value::as_str).unwrap_or("?");
+                    return Some(format!(
+                        "About to broadcast: transfer {} SOL from {} to {} on {}",
+                        amount_ui, from, to, network
+                    ));
+                }
+
+                if kind == "spl" {
+                    let asset = t.get("asset").and_then(Value::as_str).unwrap_or("SPL");
+                    let amount_ui = t.get("amount_ui").and_then(Value::as_str).unwrap_or("?");
+                    let mint = t.get("mint").and_then(Value::as_str).unwrap_or("<mint>");
+                    let will_create_ata = t.get("will_create_ata").and_then(Value::as_bool).unwrap_or(false);
+                    let ata_note = if will_create_ata { " (will create recipient ATA)" } else { "" };
+                    return Some(format!(
+                        "About to broadcast: transfer {} {} (mint {}) from {} to {} on {}{}",
+                        amount_ui, asset, mint, from, to, network, ata_note
+                    ));
+                }
+
+                return Some(format!(
+                    "About to broadcast: {} from {} to {} on {}",
+                    kind, from, to, network
+                ));
+            }
+
+            // swap_exact_in
+            if let Some(sw) = s.get("swap") {
+                let network = sw
+                    .get("network")
+                    .and_then(Value::as_str)
+                    .unwrap_or(fallback_network);
+                let user = sw
+                    .get("user_pubkey")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<user>");
+                let in_amt = sw
+                    .get("amount_in_base")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                let out_amt = sw
+                    .get("amount_out_base")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                let input_mint = sw
+                    .get("input_mint")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<in_mint>");
+                let output_mint = sw
+                    .get("output_mint")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<out_mint>");
+                let price_impact = sw
+                    .get("price_impact_pct")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                let slippage_bps = sw.get("slippage_bps").and_then(Value::as_u64).unwrap_or(0);
+
+                return Some(format!(
+                    "About to broadcast: swap {} (mint {}) → {} (mint {}) for {} on {} (slippage {} bps, priceImpact {})",
+                    in_amt, input_mint, out_amt, output_mint, user, network, slippage_bps, price_impact
+                ));
+            }
+
+            None
+        }
+
+        // Best-effort: include the pending summary + a short human preview.
         let response = Self::pretty_json(&json!({
             "ok": true,
             "stage": "confirm",
@@ -6832,6 +6912,7 @@
             "pending_confirmation_id": request.id,
             "tx_summary_hash": request.hash,
             "summary": pending.summary,
+            "about_to_broadcast": about_to_broadcast(&pending.summary, &network),
             "signature": sig.to_string(),
             "skip_preflight": skip_preflight,
             "commitment": commitment,
