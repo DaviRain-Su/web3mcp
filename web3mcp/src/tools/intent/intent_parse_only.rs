@@ -122,9 +122,15 @@
                 }
             }
 
+            let action = if asset.to_lowercase() == "sol" {
+                "transfer_native"
+            } else {
+                "transfer_spl"
+            };
+
             let intent_value = json!({
                 "chain": "solana",
-                "action": "transfer_native",
+                "action": action,
                 "asset": asset,
                 "amount": amount,
                 "to": to_addr,
