@@ -43,7 +43,15 @@ Optional:
 - `SOLANA_JUPITER_QUOTE_BASE_URL` (default: https://quote-api.jup.ag)
 - `SOLANA_JUPITER_TOKENS_URL` (default: https://tokens.jup.ag/tokens?tags=verified)
 
-> You must have devnet SOL for fees. For USDC on devnet, use a devnet USDC mint and acquire test tokens as needed.
+> You must have devnet SOL for fees.
+>
+> For USDC on devnet, you can either use any available devnet USDC mint **or** create a demo-friendly mock USDC SPL mint:
+>
+> ```bash
+> bash scripts/solana/devnet_mock_usdc.sh
+> ```
+>
+> Then use the printed `MINT=...` as the mint address in transfers (or treat it as your demo “USDC”).
 
 ---
 
