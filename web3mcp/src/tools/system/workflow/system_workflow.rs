@@ -1741,20 +1741,101 @@
 
             let fee_payer = account_keys.first().map(|p| p.to_string());
 
-            fn decode_token_transfer_checked(data: &[u8]) -> Option<Value> {
-                // SPL Token TransferChecked = tag(12) + amount(u64 LE) + decimals(u8)
-                if data.len() == 10 && data[0] == 12 {
-                    let mut amt_bytes = [0u8; 8];
-                    amt_bytes.copy_from_slice(&data[1..9]);
-                    let amount = u64::from_le_bytes(amt_bytes);
-                    let decimals = data[9];
-                    return Some(json!({
-                        "kind": "token_transfer_checked",
-                        "amount": amount,
-                        "decimals": decimals
-                    }));
+            fn decode_spl_token_ix(data: &[u8]) -> Option<Value> {
+                // Best-effort decode common SPL Token instructions.
+                // Reference: spl_token::instruction::TokenInstruction discriminants.
+                if data.is_empty() {
+                    return None;
                 }
-                None
+
+                let tag = data[0];
+
+                // helpers
+                fn le_u64(bytes: &[u8]) -> Option<u64> {
+                    if bytes.len() != 8 {
+                        return None;
+                    }
+                    let mut b = [0u8; 8];
+                    b.copy_from_slice(bytes);
+                    Some(u64::from_le_bytes(b))
+                }
+
+                match tag {
+                    // Transfer
+                    3 if data.len() == 9 => le_u64(&data[1..9]).map(|amount| {
+                        json!({"kind": "token_transfer", "amount": amount})
+                    }),
+
+                    // Approve
+                    4 if data.len() == 9 => le_u64(&data[1..9]).map(|amount| {
+                        json!({"kind": "token_approve", "amount": amount})
+                    }),
+
+                    // Revoke
+                    5 if data.len() == 1 => Some(json!({"kind": "token_revoke"})),
+
+                    // MintTo
+                    7 if data.len() == 9 => le_u64(&data[1..9]).map(|amount| {
+                        json!({"kind": "token_mint_to", "amount": amount})
+                    }),
+
+                    // Burn
+                    8 if data.len() == 9 => le_u64(&data[1..9]).map(|amount| {
+                        json!({"kind": "token_burn", "amount": amount})
+                    }),
+
+                    // CloseAccount
+                    9 if data.len() == 1 => Some(json!({"kind": "token_close_account"})),
+
+                    // TransferChecked
+                    12 if data.len() == 10 => {
+                        let amount = le_u64(&data[1..9])?;
+                        let decimals = data[9];
+                        Some(json!({
+                            "kind": "token_transfer_checked",
+                            "amount": amount,
+                            "decimals": decimals
+                        }))
+                    }
+
+                    // ApproveChecked
+                    13 if data.len() == 10 => {
+                        let amount = le_u64(&data[1..9])?;
+                        let decimals = data[9];
+                        Some(json!({
+                            "kind": "token_approve_checked",
+                            "amount": amount,
+                            "decimals": decimals
+                        }))
+                    }
+
+                    // MintToChecked
+                    14 if data.len() == 10 => {
+                        let amount = le_u64(&data[1..9])?;
+                        let decimals = data[9];
+                        Some(json!({
+                            "kind": "token_mint_to_checked",
+                            "amount": amount,
+                            "decimals": decimals
+                        }))
+                    }
+
+                    // BurnChecked
+                    15 if data.len() == 10 => {
+                        let amount = le_u64(&data[1..9])?;
+                        let decimals = data[9];
+                        Some(json!({
+                            "kind": "token_burn_checked",
+                            "amount": amount,
+                            "decimals": decimals
+                        }))
+                    }
+
+                    // SyncNative
+                    17 if data.len() == 1 => Some(json!({"kind": "token_sync_native"})),
+
+                    _ => None,
+                }
             }
 
             fn decode_system_transfer(data: &[u8]) -> Option<u64> {
@@ -1857,14 +1938,20 @@
                         }));
                     }
                 } else if program_kind == "associated_token_account" {
-                    // create_associated_token_account has predictable account order, but token-2022 variant differs.
+                    // Typical ATA create: [payer, ata, owner, mint, system, token, rent]
+                    // Variants exist (incl token-2022); so we annotate best-effort.
                     decoded = Some(json!({
                         "kind": "create_associated_token_account",
+                        "payer": accounts.get(0),
+                        "ata": accounts.get(1),
+                        "owner": accounts.get(2),
+                        "mint": accounts.get(3),
+                        "token_program": accounts.get(5),
                         "accounts": accounts,
-                        "note": "ATA create detected (decode is best-effort; account order varies by variant)"
+                        "note": "ATA create detected (best-effort; account order may vary by variant)"
                     }));
                 } else if program_kind == "spl_token" || program_kind == "spl_token_2022" {
-                    decoded = decode_token_transfer_checked(&ix.data);
+                    decoded = decode_spl_token_ix(&ix.data);
                 } else if program_kind == "compute_budget" {
                     decoded = decode_compute_budget_ix(&ix.data);
                 }
