@@ -1147,6 +1147,7 @@
                 "output_token_info": output_token_info,
                 "input_mint": input_mint,
                 "output_mint": output_mint,
+                "swap_mode": "ExactIn",
                 "input_decimals": decimals,
                 "amount_in": amount_in.to_string(),
                 "slippage_bps": slippage_bps,
@@ -1576,11 +1577,30 @@
                 }));
             }
 
+            let swap_mode = simulate
+                .get("swap_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("ExactIn");
+
+            if swap_mode == "ExactOut" {
+                // ExactOut: user is targeting `outAmount`; quote.inAmount is a max-in budget.
+                // Warn more aggressively on slippage.
+                if slippage_bps >= 200 {
+                    warnings.push(json!({
+                        "kind": "exact_out_high_slippage",
+                        "slippage_bps": slippage_bps,
+                        "threshold": 200,
+                        "note": "ExactOut with slippage_bps >= 200 can be risky (max-in budget)"
+                    }));
+                }
+            }
+
             json!({
                 "stage": "approval",
                 "status": if warnings.is_empty() { "ok" } else { "needs_review" },
                 "network": network,
                 "summary": {
+                    "swap_mode": swap_mode,
                     "in_amount_base": in_amount,
                     "in_amount_ui": format_base_units_ui(in_amount, input_decimals),
                     "out_amount_base": out_amount,
@@ -1589,6 +1609,16 @@
                     "output_decimals": output_decimals,
                     "price_impact_pct": price_impact_pct,
                     "route_plan_steps": quote.get("routePlan").and_then(Value::as_array).map(|a| a.len()),
+                    "exact_out": if swap_mode == "ExactOut" {
+                        json!({
+                            "target_out_amount_base": out_amount,
+                            "target_out_amount_ui": format_base_units_ui(out_amount, output_decimals),
+                            "max_in_amount_base": in_amount,
+                            "max_in_amount_ui": format_base_units_ui(in_amount, input_decimals)
+                        })
+                    } else {
+                        Value::Null
+                    }
                 },
                 "warnings": warnings,
                 "note": "This stage is informational today. Execution still uses safe default (pending confirmation)."
@@ -2048,6 +2078,20 @@
 
                 // Minimal surface: create a pending confirmation directly (do not expose solana_send_transaction).
                 let quote = simulate.get("quote");
+                let swap_mode = simulate
+                    .get("swap_mode")
+                    .and_then(Value::as_str)
+                    .unwrap_or("ExactIn");
+
+                let input_decimals = simulate.get("input_decimals");
+                let output_decimals = simulate.get("output_decimals");
+
+                let in_base = quote.and_then(|q| q.get("inAmount")).and_then(Value::as_str).unwrap_or("");
+                let out_base = quote.and_then(|q| q.get("outAmount")).and_then(Value::as_str).unwrap_or("");
+
+                let in_dec_u8 = input_decimals.and_then(Value::as_u64).unwrap_or(0) as u8;
+                let out_dec_u8 = output_decimals.and_then(Value::as_u64).unwrap_or(0) as u8;
+
                 let summary = Some(json!({
                     "tool": "w3rt_run_workflow_v0",
                     "run_id": run_id,
@@ -2060,16 +2104,21 @@
                         "input_token": intent_value.get("input_token"),
                         "output_token": intent_value.get("output_token"),
                         "amount_in": intent_value.get("amount_in"),
+                        "amount_out": intent_value.get("amount_out"),
                         "slippage_bps": intent_value.get("slippage_bps")
                     },
                     "swap": {
+                        "swap_mode": swap_mode,
                         "network": simulate.get("network"),
                         "user_pubkey": simulate.get("user_pubkey"),
                         "input_mint": simulate.get("input_mint"),
                         "output_mint": simulate.get("output_mint"),
-                        "input_decimals": simulate.get("input_decimals"),
+                        "input_decimals": input_decimals,
+                        "output_decimals": output_decimals,
                         "amount_in_base": quote.and_then(|q| q.get("inAmount")),
+                        "amount_in_ui": if in_base.is_empty() { Value::Null } else { json!(format_base_units_ui(in_base, in_dec_u8)) },
                         "amount_out_base": quote.and_then(|q| q.get("outAmount")),
+                        "amount_out_ui": if out_base.is_empty() { Value::Null } else { json!(format_base_units_ui(out_base, out_dec_u8)) },
                         "price_impact_pct": quote.and_then(|q| q.get("priceImpactPct")),
                         "slippage_bps": simulate.get("slippage_bps"),
                         "route_plan_steps": quote.and_then(|q| q.get("routePlan")).and_then(|v| v.as_array()).map(|a| a.len()),
