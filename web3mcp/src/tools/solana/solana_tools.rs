@@ -4351,10 +4351,32 @@
             }
         }
 
-        // Decode a small set of common actions.
+        // Decode a larger set of common actions.
         let system_program = solana_sdk::pubkey::Pubkey::from_str("11111111111111111111111111111111").unwrap();
+        let ata_program = spl_associated_token_account::id();
+        let compute_budget = solana_sdk::pubkey::Pubkey::from_str(
+            "ComputeBudget111111111111111111111111111111",
+        )
+        .unwrap();
         let token_legacy = solana_sdk::pubkey::Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").ok();
         let token_2022 = solana_sdk::pubkey::Pubkey::from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb").ok();
+
+        fn le_u64(bytes: &[u8]) -> Option<u64> {
+            if bytes.len() != 8 {
+                return None;
+            }
+            let mut b = [0u8; 8];
+            b.copy_from_slice(bytes);
+            Some(u64::from_le_bytes(b))
+        }
+        fn le_u32(bytes: &[u8]) -> Option<u32> {
+            if bytes.len() != 4 {
+                return None;
+            }
+            let mut b = [0u8; 4];
+            b.copy_from_slice(bytes);
+            Some(u32::from_le_bytes(b))
+        }
 
         let mut actions: Vec<Value> = Vec::new();
         for ix in &instructions {
@@ -4365,46 +4387,215 @@
 
             // System transfer (tag 2)
             if pid == system_program && ix.data.len() == 12 {
-                let mut tag = [0u8; 4];
-                tag.copy_from_slice(&ix.data[0..4]);
-                if u32::from_le_bytes(tag) == 2 {
-                    let mut amt = [0u8; 8];
-                    amt.copy_from_slice(&ix.data[4..12]);
-                    let lamports = u64::from_le_bytes(amt);
-                    let from = ix.accounts.get(0).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
-                    let to = ix.accounts.get(1).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
-                    actions.push(json!({
-                        "kind": "system_transfer",
-                        "lamports": lamports,
-                        "from": from,
-                        "to": to
-                    }));
+                if let Some(tag) = le_u32(&ix.data[0..4]) {
+                    if tag == 2 {
+                        let lamports = le_u64(&ix.data[4..12]).unwrap_or(0);
+                        let from = ix
+                            .accounts
+                            .get(0)
+                            .and_then(|i| account_keys.get(*i as usize))
+                            .map(|p| p.to_string());
+                        let to = ix
+                            .accounts
+                            .get(1)
+                            .and_then(|i| account_keys.get(*i as usize))
+                            .map(|p| p.to_string());
+                        actions.push(json!({
+                            "kind": "system_transfer",
+                            "lamports": lamports,
+                            "from": from,
+                            "to": to
+                        }));
+                    }
                 }
             }
 
-            // SPL token transfer/transfer_checked
+            // ComputeBudget (subset)
+            if pid == compute_budget && !ix.data.is_empty() {
+                match ix.data[0] {
+                    2 if ix.data.len() == 5 => {
+                        let units = le_u32(&ix.data[1..5]).unwrap_or(0);
+                        actions.push(json!({
+                            "kind": "set_compute_unit_limit",
+                            "units": units
+                        }));
+                    }
+                    3 if ix.data.len() == 9 => {
+                        let micro_lamports = le_u64(&ix.data[1..9]).unwrap_or(0);
+                        actions.push(json!({
+                            "kind": "set_compute_unit_price",
+                            "micro_lamports": micro_lamports
+                        }));
+                    }
+                    _ => {}
+                }
+            }
+
+            // Associated Token Account create (best-effort; order may vary by variant)
+            if pid == ata_program {
+                let payer = ix
+                    .accounts
+                    .get(0)
+                    .and_then(|i| account_keys.get(*i as usize))
+                    .map(|p| p.to_string());
+                let ata = ix
+                    .accounts
+                    .get(1)
+                    .and_then(|i| account_keys.get(*i as usize))
+                    .map(|p| p.to_string());
+                let owner = ix
+                    .accounts
+                    .get(2)
+                    .and_then(|i| account_keys.get(*i as usize))
+                    .map(|p| p.to_string());
+                let mint = ix
+                    .accounts
+                    .get(3)
+                    .and_then(|i| account_keys.get(*i as usize))
+                    .map(|p| p.to_string());
+                actions.push(json!({
+                    "kind": "create_associated_token_account",
+                    "payer": payer,
+                    "ata": ata,
+                    "owner": owner,
+                    "mint": mint
+                }));
+            }
+
+            // SPL Token common instructions (best-effort)
             if token_legacy.as_ref() == Some(&pid) || token_2022.as_ref() == Some(&pid) {
                 if ix.data.is_empty() {
                     continue;
                 }
                 let tag = ix.data[0];
-                if (tag == 3 && ix.data.len() == 9) || (tag == 12 && ix.data.len() == 10) {
-                    let mut amt = [0u8; 8];
-                    amt.copy_from_slice(&ix.data[1..9]);
-                    let amount = u64::from_le_bytes(amt);
-                    let (source_i, dest_i, auth_i) = if tag == 12 { (0usize, 2usize, 3usize) } else { (0usize, 1usize, 2usize) };
 
-                    let source = ix.accounts.get(source_i).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
-                    let destination = ix.accounts.get(dest_i).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
-                    let authority = ix.accounts.get(auth_i).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                // transfer/approve/mint_to/burn (tag + u64)
+                if matches!(tag, 3 | 4 | 7 | 8) && ix.data.len() == 9 {
+                    let amount = le_u64(&ix.data[1..9]).unwrap_or(0);
+                    let (a0, a1, a2) = (
+                        ix.accounts.get(0),
+                        ix.accounts.get(1),
+                        ix.accounts.get(2),
+                    );
+                    let pk0 = a0.and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let pk1 = a1.and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let pk2 = a2.and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+
+                    let kind = match tag {
+                        3 => "token_transfer",
+                        4 => "token_approve",
+                        7 => "token_mint_to",
+                        8 => "token_burn",
+                        _ => "token_unknown",
+                    };
+
+                    let (source, destination, authority, mint, delegate) = match tag {
+                        3 => (pk0.clone(), pk1.clone(), pk2.clone(), None, None),
+                        4 => (pk0.clone(), None, None, None, pk1.clone()),
+                        7 => (None, pk1.clone(), pk2.clone(), pk0.clone(), None),
+                        8 => (pk0.clone(), None, pk2.clone(), pk1.clone(), None),
+                        _ => (None, None, None, None, None),
+                    };
 
                     actions.push(json!({
-                        "kind": if tag == 12 { "token_transfer_checked" } else { "token_transfer" },
+                        "kind": kind,
                         "program_id": pid.to_string(),
                         "amount": amount,
                         "source": source,
                         "destination": destination,
+                        "mint": mint,
+                        "delegate": delegate,
                         "authority": authority
+                    }));
+                }
+
+                // close account
+                if tag == 9 && ix.data.len() == 1 {
+                    let account = ix.accounts.get(0).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let destination = ix.accounts.get(1).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let owner = ix.accounts.get(2).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    actions.push(json!({
+                        "kind": "token_close_account",
+                        "program_id": pid.to_string(),
+                        "account": account,
+                        "destination": destination,
+                        "owner": owner
+                    }));
+                }
+
+                // transfer_checked / approve_checked / mint_to_checked / burn_checked
+                if matches!(tag, 12 | 13 | 14 | 15) && ix.data.len() == 10 {
+                    let amount = le_u64(&ix.data[1..9]).unwrap_or(0);
+                    let decimals = ix.data[9];
+
+                    let kind = match tag {
+                        12 => "token_transfer_checked",
+                        13 => "token_approve_checked",
+                        14 => "token_mint_to_checked",
+                        15 => "token_burn_checked",
+                        _ => "token_checked_unknown",
+                    };
+
+                    // Layouts:
+                    // - transfer_checked: [source, mint, destination, authority]
+                    // - approve_checked:  [source, mint, delegate, owner]
+                    // - mint_to_checked:  [mint, destination, authority]
+                    // - burn_checked:     [source, mint, authority]
+                    let source = ix.accounts.get(0).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let mint = ix.accounts.get(1).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+
+                    let destination = if tag == 12 {
+                        ix.accounts.get(2).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string())
+                    } else if tag == 14 {
+                        ix.accounts.get(1).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string())
+                    } else {
+                        None
+                    };
+
+                    let delegate = if tag == 13 {
+                        ix.accounts.get(2).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string())
+                    } else {
+                        None
+                    };
+
+                    let authority = if tag == 12 || tag == 13 {
+                        ix.accounts.get(3).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string())
+                    } else {
+                        ix.accounts.get(2).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string())
+                    };
+
+                    actions.push(json!({
+                        "kind": kind,
+                        "program_id": pid.to_string(),
+                        "amount": amount,
+                        "decimals": decimals,
+                        "source": source,
+                        "destination": destination,
+                        "mint": mint,
+                        "delegate": delegate,
+                        "authority": authority
+                    }));
+                }
+
+                // revoke
+                if tag == 5 && ix.data.len() == 1 {
+                    let source = ix.accounts.get(0).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let owner = ix.accounts.get(1).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    actions.push(json!({
+                        "kind": "token_revoke",
+                        "program_id": pid.to_string(),
+                        "source": source,
+                        "owner": owner
+                    }));
+                }
+
+                // sync_native
+                if tag == 17 && ix.data.len() == 1 {
+                    let account = ix.accounts.get(0).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    actions.push(json!({
+                        "kind": "token_sync_native",
+                        "program_id": pid.to_string(),
+                        "account": account
                     }));
                 }
             }
