@@ -6940,50 +6940,89 @@
             }
         }
 
-        // NOTE: confirm currently broadcasts legacy Transaction. If pending contains a v0 tx, legacy deserialization will fail.
-        let mut tx: solana_sdk::transaction::Transaction =
-            bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!("Invalid stored transaction bytes: {}", e)),
-                data: None,
-            })?;
-
         // Sign if needed.
         let kp_path = Self::solana_keypair_path().ok();
         let kp = kp_path
             .as_deref()
             .and_then(|p| Self::solana_read_keypair_from_json_file(p).ok());
-        Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
 
-        
         let skip_preflight = request.skip_preflight.unwrap_or(false);
-        let sig = client
-            .send_transaction_with_config(
-                &tx,
-                solana_client::rpc_config::RpcSendTransactionConfig {
-                    skip_preflight,
-                    preflight_commitment: Some(
-                        Self::solana_commitment_from_str(request.commitment.as_deref())?.commitment,
-                    ),
-                    encoding: None,
-                    max_retries: None,
-                    min_context_slot: None,
-                },
-            )
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                let (error_class, suggest_fix) = Self::solana_classify_send_error(&msg);
-                ErrorData {
-                    code: ErrorCode(-32000),
-                    message: Cow::from(format!("solana_confirm_transaction send error: {}", msg)),
-                    data: Some(json!({
-                        "error_class": error_class,
-                        "suggest_fix": suggest_fix,
-                        "skip_preflight": skip_preflight
-                    })),
+        let send_cfg = solana_client::rpc_config::RpcSendTransactionConfig {
+            skip_preflight,
+            preflight_commitment: Some(
+                Self::solana_commitment_from_str(request.commitment.as_deref())?.commitment,
+            ),
+            encoding: None,
+            max_retries: None,
+            min_context_slot: None,
+        };
+
+        // Broadcast: support VersionedTransaction (v0+LUT) as well as legacy Transaction.
+        let sig = if let Some(mut vt) = vtx {
+            if let Some(ref k) = kp {
+                // If signatures are missing/default, attempt to sign.
+                let all_default = vt
+                    .signatures
+                    .iter()
+                    .all(|s| *s == solana_sdk::signature::Signature::default());
+                if vt.signatures.is_empty() || all_default {
+                    let recent_blockhash = match &vt.message {
+                        solana_message::VersionedMessage::Legacy(m) => m.recent_blockhash,
+                        solana_message::VersionedMessage::V0(m) => m.recent_blockhash,
+                    };
+                    vt.try_sign(&[k], recent_blockhash).map_err(|e| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from(format!("Failed to sign versioned tx: {e}")),
+                        data: None,
+                    })?;
                 }
-            })?;
+            }
+
+            client
+                .send_transaction_with_config(&vt, send_cfg)
+                .await
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    let (error_class, suggest_fix) = Self::solana_classify_send_error(&msg);
+                    ErrorData {
+                        code: ErrorCode(-32000),
+                        message: Cow::from(format!("solana_confirm_transaction send error: {}", msg)),
+                        data: Some(json!({
+                            "error_class": error_class,
+                            "suggest_fix": suggest_fix,
+                            "skip_preflight": skip_preflight,
+                            "tx_version": "versioned"
+                        })),
+                    }
+                })?
+        } else {
+            let mut tx: solana_sdk::transaction::Transaction =
+                bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid stored transaction bytes: {}", e)),
+                    data: None,
+                })?;
+
+            Self::solana_try_sign_if_needed(&mut tx, kp.as_ref());
+
+            client
+                .send_transaction_with_config(&tx, send_cfg)
+                .await
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    let (error_class, suggest_fix) = Self::solana_classify_send_error(&msg);
+                    ErrorData {
+                        code: ErrorCode(-32000),
+                        message: Cow::from(format!("solana_confirm_transaction send error: {}", msg)),
+                        data: Some(json!({
+                            "error_class": error_class,
+                            "suggest_fix": suggest_fix,
+                            "skip_preflight": skip_preflight,
+                            "tx_version": "legacy"
+                        })),
+                    }
+                })?
+        };
 
         let timeout_ms = request.timeout_ms.unwrap_or(60_000);
         let commitment = request.commitment.clone().unwrap_or("confirmed".to_string());
