@@ -18,6 +18,7 @@ pub mod solana_idl;
 pub mod solana_idl_cache;
 #[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl_registry;
+pub mod solana_policy;
 
 #[cfg(feature = "solana-extended-tools")]
 pub mod solana_idl_arg_examples;

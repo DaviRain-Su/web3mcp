@@ -1,0 +1,17 @@
+{
+  "mode": "block",
+  "swap": {
+    "block_system_transfer": { "enabled": true, "max_lamports": 0 },
+    "ata_owner_mint": { "enabled": true, "mint_mode": "input_output" },
+    "token_authority": { "enabled": true, "mode": "strict" }
+  },
+  "program_policy": {
+    "deny": [],
+    "allow": []
+  },
+  "admin_override": {
+    "blocked_confirm_admin_pubkeys": [],
+    "require_fee_payer_match": true,
+    "require_authority_match": true
+  }
+}

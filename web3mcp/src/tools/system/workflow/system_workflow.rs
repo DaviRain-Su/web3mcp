@@ -2645,17 +2645,20 @@
             // Program allow/deny policy (env-configurable).
             // - Deny list is always enforced if set.
             // - Allow list is enforced only if set (non-empty). Because Jupiter routes can involve many DEX programs.
-            let deny_programs_raw = std::env::var("W3RT_SOLANA_TX_DENY_PROGRAMS").unwrap_or_default();
-            let allow_programs_raw = std::env::var("W3RT_SOLANA_TX_ALLOWED_PROGRAMS").unwrap_or_default();
+            let policy = crate::utils::solana_policy::load_solana_confirm_policy();
 
-            let deny_set: std::collections::HashSet<String> = deny_programs_raw
-                .split(',')
+            let deny_set: std::collections::HashSet<String> = policy
+                .program_policy
+                .deny
+                .iter()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
                 .collect();
-            let allow_set: std::collections::HashSet<String> = allow_programs_raw
-                .split(',')
+            let allow_set: std::collections::HashSet<String> = policy
+                .program_policy
+                .allow
+                .iter()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
@@ -2764,8 +2767,10 @@
                             .ok()
                             .and_then(|s| s.parse::<f64>().ok())
                             .unwrap_or(0.0),
-                        "tx_deny_programs": std::env::var("W3RT_SOLANA_TX_DENY_PROGRAMS").ok(),
-                        "tx_allow_programs": std::env::var("W3RT_SOLANA_TX_ALLOWED_PROGRAMS").ok()
+                        "program_policy": {
+                            "deny": crate::utils::solana_policy::load_solana_confirm_policy().program_policy.deny,
+                            "allow": crate::utils::solana_policy::load_solana_confirm_policy().program_policy.allow
+                        }
                     },
                     "swap_mode": swap_mode,
                     "in_amount_base": in_amount,

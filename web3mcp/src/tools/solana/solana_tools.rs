@@ -7107,13 +7107,12 @@
         let admin_pubkey_str = request.admin_pubkey.as_deref().unwrap_or("").trim();
 
         if approval_status == "blocked" {
-            let wl_raw = std::env::var("W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST")
-                .unwrap_or_default();
-            let wl: std::collections::HashSet<String> = wl_raw
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
+            let policy = crate::utils::solana_policy::load_solana_confirm_policy();
+            let wl: std::collections::HashSet<String> = policy
+                .admin_override
+                .blocked_confirm_admin_pubkeys
+                .into_iter()
+                .filter(|s| !s.trim().is_empty())
                 .collect();
 
             if wl.is_empty() || admin_pubkey_str.is_empty() || !wl.contains(admin_pubkey_str) {
@@ -7122,11 +7121,11 @@
                     "APPROVAL_BLOCKED",
                     "Confirmation is blocked by approval policy",
                     false,
-                    Some("This pending transaction was marked blocked. Provide admin_pubkey that is in W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST."),
+                    Some("This pending transaction was marked blocked. Provide admin_pubkey that is in policies/solana_confirm_policy.json admin_override.blocked_confirm_admin_pubkeys."),
                     None,
                     Some(json!({
                         "approval_status": approval_status,
-                        "whitelist_env": "W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST"
+                        "policy_path": "policies/solana_confirm_policy.json"
                     })),
                 );
             }
@@ -7431,22 +7430,29 @@
                     }
                 }
 
-                // Program allow/deny enforcement at confirm-time (re-check, in case pending/summary was tampered).
-                let deny_programs_raw = std::env::var("W3RT_SOLANA_TX_DENY_PROGRAMS").unwrap_or_default();
-                let allow_programs_raw = std::env::var("W3RT_SOLANA_TX_ALLOWED_PROGRAMS").unwrap_or_default();
+                // Confirm policy (file-backed). If mode=off, skip confirm-time policy checks.
+                let policy = crate::utils::solana_policy::load_solana_confirm_policy();
 
-                let deny_set: std::collections::HashSet<String> = deny_programs_raw
-                    .split(',')
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect();
-                let allow_set: std::collections::HashSet<String> = allow_programs_raw
-                    .split(',')
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect();
+                if policy.is_mode_off() {
+                    // Skip policy checks below.
+                } else {
+                    // Program allow/deny enforcement at confirm-time (re-check, in case pending/summary was tampered).
+                    let deny_set: std::collections::HashSet<String> = policy
+                        .program_policy
+                        .deny
+                        .iter()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .collect();
+                    let allow_set: std::collections::HashSet<String> = policy
+                        .program_policy
+                        .allow
+                        .iter()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .collect();
 
                 if !deny_set.is_empty() || !allow_set.is_empty() {
                     let mut programs_used: std::collections::HashSet<String> = std::collections::HashSet::new();
