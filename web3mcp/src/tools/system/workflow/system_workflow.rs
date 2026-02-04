@@ -1743,6 +1743,9 @@
             };
             let total_ui = format_base_units_ui(&total_raw.to_string(), d);
 
+            let token_by_mint = solana_jupiter_token_map().await.unwrap_or_default();
+            let tok = token_by_mint.get(&mint).cloned();
+
             simulate = json!({
                 "stage": "simulate",
                 "status": "ok",
@@ -1752,6 +1755,7 @@
                 "owner": owner,
                 "symbol": symbol,
                 "mint": mint,
+                "token_info": tok,
                 "decimals": d,
                 "total_amount_raw": total_raw.to_string(),
                 "total_amount_ui": total_ui,
