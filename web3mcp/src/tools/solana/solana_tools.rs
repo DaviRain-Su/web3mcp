@@ -7506,53 +7506,150 @@
                         }
                     }
 
-                    // Extra hard guard for swaps: block unexpected native SOL transfers at confirm-time.
-                    // Swap txs should generally not include SystemProgram transfer of lamports (except 0).
-                    // (best-effort; only checks classic System Transfer instruction)
+                    // Extra hard guards for swaps.
                     if approval_status != "blocked" {
-                        let mut suspicious: Vec<Value> = Vec::new();
+                        // 1) Block unexpected native SOL transfers at confirm-time.
+                        // Swap txs should generally not include SystemProgram transfer of lamports (except 0).
+                        // (best-effort; only checks classic System Transfer instruction)
+                        let mut suspicious_sol: Vec<Value> = Vec::new();
+
+                        // 2) ATA creates should be for the user and expected mints.
+                        let mut suspicious_ata: Vec<Value> = Vec::new();
+
+                        // 3) SPL token authority/owner for user-facing ops should match user_pubkey.
+                        let mut suspicious_token_auth: Vec<Value> = Vec::new();
+
+                        // Constants
+                        let system_program = solana_sdk::pubkey::Pubkey::from_str(
+                            "11111111111111111111111111111111",
+                        )
+                        .unwrap();
+                        let ata_program = spl_associated_token_account::id();
+                        let token_legacy = solana_sdk::pubkey::Pubkey::from_str(
+                            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                        )
+                        .ok();
+                        let token_2022 = solana_sdk::pubkey::Pubkey::from_str(
+                            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                        )
+                        .ok();
+
+                        let expected_user = expected_user.unwrap_or("");
+                        let in_mint = input_mint.unwrap_or("");
+                        let out_mint = output_mint.unwrap_or("");
+
                         for ix in &instructions {
                             let pid = account_keys.get(ix.program_id_index as usize);
                             if pid.is_none() {
                                 continue;
                             }
                             let pid = pid.unwrap();
-                            if pid.to_string() != "11111111111111111111111111111111" {
-                                continue;
-                            }
-                            if ix.data.len() != 12 {
-                                continue;
-                            }
-                            let mut tag = [0u8; 4];
-                            tag.copy_from_slice(&ix.data[0..4]);
-                            if u32::from_le_bytes(tag) != 2 {
-                                continue;
-                            }
-                            let mut amt = [0u8; 8];
-                            amt.copy_from_slice(&ix.data[4..12]);
-                            let lamports = u64::from_le_bytes(amt);
-                            if lamports == 0 {
+
+                            // (1) system transfer
+                            if *pid == system_program {
+                                if ix.data.len() == 12 {
+                                    let mut tag = [0u8; 4];
+                                    tag.copy_from_slice(&ix.data[0..4]);
+                                    if u32::from_le_bytes(tag) == 2 {
+                                        let mut amt = [0u8; 8];
+                                        amt.copy_from_slice(&ix.data[4..12]);
+                                        let lamports = u64::from_le_bytes(amt);
+                                        if lamports > 0 {
+                                            let from = ix
+                                                .accounts
+                                                .get(0)
+                                                .and_then(|i| account_keys.get(*i as usize))
+                                                .map(|p| p.to_string());
+                                            let to = ix
+                                                .accounts
+                                                .get(1)
+                                                .and_then(|i| account_keys.get(*i as usize))
+                                                .map(|p| p.to_string());
+                                            suspicious_sol.push(json!({
+                                                "lamports": lamports,
+                                                "from": from,
+                                                "to": to
+                                            }));
+                                        }
+                                    }
+                                }
                                 continue;
                             }
 
-                            let from = ix
-                                .accounts
-                                .get(0)
-                                .and_then(|i| account_keys.get(*i as usize))
-                                .map(|p| p.to_string());
-                            let to = ix
-                                .accounts
-                                .get(1)
-                                .and_then(|i| account_keys.get(*i as usize))
-                                .map(|p| p.to_string());
-                            suspicious.push(json!({
-                                "lamports": lamports,
-                                "from": from,
-                                "to": to
-                            }));
+                            // (2) ATA create
+                            if *pid == ata_program {
+                                // Typical order: [payer, ata, owner, mint, system, token, rent]
+                                let owner = ix
+                                    .accounts
+                                    .get(2)
+                                    .and_then(|i| account_keys.get(*i as usize))
+                                    .map(|p| p.to_string())
+                                    .unwrap_or_default();
+                                let mint = ix
+                                    .accounts
+                                    .get(3)
+                                    .and_then(|i| account_keys.get(*i as usize))
+                                    .map(|p| p.to_string())
+                                    .unwrap_or_default();
+
+                                let owner_ok = !expected_user.is_empty() && owner == expected_user;
+                                let mint_ok = (!in_mint.is_empty() && mint == in_mint)
+                                    || (!out_mint.is_empty() && mint == out_mint);
+
+                                if !owner_ok || !mint_ok {
+                                    suspicious_ata.push(json!({
+                                        "owner": owner,
+                                        "mint": mint,
+                                        "expected_user": expected_user,
+                                        "expected_mints": [in_mint, out_mint]
+                                    }));
+                                }
+                                continue;
+                            }
+
+                            // (3) SPL token authority/owner checks (best-effort)
+                            if token_legacy.as_ref() == Some(pid) || token_2022.as_ref() == Some(pid)
+                            {
+                                if ix.data.is_empty() {
+                                    continue;
+                                }
+                                let tag = ix.data[0];
+
+                                // We only enforce on user-facing authority/owner positions.
+                                let auth_pos: Option<usize> = match tag {
+                                    3 | 4 | 7 | 8 | 9 => Some(2), // transfer/approve/mint_to/burn/close
+                                    12 | 13 => Some(3),          // transfer_checked/approve_checked
+                                    14 | 15 => Some(2),          // mint_to_checked/burn_checked
+                                    5 => Some(1),                // revoke
+                                    _ => None,
+                                };
+
+                                // Skip mint_to/mint_to_checked because authority may be program/mint authority.
+                                let enforce = !matches!(tag, 7 | 14);
+
+                                if enforce {
+                                    if let Some(pos) = auth_pos {
+                                        let auth = ix
+                                            .accounts
+                                            .get(pos)
+                                            .and_then(|i| account_keys.get(*i as usize))
+                                            .map(|p| p.to_string())
+                                            .unwrap_or_default();
+
+                                        if !expected_user.is_empty() && auth != expected_user {
+                                            suspicious_token_auth.push(json!({
+                                                "token_tag": tag,
+                                                "authority": auth,
+                                                "expected_user": expected_user,
+                                                "program": pid.to_string()
+                                            }));
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        if !suspicious.is_empty() {
+                        if !suspicious_sol.is_empty() {
                             return Self::guard_result(
                                 "solana_confirm_transaction",
                                 "SUSPICIOUS_SYSTEM_TRANSFER",
@@ -7561,7 +7658,35 @@
                                 Some("Refusing to broadcast because swap tx unexpectedly contains a SystemProgram transfer. Use tx_preview/tx_analyze to inspect."),
                                 None,
                                 Some(json!({
-                                    "transfers": suspicious
+                                    "transfers": suspicious_sol
+                                })),
+                            );
+                        }
+
+                        if !suspicious_ata.is_empty() {
+                            return Self::guard_result(
+                                "solana_confirm_transaction",
+                                "SUSPICIOUS_ATA_CREATE",
+                                "Swap tx contains ATA create that does not match expected owner/mint",
+                                false,
+                                Some("Refusing to broadcast because ATA create does not match expected user/mints."),
+                                None,
+                                Some(json!({
+                                    "ata_creates": suspicious_ata
+                                })),
+                            );
+                        }
+
+                        if !suspicious_token_auth.is_empty() {
+                            return Self::guard_result(
+                                "solana_confirm_transaction",
+                                "SUSPICIOUS_TOKEN_AUTHORITY",
+                                "Swap tx contains token instruction with unexpected authority/owner",
+                                false,
+                                Some("Refusing to broadcast because token authority/owner does not match expected user."),
+                                None,
+                                Some(json!({
+                                    "mismatches": suspicious_token_auth
                                 })),
                             );
                         }
