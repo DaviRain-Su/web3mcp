@@ -1537,6 +1537,61 @@
                 jup_quote(&input_mint, &output_mint, amount, slippage_bps).await?
             };
 
+            let in_amt = quote.get("inAmount").and_then(Value::as_str).unwrap_or("");
+            let out_amt = quote.get("outAmount").and_then(Value::as_str).unwrap_or("");
+            let price_impact = quote.get("priceImpactPct").and_then(Value::as_str);
+            let route_steps = quote
+                .get("routePlan")
+                .and_then(Value::as_array)
+                .map(|a| a.len());
+
+            // Best-effort UI formatting (ExactIn uses input decimals; ExactOut uses output decimals).
+            let input_decimals: u8 = if input_mint == "So11111111111111111111111111111111111111112" {
+                9
+            } else if input_mint == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" {
+                6
+            } else {
+                solana_get_mint_decimals(&rpc, &input_mint).await.unwrap_or(0)
+            };
+            let output_decimals: u8 = if output_mint == "So11111111111111111111111111111111111111112" {
+                9
+            } else if output_mint == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" {
+                6
+            } else {
+                solana_get_mint_decimals(&rpc, &output_mint).await.unwrap_or(0)
+            };
+
+            let net_s = network.clone().unwrap_or_else(|| "mainnet".to_string());
+            let about_quote = if swap_mode == "ExactOut" {
+                format!(
+                    "Quote (ExactOut): target {} {} (mint {}) with max input {} {} (mint {}) on {} (slippage {} bps, priceImpact {}, routeSteps {:?})",
+                    format_base_units_ui(out_amt, output_decimals),
+                    output_token,
+                    output_mint,
+                    format_base_units_ui(in_amt, input_decimals),
+                    input_token,
+                    input_mint,
+                    net_s,
+                    slippage_bps,
+                    price_impact.unwrap_or("?"),
+                    route_steps
+                )
+            } else {
+                format!(
+                    "Quote (ExactIn): sell {} {} (mint {}) for ~{} {} (mint {}) on {} (slippage {} bps, priceImpact {}, routeSteps {:?})",
+                    format_base_units_ui(in_amt, input_decimals),
+                    input_token,
+                    input_mint,
+                    format_base_units_ui(out_amt, output_decimals),
+                    output_token,
+                    output_mint,
+                    net_s,
+                    slippage_bps,
+                    price_impact.unwrap_or("?"),
+                    route_steps
+                )
+            };
+
             simulate = json!({
                 "stage": "simulate",
                 "status": "ok",
@@ -1549,9 +1604,20 @@
                 "output_token": output_token,
                 "input_mint": input_mint,
                 "output_mint": output_mint,
+                "input_decimals": input_decimals,
+                "output_decimals": output_decimals,
                 "slippage_bps": slippage_bps,
                 amount_field: amount_s,
                 "amount_base": amount.to_string(),
+                "quote_summary": {
+                    "in_amount_base": in_amt,
+                    "in_amount_ui": if in_amt.is_empty() { Value::Null } else { json!(format_base_units_ui(in_amt, input_decimals)) },
+                    "out_amount_base": out_amt,
+                    "out_amount_ui": if out_amt.is_empty() { Value::Null } else { json!(format_base_units_ui(out_amt, output_decimals)) },
+                    "price_impact_pct": price_impact,
+                    "route_plan_steps": route_steps
+                },
+                "about_quote": about_quote,
                 "quote": quote,
                 "note": "Read-only quote (no transaction built, no broadcast)."
             });
