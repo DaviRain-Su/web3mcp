@@ -7106,6 +7106,9 @@
 
         let admin_pubkey_str = request.admin_pubkey.as_deref().unwrap_or("").trim();
 
+        // Used when policy mode is "warn": collect violations but continue.
+        let mut policy_warnings: Vec<Value> = Vec::new();
+
         if approval_status == "blocked" {
             let policy = crate::utils::solana_policy::load_solana_confirm_policy();
             let wl: std::collections::HashSet<String> = policy
@@ -7436,6 +7439,24 @@
                 if policy.is_mode_off() {
                     // Skip policy checks below.
                 } else {
+                    let policy_is_block = policy.is_mode_block();
+
+                    let mut warn_or_block = |code: &str, message: &str, data: Value| -> Result<(), ErrorData> {
+                        if policy_is_block {
+                            return Err(ErrorData {
+                                code: ErrorCode(-32000),
+                                message: Cow::from(format!("{code}: {message}")),
+                                data: Some(data),
+                            });
+                        }
+                        policy_warnings.push(json!({
+                            "code": code,
+                            "message": message,
+                            "data": data
+                        }));
+                        Ok(())
+                    };
+
                     // Program allow/deny enforcement at confirm-time (re-check, in case pending/summary was tampered).
                     let deny_set: std::collections::HashSet<String> = policy
                         .program_policy
@@ -7471,18 +7492,14 @@
                     if !denied.is_empty() {
                         // Denylist is hard-block, unless admin override path is used.
                         if approval_status != "blocked" {
-                            return Self::guard_result(
-                                "solana_confirm_transaction",
+                            warn_or_block(
                                 "PROGRAM_DENIED",
                                 "Transaction touches a denied program id",
-                                false,
-                                Some("This transaction was denied by policy. Adjust route/params or remove program from denylist."),
-                                None,
-                                Some(json!({
+                                json!({
                                     "denied_programs": denied,
-                                    "env": "W3RT_SOLANA_TX_DENY_PROGRAMS"
-                                })),
-                            );
+                                    "policy_path": "policies/solana_confirm_policy.json"
+                                }),
+                            )?;
                         }
                     }
 
@@ -7496,18 +7513,14 @@
                         if !not_allowed.is_empty() {
                             // Allowlist mismatch is a hard-block at confirm-time (unless blocked admin override).
                             if approval_status != "blocked" {
-                                return Self::guard_result(
-                                    "solana_confirm_transaction",
+                                warn_or_block(
                                     "PROGRAM_NOT_ALLOWED",
                                     "Transaction touches a program id not in allowlist",
-                                    false,
-                                    Some("This transaction is not allowed by policy. Expand allowlist or adjust route."),
-                                    None,
-                                    Some(json!({
+                                    json!({
                                         "not_allowed_programs": not_allowed,
-                                        "env": "W3RT_SOLANA_TX_ALLOWED_PROGRAMS"
-                                    })),
-                                );
+                                        "policy_path": "policies/solana_confirm_policy.json"
+                                    }),
+                                )?;
                             }
                         }
                     }
@@ -7655,46 +7668,48 @@
                             }
                         }
 
-                        if !suspicious_sol.is_empty() {
-                            return Self::guard_result(
-                                "solana_confirm_transaction",
-                                "SUSPICIOUS_SYSTEM_TRANSFER",
-                                "Swap tx contains native SOL transfer",
-                                false,
-                                Some("Refusing to broadcast because swap tx unexpectedly contains a SystemProgram transfer. Use tx_preview/tx_analyze to inspect."),
-                                None,
-                                Some(json!({
-                                    "transfers": suspicious_sol
-                                })),
-                            );
+                        if policy.swap.block_system_transfer.enabled {
+                            let max_lamports = policy.swap.block_system_transfer.max_lamports;
+                            let mut filtered: Vec<Value> = Vec::new();
+                            for t in suspicious_sol {
+                                let lamports = t.get("lamports").and_then(Value::as_u64).unwrap_or(0);
+                                if lamports > max_lamports {
+                                    filtered.push(t);
+                                }
+                            }
+                            if !filtered.is_empty() {
+                                warn_or_block(
+                                    "SUSPICIOUS_SYSTEM_TRANSFER",
+                                    "Swap tx contains native SOL transfer",
+                                    json!({"transfers": filtered, "max_lamports": max_lamports}),
+                                )?;
+                            }
                         }
 
-                        if !suspicious_ata.is_empty() {
-                            return Self::guard_result(
-                                "solana_confirm_transaction",
-                                "SUSPICIOUS_ATA_CREATE",
-                                "Swap tx contains ATA create that does not match expected owner/mint",
-                                false,
-                                Some("Refusing to broadcast because ATA create does not match expected user/mints."),
-                                None,
-                                Some(json!({
-                                    "ata_creates": suspicious_ata
-                                })),
-                            );
+                        if policy.swap.ata_owner_mint.enabled {
+                            if !suspicious_ata.is_empty() {
+                                warn_or_block(
+                                    "SUSPICIOUS_ATA_CREATE",
+                                    "Swap tx contains ATA create that does not match expected owner/mint",
+                                    json!({
+                                        "ata_creates": suspicious_ata,
+                                        "mint_mode": policy.swap.ata_owner_mint.mint_mode
+                                    }),
+                                )?;
+                            }
                         }
 
-                        if !suspicious_token_auth.is_empty() {
-                            return Self::guard_result(
-                                "solana_confirm_transaction",
-                                "SUSPICIOUS_TOKEN_AUTHORITY",
-                                "Swap tx contains token instruction with unexpected authority/owner",
-                                false,
-                                Some("Refusing to broadcast because token authority/owner does not match expected user."),
-                                None,
-                                Some(json!({
-                                    "mismatches": suspicious_token_auth
-                                })),
-                            );
+                        if policy.swap.token_authority.enabled {
+                            if !suspicious_token_auth.is_empty() {
+                                warn_or_block(
+                                    "SUSPICIOUS_TOKEN_AUTHORITY",
+                                    "Swap tx contains token instruction with unexpected authority/owner",
+                                    json!({
+                                        "mismatches": suspicious_token_auth,
+                                        "mode": policy.swap.token_authority.mode
+                                    }),
+                                )?;
+                            }
                         }
                     }
                 }
@@ -7904,6 +7919,8 @@
             "tx_summary_hash": request.hash,
             "summary": pending.summary,
             "about_to_broadcast": about_to_broadcast(&pending.summary, &network),
+            "policy": crate::utils::solana_policy::load_solana_confirm_policy(),
+            "policy_warnings": policy_warnings,
             "signature": sig.to_string(),
             "skip_preflight": skip_preflight,
             "commitment": commitment,

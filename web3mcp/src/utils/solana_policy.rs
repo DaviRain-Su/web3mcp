@@ -128,19 +128,56 @@ fn policy_path_from_cwd() -> Result<std::path::PathBuf, ErrorData> {
     Ok(cwd.join("policies").join("solana_confirm_policy.json"))
 }
 
+#[derive(Debug, Clone)]
+struct PolicyCache {
+    path: std::path::PathBuf,
+    mtime_ms: u128,
+    policy: SolanaConfirmPolicy,
+}
+
+static POLICY_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<PolicyCache>>> =
+    std::sync::OnceLock::new();
+
+fn file_mtime_ms(path: &std::path::Path) -> Option<u128> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mt = meta.modified().ok()?;
+    mt.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis())
+}
+
 pub fn load_solana_confirm_policy() -> SolanaConfirmPolicy {
     let path = match policy_path_from_cwd() {
         Ok(p) => p,
         Err(_) => return SolanaConfirmPolicy::default_fallback(),
     };
 
-    let s = match std::fs::read_to_string(&path) {
-        Ok(v) => v,
-        Err(_) => return SolanaConfirmPolicy::default_fallback(),
-    };
+    let mtime = file_mtime_ms(&path).unwrap_or(0);
 
-    serde_json::from_str::<SolanaConfirmPolicy>(&s)
-        .unwrap_or_else(|_| SolanaConfirmPolicy::default_fallback())
+    let lock = POLICY_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+
+    {
+        let guard = lock.lock().unwrap();
+        if let Some(ref cached) = *guard {
+            if cached.path == path && cached.mtime_ms == mtime {
+                return cached.policy.clone();
+            }
+        }
+    }
+
+    let policy = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<SolanaConfirmPolicy>(&s).ok())
+        .unwrap_or_else(SolanaConfirmPolicy::default_fallback);
+
+    let mut guard = lock.lock().unwrap();
+    *guard = Some(PolicyCache {
+        path,
+        mtime_ms: mtime,
+        policy: policy.clone(),
+    });
+
+    policy
 }
 
 impl SolanaConfirmPolicy {
@@ -155,6 +192,10 @@ impl SolanaConfirmPolicy {
 
     pub fn is_mode_off(&self) -> bool {
         self.mode.trim().eq_ignore_ascii_case("off")
+    }
+
+    pub fn is_mode_warn(&self) -> bool {
+        self.mode.trim().eq_ignore_ascii_case("warn")
     }
 
     pub fn is_mode_block(&self) -> bool {
