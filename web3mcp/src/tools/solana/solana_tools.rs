@@ -6822,6 +6822,7 @@
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
 
+        // Best-effort: include the pending summary as a human-readable "about to broadcast" preview.
         let response = Self::pretty_json(&json!({
             "ok": true,
             "stage": "confirm",
@@ -6830,6 +6831,7 @@
             "network": network,
             "pending_confirmation_id": request.id,
             "tx_summary_hash": request.hash,
+            "summary": pending.summary,
             "signature": sig.to_string(),
             "skip_preflight": skip_preflight,
             "commitment": commitment,
