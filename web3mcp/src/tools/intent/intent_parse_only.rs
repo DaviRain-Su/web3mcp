@@ -253,9 +253,15 @@
                 }
             }
 
+            let action = if symbol.is_some() {
+                "get_token_balance"
+            } else {
+                "get_portfolio"
+            };
+
             let intent_value = json!({
                 "chain": "solana",
-                "action": "get_portfolio",
+                "action": action,
                 "owner": sender,
                 "symbol": symbol,
                 "resolved_network": {

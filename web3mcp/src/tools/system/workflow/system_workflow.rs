@@ -1623,6 +1623,143 @@
             });
         }
 
+        // Solana read-only token balance: owner + (symbol|mint) -> aggregated amount.
+        if intent_value["chain"] == "solana" && intent_value["action"] == "get_token_balance" {
+            use std::str::FromStr;
+
+            let owner = intent_value
+                .get("owner")
+                .and_then(Value::as_str)
+                .unwrap_or("<owner>");
+            if owner.starts_with('<') {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("owner is required"),
+                    data: None,
+                });
+            }
+
+            let symbol = intent_value.get("symbol").and_then(Value::as_str).map(|s| s.to_string());
+            let mint_in = intent_value.get("mint").and_then(Value::as_str).map(|s| s.to_string());
+
+            let network = solana_network_from_intent(&intent_value);
+            let rpc = Self::solana_rpc(network.as_deref())?;
+
+            let owner_pk = solana_sdk::pubkey::Pubkey::from_str(owner).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("invalid owner pubkey: {e}")),
+                data: Some(json!({"owner": owner})),
+            })?;
+
+            let mint: String = if let Some(m) = mint_in {
+                m
+            } else if let Some(sym) = symbol.as_ref() {
+                if let Some(m) = solana_token_to_mint(sym) {
+                    m.to_string()
+                } else {
+                    let found = solana_resolve_symbol_via_jupiter_tokens(sym)
+                        .await?
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from("unsupported symbol (provide mint)"),
+                            data: Some(json!({"symbol": sym})),
+                        })?;
+                    found
+                        .get("address")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| ErrorData {
+                            code: ErrorCode(-32603),
+                            message: Cow::from("Jupiter tokens entry missing address"),
+                            data: Some(found.clone()),
+                        })?
+                        .to_string()
+                }
+            } else {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("symbol or mint is required"),
+                    data: None,
+                });
+            };
+
+            if mint == "So11111111111111111111111111111111111111112" {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("use get_portfolio for SOL balance"),
+                    data: Some(json!({"mint": mint})),
+                });
+            }
+
+            let mint_pk = solana_sdk::pubkey::Pubkey::from_str(&mint).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("invalid mint pubkey: {e}")),
+                data: Some(json!({"mint": mint})),
+            })?;
+
+            let commitment = solana_commitment_config::CommitmentConfig::confirmed();
+            let res = rpc
+                .get_token_accounts_by_owner_with_commitment(
+                    &owner_pk,
+                    solana_client::rpc_request::TokenAccountsFilter::Mint(mint_pk),
+                    commitment,
+                )
+                .await
+                .map_err(|e| Self::sdk_error("solana_token_balance:get_token_accounts", e))?;
+
+            let mut total_raw: u128 = 0;
+            let mut decimals: Option<u8> = None;
+            let mut accounts: Vec<Value> = Vec::new();
+
+            for keyed in &res.value {
+                let v = serde_json::to_value(keyed).unwrap_or(Value::Null);
+                let ta = v
+                    .pointer("/account/data/parsed/info/tokenAmount")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let amount_raw = ta
+                    .get("amount")
+                    .and_then(|x| x.as_str())
+                    .and_then(|s| s.parse::<u128>().ok())
+                    .unwrap_or(0);
+                let dec = ta.get("decimals").and_then(|x| x.as_u64()).map(|d| d as u8);
+                if decimals.is_none() {
+                    decimals = dec;
+                }
+                if amount_raw > 0 {
+                    total_raw += amount_raw;
+                    accounts.push(json!({
+                        "pubkey": v.get("pubkey"),
+                        "amount_raw": amount_raw.to_string(),
+                        "decimals": dec,
+                        "ui_amount": ta.get("uiAmountString")
+                    }));
+                }
+            }
+
+            let d: u8 = if let Some(d) = decimals {
+                d
+            } else {
+                solana_get_mint_decimals(&rpc, &mint).await.unwrap_or(0)
+            };
+            let total_ui = format_base_units_ui(&total_raw.to_string(), d);
+
+            simulate = json!({
+                "stage": "simulate",
+                "status": "ok",
+                "simulation_performed": true,
+                "adapter": "solana_token_balance",
+                "network": network,
+                "owner": owner,
+                "symbol": symbol,
+                "mint": mint,
+                "decimals": d,
+                "total_amount_raw": total_raw.to_string(),
+                "total_amount_ui": total_ui,
+                "accounts": accounts,
+                "note": "Read-only token balance (no transaction will be broadcast)."
+            });
+        }
+
         // Solana read-only portfolio: SOL balance + token accounts (best effort).
         if intent_value["chain"] == "solana" && intent_value["action"] == "get_portfolio" {
             let owner = intent_value
@@ -2000,6 +2137,23 @@
                 },
                 "note": "Read-only quote; no approval required."
             })
+        } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_token_balance")
+            && simulate.get("status").and_then(Value::as_str) == Some("ok")
+        {
+            json!({
+                "stage": "approval",
+                "status": "ok",
+                "network": simulate.get("network"),
+                "warnings": [],
+                "summary": {
+                    "adapter": simulate.get("adapter"),
+                    "owner": simulate.get("owner"),
+                    "symbol": simulate.get("symbol"),
+                    "mint": simulate.get("mint"),
+                    "total_amount_ui": simulate.get("total_amount_ui")
+                },
+                "note": "Read-only request; no approval required."
+            })
         } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_portfolio")
             && simulate.get("status").and_then(Value::as_str) == Some("ok")
         {
@@ -2152,7 +2306,8 @@
         } else if intent_value["chain"] == "solana"
             && (intent_value["action"] == "quote"
                 || intent_value["action"] == "jupiter_quote"
-                || intent_value["action"] == "get_portfolio")
+                || intent_value["action"] == "get_portfolio"
+                || intent_value["action"] == "get_token_balance")
         {
             json!({
                 "stage": "execute",
