@@ -29,6 +29,9 @@ Only these tools are exposed:
 ### Advanced (debug / power users)
 Build with:
 
+Notes (advanced mode):
+- `transfer_spl` supports mint addresses, known symbols (via Jupiter token list), and token-2022 mints (program-aware ATA + TransferChecked).
+
 ```bash
 cargo build --release --features expose-advanced-tools
 ```
