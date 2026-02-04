@@ -1500,9 +1500,10 @@ pub struct SolanaConfirmTransactionRequest {
     pub confirm_token: Option<String>,
 
     #[schemars(
-        description = "Admin override key (optional). Required only when the stored approval status is blocked, and only accepted if it appears in env W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_WHITELIST (comma-separated)."
+        description = "Admin override pubkey (base58, optional). Required only when the stored approval status is blocked. Must appear in env W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST (comma-separated) AND must match the transaction fee_payer (and best-effort authorities)."
     )]
-    pub admin_override_key: Option<String>,
+    #[serde(alias = "admin_override_key")]
+    pub admin_pubkey: Option<String>,
     #[schemars(
         description = "Network override: mainnet|devnet|testnet (optional; default from stored request context if available; otherwise mainnet)"
     )]

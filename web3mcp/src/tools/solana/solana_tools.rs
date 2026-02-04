@@ -6714,8 +6714,9 @@
             })
             .unwrap_or("mainnet".to_string());
 
-        // Hard guard: if approval says blocked, require an admin override key that is whitelisted.
-        // Whitelist is env-configured because this is a last-resort escape hatch.
+        // Hard guard: if approval says blocked, require a whitelisted admin pubkey,
+        // and require that the tx fee_payer (and best-effort authorities) match that pubkey.
+        // This makes the override chain-verifiable (the tx must be signed by that fee_payer).
         let approval_status = pending
             .summary
             .as_ref()
@@ -6724,8 +6725,10 @@
             .and_then(Value::as_str)
             .unwrap_or("");
 
+        let admin_pubkey_str = request.admin_pubkey.as_deref().unwrap_or("").trim();
+
         if approval_status == "blocked" {
-            let wl_raw = std::env::var("W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_WHITELIST")
+            let wl_raw = std::env::var("W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST")
                 .unwrap_or_default();
             let wl: std::collections::HashSet<String> = wl_raw
                 .split(',')
@@ -6734,20 +6737,17 @@
                 .map(|s| s.to_string())
                 .collect();
 
-            let provided = request.admin_override_key.as_deref().unwrap_or("").trim();
-
-            if wl.is_empty() || provided.is_empty() || !wl.contains(provided) {
+            if wl.is_empty() || admin_pubkey_str.is_empty() || !wl.contains(admin_pubkey_str) {
                 return Self::guard_result(
                     "solana_confirm_transaction",
                     "APPROVAL_BLOCKED",
                     "Confirmation is blocked by approval policy",
                     false,
-                    Some("This pending transaction was marked blocked. Only whitelisted admins may override."),
+                    Some("This pending transaction was marked blocked. Provide admin_pubkey that is in W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST."),
                     None,
                     Some(json!({
                         "approval_status": approval_status,
-                        "whitelist_env": "W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_WHITELIST",
-                        "provided_admin_override_key": if provided.is_empty() { Value::Null } else { json!("<redacted>") }
+                        "whitelist_env": "W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_PUBKEY_WHITELIST"
                     })),
                 );
             }
@@ -6794,6 +6794,153 @@
                 data: None,
             })?;
 
+        // Decode as VersionedTransaction (v0+LUT) if possible; otherwise fall back to legacy Transaction.
+        let vtx: Option<solana_transaction::versioned::VersionedTransaction> =
+            bincode::deserialize(&tx_bytes).ok();
+
+        // Blocked-approval admin check needs fee_payer + best-effort authorities from the message.
+        if approval_status == "blocked" {
+            use std::str::FromStr;
+
+            let admin_pk = solana_sdk::pubkey::Pubkey::from_str(admin_pubkey_str).map_err(|e| {
+                ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("invalid admin_pubkey: {e}")),
+                    data: None,
+                }
+            })?;
+
+            let (account_keys, instructions): (
+                Vec<solana_sdk::pubkey::Pubkey>,
+                Vec<solana_message::compiled_instruction::CompiledInstruction>,
+            ) = if let Some(v) = vtx.as_ref() {
+                match &v.message {
+                    solana_message::VersionedMessage::Legacy(msg) => {
+                        (msg.account_keys.clone(), msg.instructions.clone())
+                    }
+                    solana_message::VersionedMessage::V0(msg) => {
+                        // NOTE: for v0 we do not resolve LUT accounts here; we only enforce fee_payer + authority accounts in the static keys.
+                        (msg.account_keys.clone(), msg.instructions.clone())
+                    }
+                }
+            } else {
+                let tx_legacy: solana_sdk::transaction::Transaction =
+                    bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!("Invalid stored transaction bytes: {}", e)),
+                        data: None,
+                    })?;
+                (tx_legacy.message.account_keys.clone(), tx_legacy.message.instructions.clone())
+            };
+
+            let fee_payer = account_keys.first().cloned();
+            if fee_payer != Some(admin_pk) {
+                return Self::guard_result(
+                    "solana_confirm_transaction",
+                    "APPROVAL_BLOCKED",
+                    "Blocked tx requires admin_pubkey == fee_payer",
+                    false,
+                    Some("Set admin_pubkey to the transaction fee_payer and ensure it is whitelisted."),
+                    None,
+                    Some(json!({
+                        "approval_status": approval_status,
+                        "fee_payer": fee_payer.map(|p| p.to_string()),
+                        "admin_pubkey": admin_pk.to_string(),
+                        "note": "For v0 tx, LUT-loaded authorities are not resolved here (best-effort)."
+                    })),
+                );
+            }
+
+            let token_legacy = solana_sdk::pubkey::Pubkey::from_str(
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            )
+            .ok();
+            let token_2022 = solana_sdk::pubkey::Pubkey::from_str(
+                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            )
+            .ok();
+            let system_program = solana_sdk::pubkey::Pubkey::from_str(
+                "11111111111111111111111111111111",
+            )
+            .unwrap();
+
+            // Best-effort authority enforcement for common ix layouts.
+            for ix in &instructions {
+                let pid = account_keys.get(ix.program_id_index as usize).cloned();
+                if pid.is_none() {
+                    continue;
+                }
+                let pid = pid.unwrap();
+
+                // System transfer: from is accounts[0]
+                if pid == system_program {
+                    if let Some(from_idx) = ix.accounts.get(0) {
+                        if let Some(from_pk) = account_keys.get(*from_idx as usize) {
+                            if *from_pk != admin_pk {
+                                return Self::guard_result(
+                                    "solana_confirm_transaction",
+                                    "APPROVAL_BLOCKED",
+                                    "Blocked tx requires transfer authority to be admin_pubkey",
+                                    false,
+                                    Some("System transfer 'from' must equal admin_pubkey for blocked overrides."),
+                                    None,
+                                    Some(json!({
+                                        "program": "system",
+                                        "from": from_pk.to_string(),
+                                        "admin_pubkey": admin_pk.to_string()
+                                    })),
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // SPL token authority positions (common):
+                // - Transfer: authority at accounts[2]
+                // - TransferChecked: authority at accounts[3]
+                // - Approve: owner at accounts[2]
+                // - ApproveChecked: owner at accounts[3]
+                // - MintTo/Burn/Close: authority/owner at accounts[2]
+                if token_legacy.as_ref() == Some(&pid) || token_2022.as_ref() == Some(&pid) {
+                    if ix.data.is_empty() {
+                        continue;
+                    }
+                    let tag = ix.data[0];
+                    let auth_pos: Option<usize> = match tag {
+                        3 | 4 | 7 | 8 | 9 => Some(2), // transfer/approve/mint_to/burn/close
+                        12 | 13 => Some(3),          // transfer_checked/approve_checked
+                        14 | 15 => Some(2),          // mint_to_checked/burn_checked (authority at 2)
+                        5 => Some(1),                // revoke: owner at 1
+                        _ => None,
+                    };
+
+                    if let Some(pos) = auth_pos {
+                        if let Some(a_idx) = ix.accounts.get(pos) {
+                            if let Some(a_pk) = account_keys.get(*a_idx as usize) {
+                                if *a_pk != admin_pk {
+                                    return Self::guard_result(
+                                        "solana_confirm_transaction",
+                                        "APPROVAL_BLOCKED",
+                                        "Blocked tx requires token authority/owner to be admin_pubkey",
+                                        false,
+                                        Some("Token instruction authority/owner must equal admin_pubkey for blocked overrides."),
+                                        None,
+                                        Some(json!({
+                                            "program": pid.to_string(),
+                                            "token_tag": tag,
+                                            "authority": a_pk.to_string(),
+                                            "admin_pubkey": admin_pk.to_string()
+                                        })),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // NOTE: confirm currently broadcasts legacy Transaction. If pending contains a v0 tx, legacy deserialization will fail.
         let mut tx: solana_sdk::transaction::Transaction =
             bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
                 code: ErrorCode(-32602),
