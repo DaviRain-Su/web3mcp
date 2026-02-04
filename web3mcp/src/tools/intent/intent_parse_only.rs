@@ -24,6 +24,11 @@
         }
 
         // Very simple intent detectors.
+        let is_quote = lower.contains("quote")
+            || lower.contains("price")
+            || lower.contains("报价")
+            || lower.contains("价格")
+            || lower.contains("询价");
         let is_swap = lower.contains("swap") || lower.contains("换") || lower.contains("兑换");
         let is_transfer = lower.contains("send ") || lower.contains("transfer ") || lower.contains("转 ") || lower.contains("转账");
 
@@ -40,6 +45,100 @@
                     slippage_bps = (p * 100.0).round() as u64;
                 }
             }
+        }
+
+        if is_quote {
+            // crude token/amount extraction.
+            // default placeholders.
+            let mut amount = "<amount>".to_string();
+            let mut from_token = "sol".to_string();
+            let mut to_token = "usdc".to_string();
+
+            // If user says "get"/"buy" we interpret as ExactOut quote (receive exact amount).
+            let is_exact_out = lower.contains(" get ")
+                || lower.contains(" buy ")
+                || lower.contains("购买")
+                || lower.contains("拿到");
+
+            let cleaned = lower.replace([',', '/'], " ");
+            let words: Vec<&str> = cleaned.split_whitespace().collect();
+
+            // find amount + from token
+            for i in 0..words.len() {
+                if words[i].chars().any(|c| c.is_ascii_digit()) {
+                    amount = words[i].to_string();
+                    if i + 1 < words.len() {
+                        from_token = words[i + 1].to_string();
+                    }
+                    break;
+                }
+            }
+
+            // find "to" token
+            for i in 0..words.len() {
+                if words[i] == "to" || words[i] == "->" {
+                    if i + 1 < words.len() {
+                        to_token = words[i + 1].to_string();
+                    }
+                    break;
+                }
+            }
+
+            // For exact-out phrasing, try parse: "quote <from> to get <amount> <to>".
+            let mut swap_mode = "ExactIn".to_string();
+            let mut amount_in: Option<String> = Some(amount.clone());
+            let mut amount_out: Option<String> = None;
+
+            if is_exact_out {
+                for i in 0..words.len() {
+                    if words[i] == "get" || words[i] == "buy" {
+                        if i + 2 < words.len() {
+                            amount_out = Some(words[i + 1].to_string());
+                            to_token = words[i + 2].to_string();
+                            swap_mode = "ExactOut".to_string();
+                            amount_in = None;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            let intent_value = if swap_mode == "ExactOut" {
+                json!({
+                    "chain": "solana",
+                    "action": "quote",
+                    "swap_mode": swap_mode,
+                    "input_token": from_token,
+                    "output_token": to_token,
+                    "amount_out": amount_out.unwrap_or(amount),
+                    "slippage_bps": slippage_bps,
+                    "user_pubkey": sender,
+                    "resolved_network": {
+                        "family": "solana",
+                        "network_name": net,
+                    },
+                    "confidence": 0.65
+                })
+            } else {
+                json!({
+                    "chain": "solana",
+                    "action": "quote",
+                    "swap_mode": swap_mode,
+                    "input_token": from_token,
+                    "output_token": to_token,
+                    "amount_in": amount_in.unwrap_or(amount),
+                    "slippage_bps": slippage_bps,
+                    "user_pubkey": sender,
+                    "resolved_network": {
+                        "family": "solana",
+                        "network_name": net,
+                    },
+                    "confidence": 0.7
+                })
+            };
+
+            let conf = intent_value["confidence"].as_f64().unwrap_or(0.7);
+            return ("quote".to_string(), intent_value, conf);
         }
 
         if is_swap {
