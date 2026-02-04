@@ -1903,10 +1903,42 @@
                 let program_id = account_keys.get(ix.program_id_index as usize).cloned();
                 let program_id = program_id.unwrap_or_else(solana_sdk::pubkey::Pubkey::new_unique);
 
+                // Resolve instruction account indexes to pubkeys.
                 let accounts: Vec<String> = ix
                     .accounts
                     .iter()
                     .filter_map(|idx| account_keys.get(*idx as usize).map(|p| p.to_string()))
+                    .collect();
+
+                // Per-account meta flags (best-effort): fee payer + whether resolved via LUT (v0 only).
+                // v0 account layout: static keys then loaded_writable then loaded_readonly.
+                let static_len = if tx_version == "v0" {
+                    if let Some(v) = vtx.as_ref() {
+                        match &v.message {
+                            solana_message::VersionedMessage::V0(msg) => msg.account_keys.len(),
+                            solana_message::VersionedMessage::Legacy(msg) => msg.account_keys.len(),
+                        }
+                    } else {
+                        account_keys.len()
+                    }
+                } else {
+                    account_keys.len()
+                };
+                let loaded_start = static_len;
+
+                let account_metas: Vec<Value> = ix
+                    .accounts
+                    .iter()
+                    .filter_map(|idx| {
+                        let i = *idx as usize;
+                        let pk = account_keys.get(i)?;
+                        Some(json!({
+                            "index": i,
+                            "pubkey": pk.to_string(),
+                            "is_fee_payer": i == 0,
+                            "is_lut_loaded": tx_version == "v0" && i >= loaded_start
+                        }))
+                    })
                     .collect();
 
                 let program_kind = if program_id == system_program {
@@ -1956,57 +1988,97 @@
                         // Attach best-effort account roles for common SPL token instructions.
                         let kind = d.get("kind").and_then(Value::as_str).unwrap_or("");
                         let roles: Option<Value> = match kind {
-                            "token_transfer" => Some(json!({
-                                "source": accounts.get(0),
-                                "destination": accounts.get(1),
-                                "authority": accounts.get(2)
-                            })),
-                            "token_transfer_checked" => Some(json!({
-                                "source": accounts.get(0),
-                                "mint": accounts.get(1),
-                                "destination": accounts.get(2),
-                                "authority": accounts.get(3)
-                            })),
-                            "token_approve" => Some(json!({
-                                "source": accounts.get(0),
-                                "delegate": accounts.get(1),
-                                "owner": accounts.get(2)
-                            })),
-                            "token_approve_checked" => Some(json!({
-                                "source": accounts.get(0),
-                                "mint": accounts.get(1),
-                                "delegate": accounts.get(2),
-                                "owner": accounts.get(3)
-                            })),
-                            "token_revoke" => Some(json!({
-                                "source": accounts.get(0),
-                                "owner": accounts.get(1)
-                            })),
-                            "token_mint_to" => Some(json!({
-                                "mint": accounts.get(0),
-                                "destination": accounts.get(1),
-                                "authority": accounts.get(2)
-                            })),
-                            "token_mint_to_checked" => Some(json!({
-                                "mint": accounts.get(0),
-                                "destination": accounts.get(1),
-                                "authority": accounts.get(2)
-                            })),
-                            "token_burn" => Some(json!({
-                                "source": accounts.get(0),
-                                "mint": accounts.get(1),
-                                "authority": accounts.get(2)
-                            })),
-                            "token_burn_checked" => Some(json!({
-                                "source": accounts.get(0),
-                                "mint": accounts.get(1),
-                                "authority": accounts.get(2)
-                            })),
-                            "token_close_account" => Some(json!({
-                                "account": accounts.get(0),
-                                "destination": accounts.get(1),
-                                "owner": accounts.get(2)
-                            })),
+                            "token_transfer" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "destination": accounts.get(1),
+                                    "authority": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_transfer_checked" => {
+                                let signers: Vec<String> = accounts.iter().skip(4).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "mint": accounts.get(1),
+                                    "destination": accounts.get(2),
+                                    "authority": accounts.get(3),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_approve" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "delegate": accounts.get(1),
+                                    "owner": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_approve_checked" => {
+                                let signers: Vec<String> = accounts.iter().skip(4).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "mint": accounts.get(1),
+                                    "delegate": accounts.get(2),
+                                    "owner": accounts.get(3),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_revoke" => {
+                                let signers: Vec<String> = accounts.iter().skip(2).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "owner": accounts.get(1),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_mint_to" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "mint": accounts.get(0),
+                                    "destination": accounts.get(1),
+                                    "authority": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_mint_to_checked" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "mint": accounts.get(0),
+                                    "destination": accounts.get(1),
+                                    "authority": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_burn" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "mint": accounts.get(1),
+                                    "authority": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_burn_checked" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "source": accounts.get(0),
+                                    "mint": accounts.get(1),
+                                    "authority": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
+                            "token_close_account" => {
+                                let signers: Vec<String> = accounts.iter().skip(3).cloned().collect();
+                                Some(json!({
+                                    "account": accounts.get(0),
+                                    "destination": accounts.get(1),
+                                    "owner": accounts.get(2),
+                                    "signers": if signers.is_empty() { Value::Null } else { json!(signers) }
+                                }))
+                            }
                             "token_sync_native" => Some(json!({
                                 "account": accounts.get(0)
                             })),
@@ -2027,7 +2099,9 @@
                     "index": i,
                     "program_id": program_id.to_string(),
                     "program_kind": program_kind,
+                    "program_id_index": ix.program_id_index,
                     "accounts": accounts,
+                    "account_metas": account_metas,
                     "data_len": ix.data.len(),
                     "decoded": decoded
                 }));
