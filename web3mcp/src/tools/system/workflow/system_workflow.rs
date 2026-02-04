@@ -1657,11 +1657,34 @@
                 });
 
                 // Minimal surface: create a pending confirmation directly (do not expose solana_send_transaction).
+                let quote = simulate.get("quote");
                 let summary = Some(json!({
                     "tool": "w3rt_run_workflow_v0",
                     "run_id": run_id,
                     "adapter": simulate.get("adapter"),
-                    "approval": approval
+                    "approval": approval,
+                    "intent": {
+                        "chain": intent_value.get("chain"),
+                        "action": intent_value.get("action"),
+                        "user_pubkey": intent_value.get("user_pubkey"),
+                        "input_token": intent_value.get("input_token"),
+                        "output_token": intent_value.get("output_token"),
+                        "amount_in": intent_value.get("amount_in"),
+                        "slippage_bps": intent_value.get("slippage_bps")
+                    },
+                    "swap": {
+                        "network": simulate.get("network"),
+                        "user_pubkey": simulate.get("user_pubkey"),
+                        "input_mint": simulate.get("input_mint"),
+                        "output_mint": simulate.get("output_mint"),
+                        "input_decimals": simulate.get("input_decimals"),
+                        "amount_in_base": quote.and_then(|q| q.get("inAmount")),
+                        "amount_out_base": quote.and_then(|q| q.get("outAmount")),
+                        "price_impact_pct": quote.and_then(|q| q.get("priceImpactPct")),
+                        "slippage_bps": simulate.get("slippage_bps"),
+                        "route_plan_steps": quote.and_then(|q| q.get("routePlan")).and_then(|v| v.as_array()).map(|a| a.len()),
+                        "simulation_units": simulate.get("simulation").and_then(|v| v.get("units_consumed"))
+                    }
                 }));
 
                 let parsed = Self::solana_create_pending_confirmation(
