@@ -43,11 +43,14 @@
         }
 
         if is_swap {
-            // crude token/amount extraction: find first number token pair and "to" token.
+            // crude token/amount extraction.
             // default placeholders.
             let mut amount = "<amount>".to_string();
             let mut from_token = "sol".to_string();
             let mut to_token = "usdc".to_string();
+
+            // If user says "get"/"buy" we interpret as swap_exact_out (receive exact amount).
+            let is_exact_out = lower.contains(" get ") || lower.contains(" buy ") || lower.contains("购买") || lower.contains("拿到");
 
             // token words
             let cleaned = lower.replace(',', " ").replace("/", " ");
@@ -74,22 +77,75 @@
                 }
             }
 
+            // For exact-out phrasing, try parse: "swap <from> to get <amount> <to>".
+            let mut action = "swap_exact_in".to_string();
+            let mut amount_in: Option<String> = Some(amount.clone());
+            let mut amount_out: Option<String> = None;
+
+            if is_exact_out {
+                for i in 0..words.len() {
+                    if words[i] == "get" || words[i] == "buy" {
+                        if i + 2 < words.len() {
+                            amount_out = Some(words[i + 1].to_string());
+                            to_token = words[i + 2].to_string();
+                            action = "swap_exact_out".to_string();
+                            amount_in = None;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            let intent_value = if action == "swap_exact_out" {
+                json!({
+                    "chain": "solana",
+                    "action": action,
+                    "input_token": from_token,
+                    "output_token": to_token,
+                    "amount_out": amount_out.unwrap_or(amount),
+                    "slippage_bps": slippage_bps,
+                    "user_pubkey": sender,
+                    "resolved_network": {
+                        "family": "solana",
+                        "network_name": net,
+                    },
+                    "confidence": 0.65
+                })
+            } else {
+                json!({
+                    "chain": "solana",
+                    "action": action,
+                    "input_token": from_token,
+                    "output_token": to_token,
+                    "amount_in": amount_in.unwrap_or(amount),
+                    "slippage_bps": slippage_bps,
+                    "user_pubkey": sender,
+                    "resolved_network": {
+                        "family": "solana",
+                        "network_name": net,
+                    },
+                    "confidence": 0.7
+                })
+            };
+
+            let conf = intent_value["confidence"].as_f64().unwrap_or(0.7);
+            return ("swap".to_string(), intent_value, conf);
+        }
+
+        // Read-only requests.
+        let is_balance = lower.contains("balance") || lower.contains("holdings") || lower.contains("portfolio") || lower.contains("持仓") || lower.contains("余额");
+        if is_balance {
             let intent_value = json!({
                 "chain": "solana",
-                "action": "swap_exact_in",
-                "input_token": from_token,
-                "output_token": to_token,
-                "amount_in": amount,
-                "slippage_bps": slippage_bps,
-                "user_pubkey": sender,
+                "action": "get_portfolio",
+                "owner": sender,
                 "resolved_network": {
                     "family": "solana",
-                    "network_name": net,
+                    "network_name": net
                 },
-                "confidence": 0.7
+                "confidence": 0.8
             });
-
-            return ("swap".to_string(), intent_value, 0.7);
+            return ("portfolio".to_string(), intent_value, 0.8);
         }
 
         if is_transfer {
