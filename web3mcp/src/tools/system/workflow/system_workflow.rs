@@ -172,7 +172,7 @@
         }
 
         // Normalize common aliases so NL / external clients reliably hit the implemented code paths.
-        fn normalize_intent(intent: &mut Value) {
+        fn normalize_intent(intent: &mut Value, request_sender: Option<&str>, request_network: Option<&str>) {
             if !intent.is_object() {
                 return;
             }
@@ -191,14 +191,36 @@
                 }
             }
 
+            // Ensure user_pubkey is present (use request.sender if caller omitted it).
+            if intent.get("user_pubkey").is_none() {
+                if let Some(s) = intent.get("sender").and_then(Value::as_str) {
+                    // tolerate alternate field name
+                    intent["user_pubkey"] = Value::String(s.to_string());
+                } else if let Some(s) = request_sender {
+                    intent["user_pubkey"] = Value::String(s.to_string());
+                }
+            }
+
+            // Ensure network is present (use request.network if caller omitted it).
+            if intent.get("network").is_none() {
+                if let Some(n) = request_network {
+                    intent["network"] = Value::String(n.to_string());
+                }
+            }
+
             // Token aliases.
             if intent.get("input_token").is_none() {
                 if let Some(v) = intent.get("from_token").cloned() {
+                    intent["input_token"] = v;
+                } else if let Some(v) = intent.get("input_mint").cloned() {
+                    // Some clients emit mint fields; treat them as tokens (we resolve mint vs symbol later).
                     intent["input_token"] = v;
                 }
             }
             if intent.get("output_token").is_none() {
                 if let Some(v) = intent.get("to_token").cloned() {
+                    intent["output_token"] = v;
+                } else if let Some(v) = intent.get("output_mint").cloned() {
                     intent["output_token"] = v;
                 }
             }
@@ -210,15 +232,22 @@
                 .unwrap_or("")
                 .to_string();
             if action == "swap_exact_in" && intent.get("amount_in").is_none() {
-                if let Some(v) = intent.get("amount").cloned() {
+                if let Some(v) = intent.get("amount_in_ui").cloned() {
+                    intent["amount_in"] = v;
+                } else if let Some(v) = intent.get("amount").cloned() {
                     intent["amount_in"] = v;
                 }
             }
             if action == "swap_exact_out" && intent.get("amount_out").is_none() {
-                if let Some(v) = intent.get("amount").cloned() {
+                if let Some(v) = intent.get("amount_out_ui").cloned() {
+                    intent["amount_out"] = v;
+                } else if let Some(v) = intent.get("amount").cloned() {
                     intent["amount_out"] = v;
                 }
             }
+
+            // For convenience, if amount is provided but action is swap_exact_in/out not set,
+            // leave as-is; the intent parser should set action correctly.
 
             // Network normalization.
             // Accept network strings like "solana-mainnet" and normalize to resolved_network.network_name.
@@ -265,7 +294,11 @@
             }
         }
 
-        normalize_intent(&mut intent_value);
+        normalize_intent(
+            &mut intent_value,
+            request.sender.as_deref(),
+            request.network.as_deref(),
+        );
 
         let analysis = json!({
             "stage": "analysis",
