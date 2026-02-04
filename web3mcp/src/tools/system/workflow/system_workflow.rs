@@ -294,6 +294,42 @@
             rpc: &solana_client::nonblocking::rpc_client::RpcClient,
             mint: &str,
         ) -> Result<u8, ErrorData> {
+            // Token Mint layout (SPL Token + Token-2022 share the base layout):
+            // mint_authority (COption<Pubkey>) = 36 bytes
+            // supply (u64)                    = 8 bytes
+            // decimals (u8)                   = 1 byte  <-- offset 44
+            // is_initialized (u8)             = 1 byte
+            // freeze_authority (COption<Pubkey>) = 36 bytes
+            // Total base = 82 bytes, extensions may follow (token-2022).
+            use std::str::FromStr;
+
+            let pk = solana_sdk::pubkey::Pubkey::from_str(mint).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("invalid mint pubkey: {e}")),
+                data: Some(json!({"mint": mint})),
+            })?;
+
+            let acct = rpc.get_account(&pk).await.map_err(|e| ErrorData {
+                code: ErrorCode(-32603),
+                message: Cow::from(format!("failed to fetch mint account: {e}")),
+                data: Some(json!({"mint": mint})),
+            })?;
+
+            if acct.data.len() <= 44 {
+                return Err(ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from("mint account data too short to read decimals"),
+                    data: Some(json!({"mint": mint, "len": acct.data.len()})),
+                });
+            }
+
+            Ok(acct.data[44])
+        }
+
+        async fn solana_get_token_program_for_mint(
+            rpc: &solana_client::nonblocking::rpc_client::RpcClient,
+            mint: &str,
+        ) -> Result<String, ErrorData> {
             use std::str::FromStr;
             let pk = solana_sdk::pubkey::Pubkey::from_str(mint).map_err(|e| ErrorData {
                 code: ErrorCode(-32602),
@@ -307,35 +343,7 @@
                 data: Some(json!({"mint": mint})),
             })?;
 
-            // Detect which token program owns the mint.
-            // NOTE: spl-token(-2022) may compile against different solana pubkey types,
-            // so we compare by string to avoid type mismatches.
-            use solana_program_pack::Pack;
-
-            let owner = acct.owner.to_string();
-            let spl_token_owner = spl_token::id().to_string();
-            let spl_token_2022_owner = spl_token_2022::id().to_string();
-
-            if owner == spl_token_owner {
-                let m = spl_token::state::Mint::unpack(&acct.data).map_err(|e| ErrorData {
-                    code: ErrorCode(-32603),
-                    message: Cow::from(format!("failed to decode spl-token Mint: {e}")),
-                    data: Some(json!({"mint": mint, "program": "spl-token"})),
-                })?;
-                Ok(m.decimals)
-            } else if owner == spl_token_2022_owner {
-                Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("token-2022 mint decimals lookup not supported yet in workflow (provide amount as base units or use spl-token mint)"),
-                    data: Some(json!({"mint": mint, "owner": owner})),
-                })
-            } else {
-                Err(ErrorData {
-                    code: ErrorCode(-32602),
-                    message: Cow::from("mint account is not owned by spl-token"),
-                    data: Some(json!({"mint": mint, "owner": owner})),
-                })
-            }
+            Ok(acct.owner.to_string())
         }
 
         fn parse_amount_to_base_units(amount: &str, decimals: u32) -> Result<u64, ErrorData> {
@@ -637,8 +645,36 @@
                 data: Some(json!({"mint": mint})),
             })?;
 
-            let from_ata = spl_associated_token_account::get_associated_token_address(&from_pk, &mint_pk);
-            let to_ata = spl_associated_token_account::get_associated_token_address(&to_pk, &mint_pk);
+            // Detect token program (spl-token vs token-2022) from mint owner.
+            let token_program = solana_get_token_program_for_mint(&rpc, &mint).await?;
+            // Avoid type/version mismatches by treating program ids as strings and parsing into solana_sdk Pubkey.
+            let token_program_legacy = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+            let token_program_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
+            let token_program_id = if token_program == token_program_2022 {
+                solana_sdk::pubkey::Pubkey::from_str(token_program_2022).map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("invalid token-2022 program id: {e}")),
+                    data: None,
+                })?
+            } else {
+                solana_sdk::pubkey::Pubkey::from_str(token_program_legacy).map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("invalid token program id: {e}")),
+                    data: None,
+                })?
+            };
+
+            let from_ata = spl_associated_token_account::get_associated_token_address_with_program_id(
+                &from_pk,
+                &mint_pk,
+                &token_program_id,
+            );
+            let to_ata = spl_associated_token_account::get_associated_token_address_with_program_id(
+                &to_pk,
+                &mint_pk,
+                &token_program_id,
+            );
 
             let bh = rpc.get_latest_blockhash().await.map_err(|e| Self::sdk_error("solana_spl_transfer:get_latest_blockhash", e))?;
 
@@ -659,25 +695,48 @@
                     &from_pk,
                     &to_pk,
                     &mint_pk,
-                    &spl_token::id(),
+                    &token_program_id,
                 ));
             }
 
-            let transfer_ix = spl_token::instruction::transfer_checked(
-                &spl_token::id(),
-                &from_ata,
-                &mint_pk,
-                &to_ata,
-                &from_pk,
-                &[],
+            // Build SPL TransferChecked instruction manually to avoid crate/version type mismatches.
+            fn build_token_transfer_checked_ix(
+                program_id: solana_sdk::pubkey::Pubkey,
+                source: solana_sdk::pubkey::Pubkey,
+                mint: solana_sdk::pubkey::Pubkey,
+                destination: solana_sdk::pubkey::Pubkey,
+                authority: solana_sdk::pubkey::Pubkey,
+                amount: u64,
+                decimals: u8,
+            ) -> solana_sdk::instruction::Instruction {
+                let mut data = Vec::with_capacity(1 + 8 + 1);
+                data.push(12u8); // TransferChecked
+                data.extend_from_slice(&amount.to_le_bytes());
+                data.push(decimals);
+
+                let accounts = vec![
+                    solana_sdk::instruction::AccountMeta::new(source, false),
+                    solana_sdk::instruction::AccountMeta::new_readonly(mint, false),
+                    solana_sdk::instruction::AccountMeta::new(destination, false),
+                    solana_sdk::instruction::AccountMeta::new_readonly(authority, true),
+                ];
+
+                solana_sdk::instruction::Instruction {
+                    program_id,
+                    accounts,
+                    data,
+                }
+            }
+
+            let transfer_ix = build_token_transfer_checked_ix(
+                token_program_id,
+                from_ata,
+                mint_pk,
+                to_ata,
+                from_pk,
                 amount_base,
                 decimals,
-            )
-            .map_err(|e| ErrorData {
-                code: ErrorCode(-32603),
-                message: Cow::from(format!("failed to build transfer_checked: {e}")),
-                data: None,
-            })?;
+            );
 
             ixs.push(transfer_ix);
 
@@ -714,6 +773,7 @@
                 "mint": mint,
                 "decimals": decimals,
                 "token_info": token_info,
+                "token_program": token_program,
                 "from": from,
                 "to": to,
                 "from_ata": from_ata.to_string(),
