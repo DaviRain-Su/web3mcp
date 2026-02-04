@@ -4238,6 +4238,194 @@
     }
 
     #[cfg(feature = "solana-extended-tools")]
+    #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: analyze a transaction (read-only). Returns program ids used and best-effort decoded actions."))]
+    async fn solana_tx_analyze(
+        &self,
+        Parameters(request): Parameters<SolanaTxAnalyzeRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use std::str::FromStr;
+
+        let network = request.network.as_deref().unwrap_or("mainnet");
+        let rpc_url = Self::solana_rpc_url_for_network(Some(network))?;
+        let client = Self::solana_rpc(Some(network))?;
+
+        let tx_bytes = base64::engine::general_purpose::STANDARD
+            .decode(request.transaction_base64.trim())
+            .map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("Invalid transaction_base64: {e}")),
+                data: None,
+            })?;
+
+        let vtx: Option<solana_transaction::versioned::VersionedTransaction> =
+            bincode::deserialize(&tx_bytes).ok();
+
+        // Resolve account keys with LUT (best-effort).
+        let (mut account_keys, mut instructions, mut address_table_lookups): (
+            Vec<solana_sdk::pubkey::Pubkey>,
+            Vec<solana_message::compiled_instruction::CompiledInstruction>,
+            Vec<Value>,
+        ) = (Vec::new(), Vec::new(), Vec::new());
+
+        let mut tx_version = "legacy".to_string();
+        let mut recent_blockhash: Option<String> = None;
+
+        if let Some(v) = vtx.as_ref() {
+            match &v.message {
+                solana_message::VersionedMessage::Legacy(msg) => {
+                    tx_version = "legacy".to_string();
+                    account_keys = msg.account_keys.clone();
+                    instructions = msg.instructions.clone();
+                    recent_blockhash = Some(msg.recent_blockhash.to_string());
+                }
+                solana_message::VersionedMessage::V0(msg) => {
+                    tx_version = "v0".to_string();
+                    account_keys = msg.account_keys.clone();
+                    instructions = msg.instructions.clone();
+                    recent_blockhash = Some(msg.recent_blockhash.to_string());
+
+                    let mut loaded_writable: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                    let mut loaded_readonly: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+
+                    for l in &msg.address_table_lookups {
+                        let lut_addr = l.account_key;
+                        let mut resolved: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                        let mut err: Option<String> = None;
+
+                        match client.get_account(&lut_addr).await {
+                            Ok(a) => match solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&a.data) {
+                                Ok(alt) => resolved = alt.addresses.to_vec(),
+                                Err(e) => err = Some(format!("ALT deserialize failed: {e}")),
+                            },
+                            Err(e) => err = Some(format!("ALT fetch failed: {e}")),
+                        }
+
+                        let w: Vec<solana_sdk::pubkey::Pubkey> = l
+                            .writable_indexes
+                            .iter()
+                            .filter_map(|i| resolved.get(*i as usize).cloned())
+                            .collect();
+                        let r: Vec<solana_sdk::pubkey::Pubkey> = l
+                            .readonly_indexes
+                            .iter()
+                            .filter_map(|i| resolved.get(*i as usize).cloned())
+                            .collect();
+
+                        loaded_writable.extend(w.iter().cloned());
+                        loaded_readonly.extend(r.iter().cloned());
+
+                        address_table_lookups.push(json!({
+                            "address": lut_addr.to_string(),
+                            "writable_indexes_len": l.writable_indexes.len(),
+                            "readonly_indexes_len": l.readonly_indexes.len(),
+                            "resolved_writable_len": w.len(),
+                            "resolved_readonly_len": r.len(),
+                            "error": err
+                        }));
+                    }
+
+                    account_keys.extend(loaded_writable);
+                    account_keys.extend(loaded_readonly);
+                }
+            }
+        } else {
+            let tx: solana_sdk::transaction::Transaction =
+                bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid transaction bytes: {e}")),
+                    data: None,
+                })?;
+            tx_version = "legacy".to_string();
+            account_keys = tx.message.account_keys.clone();
+            instructions = tx.message.instructions.clone();
+            recent_blockhash = Some(tx.message.recent_blockhash.to_string());
+        }
+
+        let fee_payer = account_keys.first().map(|p| p.to_string());
+
+        // Program ids used.
+        let mut programs_used: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for ix in &instructions {
+            if let Some(pid) = account_keys.get(ix.program_id_index as usize) {
+                programs_used.insert(pid.to_string());
+            }
+        }
+
+        // Decode a small set of common actions.
+        let system_program = solana_sdk::pubkey::Pubkey::from_str("11111111111111111111111111111111").unwrap();
+        let token_legacy = solana_sdk::pubkey::Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").ok();
+        let token_2022 = solana_sdk::pubkey::Pubkey::from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb").ok();
+
+        let mut actions: Vec<Value> = Vec::new();
+        for ix in &instructions {
+            let pid = match account_keys.get(ix.program_id_index as usize) {
+                Some(p) => *p,
+                None => continue,
+            };
+
+            // System transfer (tag 2)
+            if pid == system_program && ix.data.len() == 12 {
+                let mut tag = [0u8; 4];
+                tag.copy_from_slice(&ix.data[0..4]);
+                if u32::from_le_bytes(tag) == 2 {
+                    let mut amt = [0u8; 8];
+                    amt.copy_from_slice(&ix.data[4..12]);
+                    let lamports = u64::from_le_bytes(amt);
+                    let from = ix.accounts.get(0).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let to = ix.accounts.get(1).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    actions.push(json!({
+                        "kind": "system_transfer",
+                        "lamports": lamports,
+                        "from": from,
+                        "to": to
+                    }));
+                }
+            }
+
+            // SPL token transfer/transfer_checked
+            if token_legacy.as_ref() == Some(&pid) || token_2022.as_ref() == Some(&pid) {
+                if ix.data.is_empty() {
+                    continue;
+                }
+                let tag = ix.data[0];
+                if (tag == 3 && ix.data.len() == 9) || (tag == 12 && ix.data.len() == 10) {
+                    let mut amt = [0u8; 8];
+                    amt.copy_from_slice(&ix.data[1..9]);
+                    let amount = u64::from_le_bytes(amt);
+                    let (source_i, dest_i, auth_i) = if tag == 12 { (0usize, 2usize, 3usize) } else { (0usize, 1usize, 2usize) };
+
+                    let source = ix.accounts.get(source_i).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let destination = ix.accounts.get(dest_i).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+                    let authority = ix.accounts.get(auth_i).and_then(|i| account_keys.get(*i as usize)).map(|p| p.to_string());
+
+                    actions.push(json!({
+                        "kind": if tag == 12 { "token_transfer_checked" } else { "token_transfer" },
+                        "program_id": pid.to_string(),
+                        "amount": amount,
+                        "source": source,
+                        "destination": destination,
+                        "authority": authority
+                    }));
+                }
+            }
+        }
+
+        let response = Self::pretty_json(&json!({
+            "rpc_url": rpc_url,
+            "network": network,
+            "tx_version": tx_version,
+            "fee_payer": fee_payer,
+            "recent_blockhash": recent_blockhash,
+            "account_keys_len": account_keys.len(),
+            "address_table_lookups": address_table_lookups,
+            "programs_used": programs_used.into_iter().collect::<Vec<String>>(),
+            "actions": actions
+        }))?;
+
+        Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    #[cfg(feature = "solana-extended-tools")]
     #[cfg_attr(feature = "solana-extended-tools", tool(description = "Solana: preview+simulate a transaction, return a short-lived confirmation token (id/hash) (safe default: does not broadcast)"))]
     async fn solana_tx_preview(
         &self,
@@ -7124,6 +7312,67 @@
                                     })),
                                 );
                             }
+                        }
+                    }
+
+                    // Extra hard guard for swaps: block unexpected native SOL transfers at confirm-time.
+                    // Swap txs should generally not include SystemProgram transfer of lamports (except 0).
+                    // (best-effort; only checks classic System Transfer instruction)
+                    if approval_status != "blocked" {
+                        let mut suspicious: Vec<Value> = Vec::new();
+                        for ix in &instructions {
+                            let pid = account_keys.get(ix.program_id_index as usize);
+                            if pid.is_none() {
+                                continue;
+                            }
+                            let pid = pid.unwrap();
+                            if pid.to_string() != "11111111111111111111111111111111" {
+                                continue;
+                            }
+                            if ix.data.len() != 12 {
+                                continue;
+                            }
+                            let mut tag = [0u8; 4];
+                            tag.copy_from_slice(&ix.data[0..4]);
+                            if u32::from_le_bytes(tag) != 2 {
+                                continue;
+                            }
+                            let mut amt = [0u8; 8];
+                            amt.copy_from_slice(&ix.data[4..12]);
+                            let lamports = u64::from_le_bytes(amt);
+                            if lamports == 0 {
+                                continue;
+                            }
+
+                            let from = ix
+                                .accounts
+                                .get(0)
+                                .and_then(|i| account_keys.get(*i as usize))
+                                .map(|p| p.to_string());
+                            let to = ix
+                                .accounts
+                                .get(1)
+                                .and_then(|i| account_keys.get(*i as usize))
+                                .map(|p| p.to_string());
+                            suspicious.push(json!({
+                                "lamports": lamports,
+                                "from": from,
+                                "to": to
+                            }));
+                        }
+
+                        if !suspicious.is_empty() {
+                            return Self::guard_result(
+                                "solana_confirm_transaction",
+                                "SUSPICIOUS_SYSTEM_TRANSFER",
+                                "Swap tx contains native SOL transfer",
+                                false,
+                                Some("Refusing to broadcast because swap tx unexpectedly contains a SystemProgram transfer. Use tx_preview/tx_analyze to inspect."),
+                                None,
+                                Some(json!({
+                                    "transfers": suspicious
+                                })),
+                            );
                         }
                     }
                 }

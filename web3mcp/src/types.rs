@@ -1551,6 +1551,15 @@ pub struct SolanaSimulateConfig {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SolanaTxAnalyzeRequest {
+    #[schemars(description = "Network: mainnet|devnet|testnet (optional; default mainnet)")]
+    pub network: Option<String>,
+
+    #[schemars(description = "Transaction bytes (base64). Signed or unsigned.")]
+    pub transaction_base64: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SolanaTxPreviewRequest {
     #[schemars(
         description = "Simulation config (preferred). If present, overrides top-level network/sig_verify/replace_recent_blockhash/commitment/strict_sig_verify."
