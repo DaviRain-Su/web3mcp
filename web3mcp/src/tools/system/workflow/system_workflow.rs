@@ -1426,6 +1426,133 @@
             });
         }
 
+        // Solana read-only quote (Jupiter v6) (no tx built, no simulation).
+        if intent_value["chain"] == "solana" && intent_value["action"] == "jupiter_quote" {
+            let input_token = intent_value
+                .get("input_token")
+                .and_then(Value::as_str)
+                .unwrap_or("<sell_token>");
+            let output_token = intent_value
+                .get("output_token")
+                .and_then(Value::as_str)
+                .unwrap_or("<buy_token>");
+            let slippage_bps = intent_value
+                .get("slippage_bps")
+                .and_then(Value::as_u64)
+                .unwrap_or(100);
+            let swap_mode = intent_value
+                .get("swap_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("ExactIn");
+
+            let network = solana_network_from_intent(&intent_value);
+            let rpc = Self::solana_rpc(network.as_deref())?;
+
+            // Resolve input/output tokens to mints.
+            let input_mint: String = if solana_is_pubkey(input_token) {
+                input_token.trim().to_string()
+            } else if let Some(m) = solana_token_to_mint(input_token) {
+                m.to_string()
+            } else {
+                let found = solana_resolve_symbol_via_jupiter_tokens(input_token)
+                    .await?
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("unsupported input_token symbol (provide SPL mint address or known symbol)"),
+                        data: Some(json!({"input_token": input_token})),
+                    })?;
+                found
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Jupiter tokens entry missing address"),
+                        data: Some(found.clone()),
+                    })?
+                    .to_string()
+            };
+
+            let output_mint: String = if solana_is_pubkey(output_token) {
+                output_token.trim().to_string()
+            } else if let Some(m) = solana_token_to_mint(output_token) {
+                m.to_string()
+            } else {
+                let found = solana_resolve_symbol_via_jupiter_tokens(output_token)
+                    .await?
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from("unsupported output_token symbol (provide SPL mint address or known symbol)"),
+                        data: Some(json!({"output_token": output_token})),
+                    })?;
+                found
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Jupiter tokens entry missing address"),
+                        data: Some(found.clone()),
+                    })?
+                    .to_string()
+            };
+
+            // Determine which amount field we should parse and which decimals apply.
+            let (amount_field, amount_s, decimals) = if swap_mode == "ExactOut" {
+                let s = intent_value
+                    .get("amount_out")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<amount>");
+
+                let out_decimals: u8 = if output_mint == "So11111111111111111111111111111111111111112" {
+                    9
+                } else if output_mint == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" {
+                    6
+                } else {
+                    solana_get_mint_decimals(&rpc, &output_mint).await?
+                };
+                ("amount_out", s, out_decimals)
+            } else {
+                let s = intent_value
+                    .get("amount_in")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<amount>");
+
+                let in_decimals: u8 = if input_mint == "So11111111111111111111111111111111111111112" {
+                    9
+                } else if input_mint == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" {
+                    6
+                } else {
+                    solana_get_mint_decimals(&rpc, &input_mint).await?
+                };
+                ("amount_in", s, in_decimals)
+            };
+
+            let amount = parse_amount_to_base_units(amount_s, decimals as u32)?;
+
+            let quote = if swap_mode == "ExactOut" {
+                jup_quote_exact_out(&input_mint, &output_mint, amount, slippage_bps).await?
+            } else {
+                jup_quote(&input_mint, &output_mint, amount, slippage_bps).await?
+            };
+
+            simulate = json!({
+                "stage": "simulate",
+                "status": "ok",
+                "simulation_performed": true,
+                "adapter": "jupiter_quote",
+                "network": network,
+                "swap_mode": swap_mode,
+                "input_token": input_token,
+                "output_token": output_token,
+                "input_mint": input_mint,
+                "output_mint": output_mint,
+                "slippage_bps": slippage_bps,
+                amount_field: amount_s,
+                "amount_base": amount.to_string(),
+                "quote": quote,
+                "note": "Read-only quote (no transaction built, no broadcast)."
+            });
+        }
+
         // Solana read-only portfolio: SOL balance + token accounts (best effort).
         if intent_value["chain"] == "solana" && intent_value["action"] == "get_portfolio" {
             let owner = intent_value
@@ -1579,6 +1706,25 @@
                     .unwrap_or(0.0);
                 bv.partial_cmp(&av).unwrap_or(std::cmp::Ordering::Equal)
             });
+
+            // Optionally include SOL as a holding row for UI symmetry.
+            if resolved_filter_mint.is_none() && filter_symbol.is_none() && filter_mint.is_none() {
+                let sol_ui = format_base_units_ui(&lamports.to_string(), 9);
+                holdings.insert(
+                    0,
+                    json!({
+                        "mint": "So11111111111111111111111111111111111111112",
+                        "amount_raw": lamports.to_string(),
+                        "decimals": 9,
+                        "amount_ui": sol_ui,
+                        "symbol": "SOL",
+                        "name": "Solana",
+                        "logo_uri": Value::Null,
+                        "token_info": Value::Null,
+                        "native": true
+                    }),
+                );
+            }
 
             simulate = json!({
                 "stage": "simulate",
@@ -1763,6 +1909,25 @@
                     "simulation_units": simulate.get("simulation").and_then(|v| v.get("units_consumed"))
                 },
                 "note": "Native SOL transfer. Execution uses safe default (pending confirmation)."
+            })
+        } else if simulate.get("adapter").and_then(Value::as_str) == Some("jupiter_quote")
+            && simulate.get("status").and_then(Value::as_str) == Some("ok")
+        {
+            let quote = simulate.get("quote").cloned().unwrap_or(Value::Null);
+            json!({
+                "stage": "approval",
+                "status": "ok",
+                "network": simulate.get("network"),
+                "warnings": [],
+                "summary": {
+                    "adapter": simulate.get("adapter"),
+                    "swap_mode": simulate.get("swap_mode"),
+                    "input_mint": simulate.get("input_mint"),
+                    "output_mint": simulate.get("output_mint"),
+                    "price_impact_pct": quote.get("priceImpactPct"),
+                    "route_plan_steps": quote.get("routePlan").and_then(Value::as_array).map(|a| a.len()),
+                },
+                "note": "Read-only quote; no approval required."
             })
         } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_portfolio")
             && simulate.get("status").and_then(Value::as_str) == Some("ok")
