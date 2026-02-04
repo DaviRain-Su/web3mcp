@@ -3,6 +3,10 @@
 // The MCP router code is generated and `include!`'d from `main.rs`, so it resolves
 // identifiers against the `main.rs` module scope. Keep these re-exports here to
 // avoid bloating `main.rs` with "magic" imports.
+//
+// CI runs clippy with `-D warnings`; this module is intentionally a broad prelude
+// and may contain items not used by the current generated router.
+#![allow(unused_imports)]
 
 pub use base64::engine::general_purpose::STANDARD as Base64Engine;
 pub use base64::Engine;

@@ -638,7 +638,6 @@
         // Solana transfer_spl (USDC-first): build an SPL token transfer tx and simulate.
         if intent_value["chain"] == "solana" && intent_value["action"] == "transfer_spl" {
             use std::str::FromStr;
-            use solana_sdk::signer::Signer;
 
             let from = intent_value.get("from").and_then(Value::as_str).unwrap_or("<sender>");
             let to = intent_value.get("to").and_then(Value::as_str).unwrap_or("<recipient>");
@@ -1413,7 +1412,7 @@
                         format!("{}/.config/solana/id.json", home)
                     });
 
-                use solana_sdk::signer::Signer;
+                use solana_sdk::signature::Signer;
                 let kp = solana_sdk::signature::read_keypair_file(&kp_path).map_err(|e| ErrorData {
                     code: ErrorCode(-32602),
                     message: Cow::from(format!("Failed to read keypair file {}: {}", kp_path, e)),
@@ -1508,7 +1507,7 @@
                         format!("{}/.config/solana/id.json", home)
                     });
 
-                use solana_sdk::signer::Signer;
+                use solana_sdk::signature::Signer;
                 let kp = solana_sdk::signature::read_keypair_file(&kp_path).map_err(|e| ErrorData {
                     code: ErrorCode(-32602),
                     message: Cow::from(format!("Failed to read keypair file {}: {}", kp_path, e)),

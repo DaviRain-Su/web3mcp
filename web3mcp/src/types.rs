@@ -3414,7 +3414,9 @@ pub struct SystemRunWorkflowV0Request {
     pub network: Option<String>,
     #[schemars(description = "Optional label for UX/debugging")]
     pub label: Option<String>,
-    #[schemars(description = "Optional override token to bypass approval_required guard (short-lived; issued by w3rt_request_override)")]
+    #[schemars(
+        description = "Optional override token to bypass approval_required guard (short-lived; issued by w3rt_request_override)"
+    )]
     pub override_token: Option<String>,
 }
 

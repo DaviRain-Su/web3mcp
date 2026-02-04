@@ -101,23 +101,32 @@ pub fn validate_override(run_id: &str, token: &str) -> Result<(bool, Option<Valu
     }
 
     if now > rec.expires_ms {
-        return Ok((false, Some(serde_json::json!({
-            "reason": "expired",
-            "expires_ms": rec.expires_ms,
-            "now_ms": now
-        }))));
+        return Ok((
+            false,
+            Some(serde_json::json!({
+                "reason": "expired",
+                "expires_ms": rec.expires_ms,
+                "now_ms": now
+            })),
+        ));
     }
 
     if rec.token != token {
-        return Ok((false, Some(serde_json::json!({
-            "reason": "token_mismatch"
-        }))));
+        return Ok((
+            false,
+            Some(serde_json::json!({
+                "reason": "token_mismatch"
+            })),
+        ));
     }
 
-    Ok((true, Some(serde_json::json!({
-        "created_ms": rec.created_ms,
-        "expires_ms": rec.expires_ms,
-        "reason": rec.reason,
-        "approval_snapshot": rec.approval_snapshot
-    }))))
+    Ok((
+        true,
+        Some(serde_json::json!({
+            "created_ms": rec.created_ms,
+            "expires_ms": rec.expires_ms,
+            "reason": rec.reason,
+            "approval_snapshot": rec.approval_snapshot
+        })),
+    ))
 }
