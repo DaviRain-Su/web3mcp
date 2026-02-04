@@ -6798,6 +6798,81 @@
         let vtx: Option<solana_transaction::versioned::VersionedTransaction> =
             bincode::deserialize(&tx_bytes).ok();
 
+        // Helper: resolve full account keys for v0 transactions (includes LUT accounts).
+        async fn solana_resolve_account_keys_for_confirm(
+            client: &solana_client::nonblocking::rpc_client::RpcClient,
+            vtx: &Option<solana_transaction::versioned::VersionedTransaction>,
+            tx_bytes: &[u8],
+        ) -> Result<
+            (
+                Vec<solana_sdk::pubkey::Pubkey>,
+                Vec<solana_message::compiled_instruction::CompiledInstruction>,
+                Option<solana_sdk::pubkey::Pubkey>,
+            ),
+            ErrorData,
+        > {
+            if let Some(v) = vtx.as_ref() {
+                match &v.message {
+                    solana_message::VersionedMessage::Legacy(msg) => {
+                        let fp = msg.account_keys.first().cloned();
+                        return Ok((msg.account_keys.clone(), msg.instructions.clone(), fp));
+                    }
+                    solana_message::VersionedMessage::V0(msg) => {
+                        let mut keys = msg.account_keys.clone();
+                        let fp = keys.first().cloned();
+
+                        let mut loaded_writable: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                        let mut loaded_readonly: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+
+                        for l in &msg.address_table_lookups {
+                            let lut_addr = l.account_key;
+                            let addresses: Vec<solana_sdk::pubkey::Pubkey> = match client.get_account(&lut_addr).await {
+                                Ok(a) => solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&a.data)
+                                    .map(|alt| alt.addresses.to_vec())
+                                    .unwrap_or_default(),
+                                Err(_) => Vec::new(),
+                            };
+
+                            let w: Vec<solana_sdk::pubkey::Pubkey> = l
+                                .writable_indexes
+                                .iter()
+                                .filter_map(|i| addresses.get(*i as usize).cloned())
+                                .collect();
+                            let r: Vec<solana_sdk::pubkey::Pubkey> = l
+                                .readonly_indexes
+                                .iter()
+                                .filter_map(|i| addresses.get(*i as usize).cloned())
+                                .collect();
+
+                            loaded_writable.extend(w);
+                            loaded_readonly.extend(r);
+                        }
+
+                        keys.extend(loaded_writable);
+                        keys.extend(loaded_readonly);
+                        return Ok((keys, msg.instructions.clone(), fp));
+                    }
+                }
+            }
+
+            let tx_legacy: solana_sdk::transaction::Transaction =
+                bincode::deserialize(tx_bytes).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Invalid stored transaction bytes: {}", e)),
+                    data: None,
+                })?;
+            let fp = tx_legacy.message.account_keys.first().cloned();
+            Ok((
+                tx_legacy.message.account_keys.clone(),
+                tx_legacy.message.instructions.clone(),
+                fp,
+            ))
+        }
+
+        // Resolve account keys (best-effort; v0 includes LUT).
+        let (account_keys, instructions, fee_payer) =
+            solana_resolve_account_keys_for_confirm(&client, &vtx, &tx_bytes).await?;
+
         // Blocked-approval admin check needs fee_payer + best-effort authorities from the message.
         if approval_status == "blocked" {
             use std::str::FromStr;
@@ -6810,30 +6885,6 @@
                 }
             })?;
 
-            let (account_keys, instructions): (
-                Vec<solana_sdk::pubkey::Pubkey>,
-                Vec<solana_message::compiled_instruction::CompiledInstruction>,
-            ) = if let Some(v) = vtx.as_ref() {
-                match &v.message {
-                    solana_message::VersionedMessage::Legacy(msg) => {
-                        (msg.account_keys.clone(), msg.instructions.clone())
-                    }
-                    solana_message::VersionedMessage::V0(msg) => {
-                        // NOTE: for v0 we do not resolve LUT accounts here; we only enforce fee_payer + authority accounts in the static keys.
-                        (msg.account_keys.clone(), msg.instructions.clone())
-                    }
-                }
-            } else {
-                let tx_legacy: solana_sdk::transaction::Transaction =
-                    bincode::deserialize(&tx_bytes).map_err(|e| ErrorData {
-                        code: ErrorCode(-32602),
-                        message: Cow::from(format!("Invalid stored transaction bytes: {}", e)),
-                        data: None,
-                    })?;
-                (tx_legacy.message.account_keys.clone(), tx_legacy.message.instructions.clone())
-            };
-
-            let fee_payer = account_keys.first().cloned();
             if fee_payer != Some(admin_pk) {
                 return Self::guard_result(
                     "solana_confirm_transaction",
@@ -6845,8 +6896,7 @@
                     Some(json!({
                         "approval_status": approval_status,
                         "fee_payer": fee_payer.map(|p| p.to_string()),
-                        "admin_pubkey": admin_pk.to_string(),
-                        "note": "For v0 tx, LUT-loaded authorities are not resolved here (best-effort)."
+                        "admin_pubkey": admin_pk.to_string()
                     })),
                 );
             }
@@ -6935,6 +6985,71 @@
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Confirm-time tx sanity check: enforce that stored summary matches tx content (best-effort).
+        // If approval is blocked, only a whitelisted admin_pubkey can proceed (already enforced above).
+        if let Some(summary) = pending.summary.as_ref() {
+            if let Some(swap) = summary.get("swap") {
+                let input_mint = swap.get("input_mint").and_then(Value::as_str);
+                let output_mint = swap.get("output_mint").and_then(Value::as_str);
+                let expected_user = swap.get("user_pubkey").and_then(Value::as_str);
+
+                // fee_payer should match user_pubkey for swaps (unless blocked admin override path).
+                if approval_status != "blocked" {
+                    if let (Some(u), Some(fp)) = (expected_user, fee_payer.as_ref()) {
+                        if fp.to_string() != u {
+                            return Self::guard_result(
+                                "solana_confirm_transaction",
+                                "TX_SUMMARY_MISMATCH",
+                                "fee_payer does not match summary.swap.user_pubkey",
+                                false,
+                                Some("Recreate the pending confirmation from the workflow; stored summary must match the tx."),
+                                None,
+                                Some(json!({
+                                    "expected_user_pubkey": u,
+                                    "fee_payer": fp.to_string()
+                                })),
+                            );
+                        }
+                    }
+                }
+
+                // mints should appear somewhere in the account keys (best-effort; v0 resolves LUT).
+                let keys_set: std::collections::HashSet<String> =
+                    account_keys.iter().map(|p| p.to_string()).collect();
+
+                let mut missing: Vec<String> = Vec::new();
+                if let Some(m) = input_mint {
+                    if !keys_set.contains(m) {
+                        missing.push(format!("input_mint:{m}"));
+                    }
+                }
+                if let Some(m) = output_mint {
+                    if !keys_set.contains(m) {
+                        missing.push(format!("output_mint:{m}"));
+                    }
+                }
+
+                if !missing.is_empty() {
+                    // Allow admin override to bypass mismatches if they are whitelisted and fee_payer matches.
+                    let admin_ok = approval_status == "blocked";
+                    if !admin_ok {
+                        return Self::guard_result(
+                            "solana_confirm_transaction",
+                            "TX_SUMMARY_MISMATCH",
+                            "tx does not contain expected mint accounts",
+                            false,
+                            Some("Recreate the pending confirmation from the workflow; stored summary must match the tx."),
+                            None,
+                            Some(json!({
+                                "missing": missing,
+                                "tx_version": if vtx.is_some() { "versioned" } else { "legacy" }
+                            })),
+                        );
                     }
                 }
             }
