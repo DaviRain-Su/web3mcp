@@ -1623,6 +1623,216 @@
             });
         }
 
+        // Solana tx preview: decode a transaction and return a human-readable instruction summary.
+        // Useful for confirm-time verification / prompt-injection resistance.
+        if intent_value["chain"] == "solana" && intent_value["action"] == "tx_preview" {
+            use std::str::FromStr;
+
+            let tx_b64 = intent_value
+                .get("transaction_base64")
+                .and_then(Value::as_str)
+                .unwrap_or("<tx_base64>");
+            if tx_b64.starts_with('<') {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("transaction_base64 is required"),
+                    data: None,
+                });
+            }
+
+            let network = solana_network_from_intent(&intent_value);
+            let rpc = Self::solana_rpc(network.as_deref())?;
+
+            let raw = Self::decode_base64("transaction_base64", tx_b64)?;
+
+            // Try decode versioned first, then legacy.
+            let vtx: Option<solana_transaction::versioned::VersionedTransaction> =
+                bincode::deserialize(&raw).ok();
+            let tx: Option<solana_sdk::transaction::Transaction> = if vtx.is_none() {
+                Some(
+                    bincode::deserialize(&raw).map_err(|e| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!("invalid transaction bytes: {e}")),
+                        data: None,
+                    })?,
+                )
+            } else {
+                None
+            };
+
+            let mut tx_version: String = "legacy".to_string();
+            let mut account_keys: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+            let mut compiled: Vec<solana_message::compiled_instruction::CompiledInstruction> =
+                Vec::new();
+            let mut recent_blockhash: Option<String> = None;
+            let mut lut_lookups: Vec<Value> = Vec::new();
+
+            if let Some(t) = tx.as_ref() {
+                tx_version = "legacy".to_string();
+                account_keys = t.message.account_keys.clone();
+                compiled = t.message.instructions.clone();
+                recent_blockhash = Some(t.message.recent_blockhash.to_string());
+            }
+
+            if let Some(v) = vtx.as_ref() {
+                match &v.message {
+                    solana_message::VersionedMessage::Legacy(msg) => {
+                        tx_version = "legacy".to_string();
+                        account_keys = msg.account_keys.clone();
+                        compiled = msg.instructions.clone();
+                        recent_blockhash = Some(msg.recent_blockhash.to_string());
+                    }
+                    solana_message::VersionedMessage::V0(msg) => {
+                        tx_version = "v0".to_string();
+                        account_keys = msg.account_keys.clone();
+                        recent_blockhash = Some(msg.recent_blockhash.to_string());
+
+                        // Best-effort resolve LUT addresses so we can map instruction account indexes.
+                        let mut loaded_writable: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                        let mut loaded_readonly: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+
+                        for l in &msg.address_table_lookups {
+                            let lut_addr = l.account_key;
+                            let mut resolved: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                            let mut err: Option<String> = None;
+
+                            match rpc.get_account(&lut_addr).await {
+                                Ok(a) => {
+                                    match solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&a.data) {
+                                        Ok(alt) => {
+                                            resolved = alt.addresses.to_vec();
+                                        }
+                                        Err(e) => err = Some(format!("ALT deserialize failed: {e}")),
+                                    }
+                                }
+                                Err(e) => err = Some(format!("ALT fetch failed: {e}")),
+                            }
+
+                            let w: Vec<solana_sdk::pubkey::Pubkey> = l
+                                .writable_indexes
+                                .iter()
+                                .filter_map(|i| resolved.get(*i as usize).cloned())
+                                .collect();
+                            let r: Vec<solana_sdk::pubkey::Pubkey> = l
+                                .readonly_indexes
+                                .iter()
+                                .filter_map(|i| resolved.get(*i as usize).cloned())
+                                .collect();
+
+                            loaded_writable.extend(w.iter().cloned());
+                            loaded_readonly.extend(r.iter().cloned());
+
+                            lut_lookups.push(json!({
+                                "address": lut_addr.to_string(),
+                                "writable_indexes_len": l.writable_indexes.len(),
+                                "readonly_indexes_len": l.readonly_indexes.len(),
+                                "resolved_writable_len": w.len(),
+                                "resolved_readonly_len": r.len(),
+                                "error": err
+                            }));
+                        }
+
+                        account_keys.extend(loaded_writable);
+                        account_keys.extend(loaded_readonly);
+                        compiled = msg.instructions.clone();
+                    }
+                }
+            }
+
+            let fee_payer = account_keys.first().map(|p| p.to_string());
+
+            fn decode_token_transfer_checked(data: &[u8]) -> Option<Value> {
+                // SPL Token TransferChecked = tag(12) + amount(u64 LE) + decimals(u8)
+                if data.len() == 10 && data[0] == 12 {
+                    let mut amt_bytes = [0u8; 8];
+                    amt_bytes.copy_from_slice(&data[1..9]);
+                    let amount = u64::from_le_bytes(amt_bytes);
+                    let decimals = data[9];
+                    return Some(json!({"kind": "token_transfer_checked", "amount": amount, "decimals": decimals}));
+                }
+                None
+            }
+
+            let system_program = solana_sdk::pubkey::Pubkey::from_str(
+                "11111111111111111111111111111111",
+            )
+            .unwrap();
+            let ata_program = spl_associated_token_account::id();
+            let token_legacy = solana_sdk::pubkey::Pubkey::from_str(
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            )
+            .ok();
+            let token_2022 = solana_sdk::pubkey::Pubkey::from_str(
+                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            )
+            .ok();
+            let compute_budget = solana_sdk::pubkey::Pubkey::from_str(
+                "ComputeBudget111111111111111111111111111111",
+            )
+            .unwrap();
+            let memo_program = solana_sdk::pubkey::Pubkey::from_str(
+                "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+            )
+            .ok();
+
+            let mut instructions: Vec<Value> = Vec::new();
+            for (i, ix) in compiled.iter().enumerate() {
+                let program_id = account_keys.get(ix.program_id_index as usize).cloned();
+                let program_id = program_id.unwrap_or_else(solana_sdk::pubkey::Pubkey::new_unique);
+
+                let accounts: Vec<String> = ix
+                    .accounts
+                    .iter()
+                    .filter_map(|idx| account_keys.get(*idx as usize).map(|p| p.to_string()))
+                    .collect();
+
+                let program_kind = if program_id == system_program {
+                    "system"
+                } else if program_id == ata_program {
+                    "associated_token_account"
+                } else if token_legacy.as_ref() == Some(&program_id) {
+                    "spl_token"
+                } else if token_2022.as_ref() == Some(&program_id) {
+                    "spl_token_2022"
+                } else if program_id == compute_budget {
+                    "compute_budget"
+                } else if memo_program.as_ref() == Some(&program_id) {
+                    "memo"
+                } else {
+                    "unknown"
+                };
+
+                let mut decoded: Option<Value> = None;
+                if program_kind == "spl_token" || program_kind == "spl_token_2022" {
+                    decoded = decode_token_transfer_checked(&ix.data);
+                }
+
+                instructions.push(json!({
+                    "index": i,
+                    "program_id": program_id.to_string(),
+                    "program_kind": program_kind,
+                    "accounts": accounts,
+                    "data_len": ix.data.len(),
+                    "decoded": decoded
+                }));
+            }
+
+            simulate = json!({
+                "stage": "simulate",
+                "status": "ok",
+                "simulation_performed": true,
+                "adapter": "solana_tx_preview",
+                "network": network,
+                "tx_version": tx_version,
+                "fee_payer": fee_payer,
+                "recent_blockhash": recent_blockhash,
+                "account_keys_len": account_keys.len(),
+                "lut_lookups": lut_lookups,
+                "instructions": instructions,
+                "note": "Read-only tx preview (no broadcast)."
+            });
+        }
+
         // Solana read-only token balance: owner + (symbol|mint) -> aggregated amount.
         if intent_value["chain"] == "solana" && intent_value["action"] == "get_token_balance" {
             use std::str::FromStr;
@@ -2247,6 +2457,27 @@
                 },
                 "note": "Read-only quote; no approval required."
             })
+        } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_tx_preview")
+            && simulate.get("status").and_then(Value::as_str) == Some("ok")
+        {
+            let ins_n = simulate
+                .get("instructions")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            json!({
+                "stage": "approval",
+                "status": "ok",
+                "network": simulate.get("network"),
+                "warnings": [],
+                "summary": {
+                    "adapter": simulate.get("adapter"),
+                    "tx_version": simulate.get("tx_version"),
+                    "fee_payer": simulate.get("fee_payer"),
+                    "instructions_count": ins_n
+                },
+                "note": "Read-only request; no approval required."
+            })
         } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_token_balance")
             && simulate.get("status").and_then(Value::as_str) == Some("ok")
         {
@@ -2417,7 +2648,8 @@
             && (intent_value["action"] == "quote"
                 || intent_value["action"] == "jupiter_quote"
                 || intent_value["action"] == "get_portfolio"
-                || intent_value["action"] == "get_token_balance")
+                || intent_value["action"] == "get_token_balance"
+                || intent_value["action"] == "tx_preview")
         {
             json!({
                 "stage": "execute",
