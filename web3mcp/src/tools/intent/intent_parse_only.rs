@@ -23,11 +23,9 @@
             net = "mainnet".to_string();
         }
 
-        // Very simple swap detector.
-        // Patterns:
-        // - "swap 0.01 sol to usdc"
-        // - "swap 50 usdc to sol, slippage 0.5%"
+        // Very simple intent detectors.
         let is_swap = lower.contains("swap") || lower.contains("换") || lower.contains("兑换");
+        let is_transfer = lower.contains("send ") || lower.contains("transfer ") || lower.contains("转 ") || lower.contains("转账");
 
         // Slippage bps (optional)
         let mut slippage_bps: u64 = 100;
@@ -92,6 +90,53 @@
             });
 
             return ("swap".to_string(), intent_value, 0.7);
+        }
+
+        if is_transfer {
+            // Minimal SOL transfer parsing:
+            // - "send 0.01 sol to <pubkey>"
+            // - "transfer 0.5 sol to <pubkey>"
+            let cleaned = lower.replace(',', " ").replace("/", " ");
+            let words: Vec<&str> = cleaned.split_whitespace().collect();
+
+            let mut amount = "<amount>".to_string();
+            let mut asset = "sol".to_string();
+            let mut to_addr = "<recipient>".to_string();
+
+            for i in 0..words.len() {
+                if words[i].chars().any(|c| c.is_ascii_digit()) {
+                    amount = words[i].to_string();
+                    if i + 1 < words.len() {
+                        asset = words[i + 1].to_string();
+                    }
+                    break;
+                }
+            }
+
+            for i in 0..words.len() {
+                if words[i] == "to" {
+                    if i + 1 < words.len() {
+                        to_addr = words[i + 1].to_string();
+                    }
+                    break;
+                }
+            }
+
+            let intent_value = json!({
+                "chain": "solana",
+                "action": "transfer_native",
+                "asset": asset,
+                "amount": amount,
+                "to": to_addr,
+                "from": sender,
+                "resolved_network": {
+                    "family": "solana",
+                    "network_name": net
+                },
+                "confidence": 0.7
+            });
+
+            return ("transfer".to_string(), intent_value, 0.7);
         }
 
         (

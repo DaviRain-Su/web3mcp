@@ -183,16 +183,21 @@
                 data: None,
             })?;
 
-        let vtx: solana_sdk::transaction::VersionedTransaction =
-            bincode::deserialize(&tx_bytes).map_err(|e| Self::sdk_error("solana_confirm_transaction:deserialize_tx", e))?;
-
+        // The pending tx may be stored either as VersionedTransaction or legacy Transaction.
         let commitment = Self::solana_commitment_from_str(request.commitment.as_deref())?;
 
         // Broadcast
-        let sig = rpc
-            .send_transaction(&vtx)
-            .await
-            .map_err(|e| Self::sdk_error("solana_confirm_transaction:send", e))?;
+        let sig = if let Ok(vtx) = bincode::deserialize::<solana_sdk::transaction::VersionedTransaction>(&tx_bytes) {
+            rpc.send_transaction(&vtx)
+                .await
+                .map_err(|e| Self::sdk_error("solana_confirm_transaction:send", e))?
+        } else {
+            let tx = bincode::deserialize::<solana_sdk::transaction::Transaction>(&tx_bytes)
+                .map_err(|e| Self::sdk_error("solana_confirm_transaction:deserialize_tx", e))?;
+            rpc.send_transaction(&tx)
+                .await
+                .map_err(|e| Self::sdk_error("solana_confirm_transaction:send", e))?
+        };
 
         // Wait for confirmation
         let _ = rpc

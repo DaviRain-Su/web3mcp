@@ -532,6 +532,103 @@
             "intent": intent_value,
         });
 
+        // Solana transfer_native (SOL): build a system transfer tx and simulate.
+        if intent_value["chain"] == "solana" && intent_value["action"] == "transfer_native" {
+            use std::str::FromStr;
+
+            let from = intent_value.get("from").and_then(Value::as_str).unwrap_or("<sender>");
+            let to = intent_value.get("to").and_then(Value::as_str).unwrap_or("<recipient>");
+            let amount_s = intent_value.get("amount").and_then(Value::as_str).unwrap_or("<amount>");
+            let asset = intent_value.get("asset").and_then(Value::as_str).unwrap_or("sol");
+
+            if from.starts_with('<') {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("from (sender) is required for transfer"),
+                    data: None,
+                });
+            }
+            if to.starts_with('<') {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("to (recipient) is required for transfer"),
+                    data: None,
+                });
+            }
+            if asset.to_lowercase() != "sol" {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("transfer_native currently supports SOL only"),
+                    data: Some(json!({"asset": asset})),
+                });
+            }
+
+            let from_pk = solana_sdk::pubkey::Pubkey::from_str(from).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("invalid from pubkey: {e}")),
+                data: Some(json!({"from": from})),
+            })?;
+            let to_pk = solana_sdk::pubkey::Pubkey::from_str(to).map_err(|e| ErrorData {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!("invalid to pubkey: {e}")),
+                data: Some(json!({"to": to})),
+            })?;
+
+            // Amount is UI SOL string.
+            let lamports = parse_amount_to_base_units(amount_s, 9)?;
+
+            let network = solana_network_from_intent(&intent_value);
+            let rpc = Self::solana_rpc(network.as_deref())?;
+            let bh = rpc
+                .get_latest_blockhash()
+                .await
+                .map_err(|e| Self::sdk_error("solana_transfer:get_latest_blockhash", e))?;
+
+            let ix = solana_system_interface::instruction::transfer(&from_pk, &to_pk, lamports);
+            let msg = solana_sdk::message::Message::new(&[ix], Some(&from_pk));
+            let mut tx = solana_sdk::transaction::Transaction::new_unsigned(msg);
+            tx.message.recent_blockhash = bh;
+
+            let cfg = solana_client::rpc_config::RpcSimulateTransactionConfig {
+                sig_verify: false,
+                replace_recent_blockhash: true,
+                commitment: Some(solana_commitment_config::CommitmentConfig::processed()),
+                encoding: Some(solana_transaction_status::UiTransactionEncoding::Base64),
+                accounts: None,
+                min_context_slot: None,
+                inner_instructions: false,
+            };
+
+            let sim = rpc
+                .simulate_transaction_with_config(&tx, cfg)
+                .await
+                .map_err(|e| Self::sdk_error("solana_transfer:simulate", e))?;
+
+            let ok = sim.value.err.is_none();
+
+            let tx_bytes = bincode::serialize(&tx)
+                .map_err(|e| Self::sdk_error("solana_transfer:serialize_tx", e))?;
+            let tx_b64 = base64::engine::general_purpose::STANDARD.encode(tx_bytes);
+
+            simulate = json!({
+                "stage": "simulate",
+                "status": if ok { "ok" } else { "failed" },
+                "simulation_performed": true,
+                "adapter": "solana_system_transfer",
+                "network": network,
+                "from": from,
+                "to": to,
+                "lamports": lamports.to_string(),
+                "amount_ui": amount_s,
+                "tx": { "tx_base64": tx_b64 },
+                "simulation": {
+                    "err": sim.value.err,
+                    "logs": sim.value.logs,
+                    "units_consumed": sim.value.units_consumed
+                }
+            });
+        }
+
         // Currently: implement Solana swap_exact_in via Jupiter quote+swap + RPC simulate.
         if intent_value["chain"] == "solana" && intent_value["action"] == "swap_exact_in" {
             let user = intent_value
@@ -815,6 +912,45 @@
                 "warnings": warnings,
                 "note": "This stage is informational today. Execution still uses safe default (pending confirmation)."
             })
+        } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_system_transfer")
+            && simulate.get("status").and_then(Value::as_str) == Some("ok")
+        {
+            // Basic transfer policy: flag large transfers.
+            let amount_ui = simulate.get("amount_ui").and_then(Value::as_str).unwrap_or("0");
+            let mut warnings: Vec<Value> = vec![];
+
+            // Threshold: 1 SOL default (heuristic; can be moved to env/policy runtime later)
+            if let Ok(v) = amount_ui.parse::<f64>() {
+                if v >= 1.0 {
+                    warnings.push(json!({
+                        "kind": "large_transfer",
+                        "amount_ui": amount_ui,
+                        "threshold_ui": "1.0",
+                        "note": "transfer amount >= 1 SOL"
+                    }));
+                }
+            }
+
+            let from = simulate.get("from").and_then(Value::as_str).unwrap_or("");
+            let to = simulate.get("to").and_then(Value::as_str).unwrap_or("");
+            if !from.is_empty() && from == to {
+                warnings.push(json!({
+                    "kind": "self_transfer",
+                    "note": "from == to"
+                }));
+            }
+
+            json!({
+                "stage": "approval",
+                "status": if warnings.is_empty() { "ok" } else { "needs_review" },
+                "warnings": warnings,
+                "summary": {
+                    "from": from,
+                    "to": to,
+                    "amount_ui": amount_ui,
+                    "lamports": simulate.get("lamports")
+                }
+            })
         } else {
             json!({
                 "stage": "approval",
@@ -892,6 +1028,100 @@
                 },
                 "note": "Execution blocked: approval.status != ok (policy)."
             })
+        } else if intent_value["chain"] == "solana" && intent_value["action"] == "transfer_native" {
+            // Sign locally (requires SOLANA_KEYPAIR_PATH) and create pending confirmation.
+            let tx_b64 = simulate
+                .get("tx")
+                .and_then(|v| v.get("tx_base64"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+
+            if tx_b64.is_empty() {
+                json!({
+                    "stage": "execute",
+                    "status": "error",
+                    "note": "missing tx_base64 from simulate stage"
+                })
+            } else {
+                // Load keypair and sign.
+                let kp_path = std::env::var("SOLANA_KEYPAIR_PATH").ok().filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| {
+                        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                        format!("{}/.config/solana/id.json", home)
+                    });
+
+                use solana_sdk::signer::Signer;
+                let kp = solana_sdk::signature::read_keypair_file(&kp_path).map_err(|e| ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from(format!("Failed to read keypair file {}: {}", kp_path, e)),
+                    data: None,
+                })?;
+
+                let from = simulate.get("from").and_then(Value::as_str).unwrap_or("");
+                if !from.is_empty() {
+                    let from_pk = solana_sdk::pubkey::Pubkey::from_str(from).map_err(|e| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!("invalid from pubkey: {e}")),
+                        data: Some(json!({"from": from})),
+                    })?;
+                    if kp.pubkey() != from_pk {
+                        return Err(ErrorData {
+                            code: ErrorCode(-32602),
+                            message: Cow::from("SOLANA_KEYPAIR_PATH pubkey does not match sender"),
+                            data: Some(json!({"sender": from_pk.to_string(), "keypair_pubkey": kp.pubkey().to_string()})),
+                        });
+                    }
+                }
+
+                let network = simulate.get("network").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let rpc = Self::solana_rpc(network.as_deref())?;
+                let bh = rpc.get_latest_blockhash().await.map_err(|e| Self::sdk_error("solana_transfer:get_latest_blockhash", e))?;
+
+                let raw = base64::engine::general_purpose::STANDARD
+                    .decode(tx_b64.trim())
+                    .map_err(|e| ErrorData {
+                        code: ErrorCode(-32602),
+                        message: Cow::from(format!("invalid tx_base64: {e}")),
+                        data: None,
+                    })?;
+
+                let mut tx = bincode::deserialize::<solana_sdk::transaction::Transaction>(&raw)
+                    .map_err(|e| Self::sdk_error("solana_transfer:deserialize_tx", e))?;
+                tx.message.recent_blockhash = bh;
+
+                tx.try_sign(&[&kp], bh).map_err(|e| ErrorData {
+                    code: ErrorCode(-32603),
+                    message: Cow::from(format!("Failed to sign tx: {}", e)),
+                    data: None,
+                })?;
+
+                let bytes = bincode::serialize(&tx).map_err(|e| Self::sdk_error("solana_transfer:serialize_tx", e))?;
+                let signed_b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+
+                let summary = Some(json!({
+                    "tool": "w3rt_run_workflow_v0",
+                    "run_id": run_id,
+                    "adapter": simulate.get("adapter"),
+                    "approval": approval
+                }));
+
+                let parsed = Self::solana_create_pending_confirmation(
+                    network.as_deref(),
+                    &signed_b64,
+                    "w3rt_run_workflow_v0",
+                    summary,
+                )?;
+
+                json!({
+                    "stage": "execute",
+                    "status": "pending_confirmation_created",
+                    "network": network,
+                    "approval": approval,
+                    "result": parsed,
+                    "next": parsed.get("next").cloned().unwrap_or(json!({})),
+                    "note": "Pending confirmation created (safe default). On mainnet you must call solana_confirm_transaction with confirm_token to broadcast."
+                })
+            }
         } else if intent_value["chain"] == "solana" && intent_value["action"] == "swap_exact_in" {
             // Safe default: create a pending confirmation (confirm=false). Broadcast requires confirm_token on mainnet.
             let tx_b64 = simulate
