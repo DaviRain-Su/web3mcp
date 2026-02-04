@@ -1,36 +1,36 @@
 # Web3 AI Runtime (W3RT)
 
-**Web3 AI Runtime (W3RT)** is a product direction: natural language → intent/plan → deterministic workflow → protocol adapters → chain tools.
+**W3RT** is the product direction: **one sentence → deterministic workflow → safe on-chain execution**.
 
-This repo currently contains the **chain tool layer** implemented as a Rust **MCP server**:
-- **Implementation**: `web3mcp/` (Rust) — **Sui + Solana (incl. Solana IDL dynamic calls) + EVM (chain_id/RPC)**
+This repo contains a Rust **MCP server** (`web3mcp/`) that implements the workflow engine + adapters.
 
-Positioning:
-- **Near-term**: DeFi-first, safe execution with deterministic flows (simulate → approve → execute)
-- **Long-term**: chain-agnostic runtime with strategy publishing + agent-to-agent execution
+## TL;DR (Solana-first default)
 
-## TL;DR
+Default builds expose a **small, stable public API**:
+- `w3rt_run_workflow_v0` — one entrypoint (analysis → simulate → approval → execute)
+- `w3rt_get_run` — fetch run artifacts by `run_id`
+- `w3rt_request_override` — power-user/agent override token for `approval_required`
+- `solana_confirm_transaction` — explicit mainnet broadcast (requires `confirm_token`)
 
-- Run the MCP server locally.
-- Connect it to Claude Desktop / Cursor.
-- Ask for balances, objects, transactions, and (when enabled) build/send transactions with safer workflows.
+Everything else is **advanced/debug** and is only exposed when you build with:
+
+```bash
+cargo build --release --features expose-advanced-tools
+```
+
+Why: W3RT is meant to be used by humans and agents with *one sentence*, not by asking an LLM to pick from hundreds of low-level tools.
 
 ## What’s implemented today
 
-### Capability matrix (high level)
+### Solana mainnet workflow (current MVP)
+- Natural language → intent schema (Solana swap)
+- Jupiter v6 quote → build tx → simulate
+- Approval summary + warnings (slippage/price impact)
+- Safe execute: creates a **pending confirmation** (no broadcast)
+- Explicit broadcast: `solana_confirm_transaction` (mainnet requires `confirm_token`)
 
-- Sui
-  - Read/query ✅
-  - Tx build + pending confirmation ✅
-  - Mainnet broadcast ✅ (requires `confirm_token`)
-- Solana
-  - Read/query ✅
-  - IDL planning/simulation ✅
-  - Mainnet broadcast ✅ (requires `confirm_token`)
-- EVM
-  - Read/query ✅
-  - Tx build + preflight ✅
-  - Mainnet broadcast ✅ (requires `confirm_token`; one-step transfer returns pending)
+### Advanced toolbox (optional)
+If you build with `--features expose-advanced-tools`, the server exposes the full internal toolbox (Sui/EVM/Solana helpers, protocol APIs). This is useful for development/debugging, but not recommended as the default UX.
 
 ### Safety / ops
 - **Audit log** ✅ (`WEB3MCP_AUDIT_LOG`, back-compat: `SUI_MCP_AUDIT_LOG`)
@@ -59,31 +59,26 @@ Binary:
 
 ## Example prompts (copy/paste)
 
-### 0) Sanity check (recommended)
-- "Run `system_healthcheck` and show me the JSON output."
-- "Run `system_network_context` and tell me what networks are active for Sui/Solana/EVM."
-- "If anything looks wrong, run `system_debug_bundle out_path=./debug_bundle.json` and show me the JSON output (no secrets)."
+### Human: one sentence → safe workflow (Solana mainnet)
+- "Swap 0.01 SOL to USDC on Solana mainnet."
 
-### 0.5) Safe demo (no broadcast)
-- "Run `system_demo_safe_mainnet_flow` and show me the output."
+What should happen:
+1) call `w3rt_run_workflow_v0` (simulate + approval + pending confirmation)
+2) if approval is `ok`, you get `execute.next.confirm` → call `solana_confirm_transaction` with `confirm_token`
 
-### Sui
-- "On Sui testnet (set `SUI_RPC_URL=https://fullnode.testnet.sui.io:443`), use `get_balance` for 0x..."
-- "On Sui testnet, use `get_owned_objects` for 0x..."
-- "(Mainnet demo, safe) Build a Sui transaction using a safe-default tool so it returns a pending confirmation, then show me how `sui_confirm_execution` requires `confirm_token` on mainnet. Do not send until I confirm." 
+### Power user / Agent: inspect artifacts
+- "Run `w3rt_run_workflow_v0` for 'swap 0.01 sol to usdc on solana mainnet' with sender=<PUBKEY>. Then call `w3rt_get_run` with the returned run_id and show me simulate/approval/execute JSON."
 
-### Solana
-- "Use `solana_list_networks`, then on devnet use `solana_rpc_call` to getBalance for <base58_pubkey>."
-- "(No send) Load an IDL via `solana_idl_load`, then run `solana_idl_plan_instruction` and `solana_idl_simulate_instruction` for program <PROGRAM_ID> instruction <IX_NAME>."
-- "(Mainnet demo, safe) Create a transaction, call `solana_send_transaction` with `confirm=false`, then show me how `solana_confirm_transaction` requires `confirm_token` on mainnet. Do not broadcast until I confirm." 
+### Power user / Agent: override approval_required (explicit risk acceptance)
+- "If execute is blocked with `approval_required`, call `w3rt_request_override` with the run_id and a reason, then re-run `w3rt_run_workflow_v0` with override_token."
 
-### EVM
-- "Use `evm_list_rpc_defaults`, then on Base Sepolia (`chain_id=84532`) run `evm_get_balance` for 0x..."
-- "(No broadcast) On Base Sepolia, run `evm_build_transfer_native` then `evm_preflight` and show me the resulting tx summary."
-- "(Mainnet demo, safe) On Base mainnet (`chain_id=8453`), build+preflight a 0.000001 ETH transfer and show me the pending confirmation flow. Do not send until I confirm; then require `confirm_token` and use `evm_retry_pending_confirmation`."
+### Advanced/debug mode only
+If built with `--features expose-advanced-tools`, you can still use the internal chain/protocol tools directly for debugging.
 
 ## Docs
 
+- **Public API contract (recommended)**: `web3mcp/docs/w3rt-public-api.md`
+- **Product vision**: `web3mcp/docs/product-vision.md`
 - **Server docs**: `web3mcp/README.md`
 - **Research / design**: `docs/`
 - **Final research pack**: `docs/final/` (note: Avalanche/BNB are treated as **EVM sample chains** in research)
