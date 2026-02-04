@@ -90,7 +90,28 @@ Expected:
 
 ---
 
-## Moltbook submission template
+## Moltbook submission (short version)
+
+Title:
+- **W3RT: Solana-first USDC agent runtime with safe two-phase execution**
+
+Body (short, copy/paste):
+
+W3RT turns one sentence into a deterministic onchain workflow:
+**quote → simulate → approval → pending confirmation → explicit confirm**.
+
+This submission is **Solana-first** for the hackathon and uses USDC as the settlement unit (demo/testnet only).
+
+Try these:
+1) `quote 0.1 sol to usdc on solana devnet`
+2) `swap sol to get 10 usdc on solana devnet`
+3) `send 1 usdc to <RECIPIENT_PUBKEY> on solana devnet`
+
+Safety: no mainnet / no real funds. Broadcast requires an explicit `solana_confirm_transaction` step (confirm output includes a human-readable preview).
+
+---
+
+## Moltbook submission template (longer)
 
 Title:
 - **W3RT: Solana-first USDC agent runtime with safe two-phase execution**
