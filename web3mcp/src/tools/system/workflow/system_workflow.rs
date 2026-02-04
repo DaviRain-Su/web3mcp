@@ -236,9 +236,15 @@
             solana_sdk::pubkey::Pubkey::from_str(t).is_ok()
         }
 
-        async fn solana_resolve_symbol_via_jupiter_tokens(symbol: &str) -> Result<Option<Value>, ErrorData> {
-            // Jupiter token list (large). We only do a best-effort single fetch per run.
-            // Env override for mirrors/self-hosted lists.
+        fn jup_tokens_cache_path() -> std::path::PathBuf {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(".cache")
+                .join("web3mcp")
+                .join("jup_tokens_verified.json")
+        }
+
+        async fn solana_fetch_jupiter_tokens_verified() -> Result<Value, ErrorData> {
             let url = std::env::var("SOLANA_JUPITER_TOKENS_URL")
                 .unwrap_or_else(|_| "https://tokens.jup.ag/tokens?tags=verified".to_string());
 
@@ -273,21 +279,76 @@
                 });
             }
 
+            Ok(parsed)
+        }
+
+        async fn solana_jupiter_tokens_verified() -> Result<Value, ErrorData> {
+            // Best-effort on-disk cache (reduces repeated downloads during development).
+            // TTL is short: 10 minutes.
+            let cache_path = jup_tokens_cache_path();
+            let ttl = std::time::Duration::from_secs(600);
+
+            if let Ok(meta) = std::fs::metadata(&cache_path) {
+                if let Ok(mtime) = meta.modified() {
+                    if mtime.elapsed().unwrap_or(ttl + std::time::Duration::from_secs(1)) <= ttl {
+                        if let Ok(text) = std::fs::read_to_string(&cache_path) {
+                            if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                return Ok(v);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let v = solana_fetch_jupiter_tokens_verified().await?;
+
+            if let Some(parent) = cache_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(s) = serde_json::to_string(&v) {
+                let _ = std::fs::write(&cache_path, s);
+            }
+
+            Ok(v)
+        }
+
+        async fn solana_resolve_symbol_via_jupiter_tokens(symbol: &str) -> Result<Option<Value>, ErrorData> {
+            let parsed = solana_jupiter_tokens_verified().await?;
+
             let want = symbol.trim().to_lowercase();
             let arr = parsed.as_array().ok_or_else(|| ErrorData {
                 code: ErrorCode(-32603),
                 message: Cow::from("unexpected Jupiter tokens response (expected array)"),
-                data: Some(json!({"url": url, "body": parsed})),
+                data: Some(json!({"body": parsed})),
             })?;
 
+            let mut matches: Vec<Value> = Vec::new();
             for t in arr {
                 let sym = t.get("symbol").and_then(Value::as_str).unwrap_or("").to_lowercase();
                 if sym == want {
-                    return Ok(Some(t.clone()));
+                    matches.push(t.clone());
                 }
             }
 
-            Ok(None)
+            if matches.is_empty() {
+                return Ok(None);
+            }
+            if matches.len() > 1 {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("ambiguous SPL token symbol; please provide mint address"),
+                    data: Some(json!({
+                        "symbol": symbol,
+                        "matches": matches
+                            .iter()
+                            .take(5)
+                            .map(|m| json!({"symbol": m.get("symbol"), "name": m.get("name"), "address": m.get("address"), "decimals": m.get("decimals")}))
+                            .collect::<Vec<_>>()
+                    })),
+                });
+            }
+
+            Ok(Some(matches.remove(0)))
         }
 
         async fn solana_get_mint_decimals(
@@ -315,10 +376,11 @@
                 data: Some(json!({"mint": mint})),
             })?;
 
-            if acct.data.len() <= 44 {
+            // Base mint size should be at least 82 bytes.
+            if acct.data.len() < 82 {
                 return Err(ErrorData {
                     code: ErrorCode(-32603),
-                    message: Cow::from("mint account data too short to read decimals"),
+                    message: Cow::from("mint account data too short (expected >=82 bytes)"),
                     data: Some(json!({"mint": mint, "len": acct.data.len()})),
                 });
             }
@@ -657,12 +719,18 @@
                     message: Cow::from(format!("invalid token-2022 program id: {e}")),
                     data: None,
                 })?
-            } else {
+            } else if token_program == token_program_legacy {
                 solana_sdk::pubkey::Pubkey::from_str(token_program_legacy).map_err(|e| ErrorData {
                     code: ErrorCode(-32603),
                     message: Cow::from(format!("invalid token program id: {e}")),
                     data: None,
                 })?
+            } else {
+                return Err(ErrorData {
+                    code: ErrorCode(-32602),
+                    message: Cow::from("mint is not owned by spl-token or token-2022"),
+                    data: Some(json!({"mint": mint, "owner": token_program})),
+                });
             };
 
             let from_ata = spl_associated_token_account::get_associated_token_address_with_program_id(
@@ -726,6 +794,46 @@
                     accounts,
                     data,
                 }
+            }
+
+            #[cfg(test)]
+            #[test]
+            fn test_build_token_transfer_checked_ix_layout() {
+                use std::str::FromStr;
+                let program_id = solana_sdk::pubkey::Pubkey::from_str(
+                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                )
+                .unwrap();
+                let source = solana_sdk::pubkey::Pubkey::new_unique();
+                let mint = solana_sdk::pubkey::Pubkey::new_unique();
+                let dest = solana_sdk::pubkey::Pubkey::new_unique();
+                let auth = solana_sdk::pubkey::Pubkey::new_unique();
+
+                let ix = build_token_transfer_checked_ix(program_id, source, mint, dest, auth, 42u64, 6u8);
+
+                assert_eq!(ix.program_id, program_id);
+                assert_eq!(ix.data.len(), 10);
+                assert_eq!(ix.data[0], 12u8);
+                assert_eq!(u64::from_le_bytes(ix.data[1..9].try_into().unwrap()), 42u64);
+                assert_eq!(ix.data[9], 6u8);
+
+                // accounts: [source(w), mint(r), dest(w), authority(signer,r)]
+                assert_eq!(ix.accounts.len(), 4);
+                assert_eq!(ix.accounts[0].pubkey, source);
+                assert!(ix.accounts[0].is_writable);
+                assert!(!ix.accounts[0].is_signer);
+
+                assert_eq!(ix.accounts[1].pubkey, mint);
+                assert!(!ix.accounts[1].is_writable);
+                assert!(!ix.accounts[1].is_signer);
+
+                assert_eq!(ix.accounts[2].pubkey, dest);
+                assert!(ix.accounts[2].is_writable);
+                assert!(!ix.accounts[2].is_signer);
+
+                assert_eq!(ix.accounts[3].pubkey, auth);
+                assert!(!ix.accounts[3].is_writable);
+                assert!(ix.accounts[3].is_signer);
             }
 
             let transfer_ix = build_token_transfer_checked_ix(
