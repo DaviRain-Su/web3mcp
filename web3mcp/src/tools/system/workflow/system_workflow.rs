@@ -2023,12 +2023,17 @@
             }
 
             let slippage_bps = simulate.get("slippage_bps").and_then(Value::as_u64).unwrap_or(100);
-            if slippage_bps >= 300 {
+            let max_slippage_bps: u64 = std::env::var("W3RT_SWAP_MAX_SLIPPAGE_BPS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(300);
+
+            if slippage_bps >= max_slippage_bps {
                 warnings.push(json!({
                     "kind": "high_slippage",
                     "slippage_bps": slippage_bps,
-                    "threshold": 300,
-                    "note": "slippage_bps >= 300 (3%)"
+                    "threshold": max_slippage_bps,
+                    "note": "slippage_bps >= threshold"
                 }));
             }
 
@@ -2037,17 +2042,61 @@
                 .and_then(Value::as_str)
                 .unwrap_or("ExactIn");
 
+            // Policy knobs (env-configurable)
+            let max_route_steps: u64 = std::env::var("W3RT_SWAP_MAX_ROUTE_STEPS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(4);
+
             if swap_mode == "ExactOut" {
                 // ExactOut: user is targeting `outAmount`; quote.inAmount is a max-in budget.
                 // Warn more aggressively on slippage.
-                if slippage_bps >= 200 {
+                let exact_out_slip_threshold: u64 = std::env::var("W3RT_SWAP_EXACT_OUT_MAX_SLIPPAGE_BPS")
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(200);
+
+                if slippage_bps >= exact_out_slip_threshold {
                     warnings.push(json!({
                         "kind": "exact_out_high_slippage",
                         "slippage_bps": slippage_bps,
-                        "threshold": 200,
-                        "note": "ExactOut with slippage_bps >= 200 can be risky (max-in budget)"
+                        "threshold": exact_out_slip_threshold,
+                        "note": "ExactOut with high slippage can be risky (max-in budget)"
                     }));
                 }
+
+                // Max-in budget guard (UI) for ExactOut.
+                let max_in_ui_threshold: f64 = std::env::var("W3RT_SWAP_EXACT_OUT_MAX_IN_UI")
+                    .ok()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(100.0);
+
+                let max_in_ui_s = format_base_units_ui(in_amount, input_decimals);
+                let max_in_ui = max_in_ui_s.parse::<f64>().unwrap_or(0.0);
+
+                if max_in_ui >= max_in_ui_threshold {
+                    warnings.push(json!({
+                        "kind": "exact_out_high_max_in",
+                        "max_in_amount_ui": max_in_ui_s,
+                        "threshold_ui": max_in_ui_threshold,
+                        "note": "ExactOut max-in budget exceeds threshold"
+                    }));
+                }
+            }
+
+            // Route complexity guard.
+            let route_steps_n = quote
+                .get("routePlan")
+                .and_then(Value::as_array)
+                .map(|a| a.len() as u64)
+                .unwrap_or(0);
+            if route_steps_n > max_route_steps {
+                warnings.push(json!({
+                    "kind": "route_too_complex",
+                    "route_plan_steps": route_steps_n,
+                    "threshold": max_route_steps,
+                    "note": "routePlan has too many steps"
+                }));
             }
 
             json!({
@@ -2055,6 +2104,14 @@
                 "status": if warnings.is_empty() { "ok" } else { "needs_review" },
                 "network": network,
                 "summary": {
+                    "policy": {
+                        "max_slippage_bps": max_slippage_bps,
+                        "max_route_steps": max_route_steps,
+                        "exact_out_max_in_ui": std::env::var("W3RT_SWAP_EXACT_OUT_MAX_IN_UI")
+                            .ok()
+                            .and_then(|s| s.parse::<f64>().ok())
+                            .unwrap_or(100.0)
+                    },
                     "swap_mode": swap_mode,
                     "in_amount_base": in_amount,
                     "in_amount_ui": format_base_units_ui(in_amount, input_decimals),
