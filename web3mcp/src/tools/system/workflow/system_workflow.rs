@@ -554,18 +554,71 @@
                 return Err(ErrorData { code: ErrorCode(-32602), message: Cow::from("to (recipient) is required"), data: None });
             }
 
-            // USDC/USDT mints (mainnet).
-            let (mint, decimals): (&str, u8) = match asset.as_str() {
-                "usdc" => ("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", 6),
-                "usdt" => ("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", 6),
-                _ => {
-                    return Err(ErrorData {
+            // Resolve mint + decimals.
+            // - If `asset` is a pubkey: treat it as mint address.
+            // - Else: support USDC/USDT fast-path, and fall back to Jupiter tokens list.
+            let network = solana_network_from_intent(&intent_value);
+            let rpc = Self::solana_rpc(network.as_deref())?;
+
+            let (mint, decimals, token_info): (String, u8, Option<Value>) = if solana_is_pubkey(&asset) {
+                let mint = asset.clone();
+                let decimals = solana_get_mint_decimals(&rpc, &mint).await?;
+                (mint, decimals, Some(json!({"source": "mint_address"})))
+            } else if asset == "usdc" {
+                (
+                    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
+                    6,
+                    Some(json!({"source": "builtin", "symbol": "USDC"})),
+                )
+            } else if asset == "usdt" {
+                (
+                    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),
+                    6,
+                    Some(json!({"source": "builtin", "symbol": "USDT"})),
+                )
+            } else {
+                let found = solana_resolve_symbol_via_jupiter_tokens(&asset)
+                    .await?
+                    .ok_or_else(|| ErrorData {
                         code: ErrorCode(-32602),
-                        message: Cow::from("transfer_spl currently supports USDC/USDT only"),
+                        message: Cow::from("unsupported SPL asset (provide mint address or known symbol)"),
                         data: Some(json!({"asset": asset})),
-                    })
-                }
+                    })?;
+                let mint = found
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ErrorData {
+                        code: ErrorCode(-32603),
+                        message: Cow::from("Jupiter token entry missing address"),
+                        data: Some(found.clone()),
+                    })?
+                    .to_string();
+
+                let decimals = found
+                    .get("decimals")
+                    .and_then(Value::as_u64)
+                    .map(|d| d as u8)
+                    .unwrap_or(0);
+
+                let decimals = if decimals == 0 {
+                    solana_get_mint_decimals(&rpc, &mint).await?
+                } else {
+                    decimals
+                };
+
+                (
+                    mint,
+                    decimals,
+                    Some(json!({
+                        "source": "jupiter_tokens",
+                        "symbol": found.get("symbol"),
+                        "name": found.get("name"),
+                        "address": found.get("address"),
+                        "decimals": decimals
+                    })),
+                )
             };
+
             let amount_base = parse_amount_to_base_units(amount_s, decimals as u32)?;
 
             let from_pk = solana_sdk::pubkey::Pubkey::from_str(from).map_err(|e| ErrorData {
@@ -578,7 +631,7 @@
                 message: Cow::from(format!("invalid to pubkey: {e}")),
                 data: Some(json!({"to": to})),
             })?;
-            let mint_pk = solana_sdk::pubkey::Pubkey::from_str(mint).map_err(|e| ErrorData {
+            let mint_pk = solana_sdk::pubkey::Pubkey::from_str(mint.as_str()).map_err(|e| ErrorData {
                 code: ErrorCode(-32602),
                 message: Cow::from(format!("invalid mint pubkey: {e}")),
                 data: Some(json!({"mint": mint})),
@@ -587,8 +640,6 @@
             let from_ata = spl_associated_token_account::get_associated_token_address(&from_pk, &mint_pk);
             let to_ata = spl_associated_token_account::get_associated_token_address(&to_pk, &mint_pk);
 
-            let network = solana_network_from_intent(&intent_value);
-            let rpc = Self::solana_rpc(network.as_deref())?;
             let bh = rpc.get_latest_blockhash().await.map_err(|e| Self::sdk_error("solana_spl_transfer:get_latest_blockhash", e))?;
 
             // Ensure sender ATA exists.
@@ -662,6 +713,7 @@
                 "asset": asset,
                 "mint": mint,
                 "decimals": decimals,
+                "token_info": token_info,
                 "from": from,
                 "to": to,
                 "from_ata": from_ata.to_string(),
