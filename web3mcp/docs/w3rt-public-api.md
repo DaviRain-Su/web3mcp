@@ -30,6 +30,7 @@ Only these tools are exposed:
 Build with:
 
 Notes (advanced mode):
+- `transfer_native` supports SOL native transfer.
 - `transfer_spl` supports mint addresses, known symbols (via Jupiter token list), and token-2022 mints (program-aware ATA + TransferChecked).
 
 ```bash

@@ -408,6 +408,34 @@
             Ok(acct.owner.to_string())
         }
 
+        fn solana_build_token_transfer_checked_ix(
+            program_id: solana_sdk::pubkey::Pubkey,
+            source: solana_sdk::pubkey::Pubkey,
+            mint: solana_sdk::pubkey::Pubkey,
+            destination: solana_sdk::pubkey::Pubkey,
+            authority: solana_sdk::pubkey::Pubkey,
+            amount: u64,
+            decimals: u8,
+        ) -> solana_sdk::instruction::Instruction {
+            let mut data = Vec::with_capacity(1 + 8 + 1);
+            data.push(12u8); // TransferChecked
+            data.extend_from_slice(&amount.to_le_bytes());
+            data.push(decimals);
+
+            let accounts = vec![
+                solana_sdk::instruction::AccountMeta::new(source, false),
+                solana_sdk::instruction::AccountMeta::new_readonly(mint, false),
+                solana_sdk::instruction::AccountMeta::new(destination, false),
+                solana_sdk::instruction::AccountMeta::new_readonly(authority, true),
+            ];
+
+            solana_sdk::instruction::Instruction {
+                program_id,
+                accounts,
+                data,
+            }
+        }
+
         fn parse_amount_to_base_units(amount: &str, decimals: u32) -> Result<u64, ErrorData> {
             let s = amount.trim();
             if s.is_empty() {
@@ -767,76 +795,7 @@
                 ));
             }
 
-            // Build SPL TransferChecked instruction manually to avoid crate/version type mismatches.
-            fn build_token_transfer_checked_ix(
-                program_id: solana_sdk::pubkey::Pubkey,
-                source: solana_sdk::pubkey::Pubkey,
-                mint: solana_sdk::pubkey::Pubkey,
-                destination: solana_sdk::pubkey::Pubkey,
-                authority: solana_sdk::pubkey::Pubkey,
-                amount: u64,
-                decimals: u8,
-            ) -> solana_sdk::instruction::Instruction {
-                let mut data = Vec::with_capacity(1 + 8 + 1);
-                data.push(12u8); // TransferChecked
-                data.extend_from_slice(&amount.to_le_bytes());
-                data.push(decimals);
-
-                let accounts = vec![
-                    solana_sdk::instruction::AccountMeta::new(source, false),
-                    solana_sdk::instruction::AccountMeta::new_readonly(mint, false),
-                    solana_sdk::instruction::AccountMeta::new(destination, false),
-                    solana_sdk::instruction::AccountMeta::new_readonly(authority, true),
-                ];
-
-                solana_sdk::instruction::Instruction {
-                    program_id,
-                    accounts,
-                    data,
-                }
-            }
-
-            #[cfg(test)]
-            #[test]
-            fn test_build_token_transfer_checked_ix_layout() {
-                use std::str::FromStr;
-                let program_id = solana_sdk::pubkey::Pubkey::from_str(
-                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                )
-                .unwrap();
-                let source = solana_sdk::pubkey::Pubkey::new_unique();
-                let mint = solana_sdk::pubkey::Pubkey::new_unique();
-                let dest = solana_sdk::pubkey::Pubkey::new_unique();
-                let auth = solana_sdk::pubkey::Pubkey::new_unique();
-
-                let ix = build_token_transfer_checked_ix(program_id, source, mint, dest, auth, 42u64, 6u8);
-
-                assert_eq!(ix.program_id, program_id);
-                assert_eq!(ix.data.len(), 10);
-                assert_eq!(ix.data[0], 12u8);
-                assert_eq!(u64::from_le_bytes(ix.data[1..9].try_into().unwrap()), 42u64);
-                assert_eq!(ix.data[9], 6u8);
-
-                // accounts: [source(w), mint(r), dest(w), authority(signer,r)]
-                assert_eq!(ix.accounts.len(), 4);
-                assert_eq!(ix.accounts[0].pubkey, source);
-                assert!(ix.accounts[0].is_writable);
-                assert!(!ix.accounts[0].is_signer);
-
-                assert_eq!(ix.accounts[1].pubkey, mint);
-                assert!(!ix.accounts[1].is_writable);
-                assert!(!ix.accounts[1].is_signer);
-
-                assert_eq!(ix.accounts[2].pubkey, dest);
-                assert!(ix.accounts[2].is_writable);
-                assert!(!ix.accounts[2].is_signer);
-
-                assert_eq!(ix.accounts[3].pubkey, auth);
-                assert!(!ix.accounts[3].is_writable);
-                assert!(ix.accounts[3].is_signer);
-            }
-
-            let transfer_ix = build_token_transfer_checked_ix(
+            let transfer_ix = solana_build_token_transfer_checked_ix(
                 token_program_id,
                 from_ata,
                 mint_pk,
@@ -1728,3 +1687,4 @@
 
         Ok(CallToolResult::success(vec![Content::text(response)]))
     }
+

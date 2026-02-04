@@ -75,6 +75,9 @@ What should happen:
 ### Advanced/debug mode only
 If built with `--features expose-advanced-tools`, you can still use the internal chain/protocol tools directly for debugging.
 
+Example (Solana native SOL transfer):
+- "Send 0.01 SOL to <RECIPIENT_PUBKEY> on Solana mainnet"
+
 Example (Solana SPL transfer by mint address; supports token-2022 mints too):
 - "Send 10 9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump to <RECIPIENT_PUBKEY> on Solana mainnet"
 
