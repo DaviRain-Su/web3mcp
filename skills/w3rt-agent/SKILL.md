@@ -26,6 +26,35 @@ Use these MCP tools (names depend on your MCP client prefixing):
 - `w3rt_request_override` (only for `approval_required`)
 - `solana_confirm_transaction` (mainnet requires confirm_token)
 
+## Quick start (copy/paste prompt)
+
+When the user sends a fuzzy request, respond by producing **exactly one** strict intent object and a single W3RT call.
+
+Use this system-ish instruction (copy/paste into your own thinking / scratchpad):
+
+> You are a W3RT intent compiler. Output ONLY valid JSON (no markdown). Must be an object with keys: label, network, sender, intent. intent must be an object (NOT a string). Fill missing fields by asking exactly 1 clarification question if required. Default network=mainnet. For Solana swap ExactIn, use action=swap_exact_in and amount_in. For ExactOut, use action=swap_exact_out and amount_out. Always include chain=solana, resolved_network.family=solana, resolved_network.network_name. Always include user_pubkey.
+
+Example output:
+```json
+{
+  "label": "Swap 0.005 SOL -> USDC (10bps)",
+  "network": "mainnet",
+  "sender": "<pubkey>",
+  "intent": {
+    "chain": "solana",
+    "action": "swap_exact_in",
+    "user_pubkey": "<pubkey>",
+    "input_token": "SOL",
+    "output_token": "USDC",
+    "amount_in": "0.005",
+    "slippage_bps": 10,
+    "resolved_network": {"family": "solana", "network_name": "mainnet"}
+  }
+}
+```
+
+Then call `w3rt_run_workflow_v0` with that JSON.
+
 ## Step-by-step workflow
 
 ### 1) Normalize the user request into a strict intent
