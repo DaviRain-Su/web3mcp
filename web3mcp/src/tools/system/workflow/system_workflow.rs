@@ -2149,7 +2149,11 @@
                 },
                 "note": "Execution blocked: approval.status != ok (policy)."
             })
-        } else if intent_value["chain"] == "solana" && intent_value["action"] == "get_portfolio" {
+        } else if intent_value["chain"] == "solana"
+            && (intent_value["action"] == "quote"
+                || intent_value["action"] == "jupiter_quote"
+                || intent_value["action"] == "get_portfolio")
+        {
             json!({
                 "stage": "execute",
                 "status": "ok",
