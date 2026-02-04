@@ -782,9 +782,10 @@
 
             // Create recipient ATA if needed.
             let to_ata_exists = rpc.get_account(&to_ata).await.is_ok();
+            let will_create_ata = !to_ata_exists;
 
             let mut ixs: Vec<solana_sdk::instruction::Instruction> = vec![];
-            if !to_ata_exists {
+            if will_create_ata {
                 // payer = from
                 ixs.push(spl_associated_token_account::instruction::create_associated_token_account(
                     &from_pk,
@@ -844,6 +845,8 @@
                 "to": to,
                 "from_ata": from_ata.to_string(),
                 "to_ata": to_ata.to_string(),
+                "to_ata_exists": to_ata_exists,
+                "will_create_ata": will_create_ata,
                 "amount_ui": amount_s,
                 "amount_base": amount_base.to_string(),
                 "tx": { "tx_base64": tx_b64 },
@@ -1262,13 +1265,17 @@
             json!({
                 "stage": "approval",
                 "status": if warnings.is_empty() { "ok" } else { "needs_review" },
+                "network": simulate.get("network"),
                 "warnings": warnings,
                 "summary": {
+                    "adapter": simulate.get("adapter"),
                     "from": from,
                     "to": to,
                     "amount_ui": amount_ui,
-                    "lamports": simulate.get("lamports")
-                }
+                    "lamports": simulate.get("lamports"),
+                    "simulation_units": simulate.get("simulation").and_then(|v| v.get("units_consumed"))
+                },
+                "note": "Native SOL transfer. Execution uses safe default (pending confirmation)."
             })
         } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_spl_transfer")
             && simulate.get("status").and_then(Value::as_str) == Some("ok")
@@ -1300,17 +1307,26 @@
             json!({
                 "stage": "approval",
                 "status": if warnings.is_empty() { "ok" } else { "needs_review" },
+                "network": simulate.get("network"),
                 "warnings": warnings,
                 "summary": {
+                    "adapter": simulate.get("adapter"),
                     "asset": asset,
                     "mint": simulate.get("mint"),
+                    "decimals": simulate.get("decimals"),
+                    "token_program": simulate.get("token_program"),
+                    "token_info": simulate.get("token_info"),
                     "from": from,
                     "to": to,
+                    "from_ata": simulate.get("from_ata"),
+                    "to_ata": simulate.get("to_ata"),
+                    "to_ata_exists": simulate.get("to_ata_exists"),
+                    "will_create_ata": simulate.get("will_create_ata"),
                     "amount_ui": amount_ui,
                     "amount_base": simulate.get("amount_base"),
-                    "from_ata": simulate.get("from_ata"),
-                    "to_ata": simulate.get("to_ata")
-                }
+                    "simulation_units": simulate.get("simulation").and_then(|v| v.get("units_consumed"))
+                },
+                "note": "SPL token transfer. Execution uses safe default (pending confirmation)."
             })
         } else {
             json!({
