@@ -120,8 +120,12 @@ impl ServerHandler for Web3McpServer {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // IMPORTANT: In stdio MCP mode, stdout must be reserved for MCP JSON messages.
+    // Send logs to stderr and disable ANSI escapes to avoid breaking MCP clients.
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
         .init();
 
     // Get RPC URL or network from environment variable if provided
