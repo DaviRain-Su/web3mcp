@@ -2738,9 +2738,19 @@
                 }
             }
 
+            let has_denied_program = warnings.iter().any(|w| {
+                w.get("kind").and_then(Value::as_str) == Some("program_denied")
+            });
+
             json!({
                 "stage": "approval",
-                "status": if warnings.is_empty() { "ok" } else { "needs_review" },
+                "status": if has_denied_program {
+                    "blocked"
+                } else if warnings.is_empty() {
+                    "ok"
+                } else {
+                    "needs_review"
+                },
                 "network": network,
                 "summary": {
                     "policy": {
