@@ -1426,8 +1426,11 @@
             });
         }
 
-        // Solana read-only quote (Jupiter v6) (no tx built, no simulation).
-        if intent_value["chain"] == "solana" && intent_value["action"] == "jupiter_quote" {
+        // Solana read-only quote (no tx built, no simulation).
+        // Today: defaults to Jupiter v6, but is designed to allow other quote adapters later.
+        if intent_value["chain"] == "solana"
+            && (intent_value["action"] == "quote" || intent_value["action"] == "jupiter_quote")
+        {
             let input_token = intent_value
                 .get("input_token")
                 .and_then(Value::as_str)
@@ -1538,7 +1541,8 @@
                 "stage": "simulate",
                 "status": "ok",
                 "simulation_performed": true,
-                "adapter": "jupiter_quote",
+                "adapter": "solana_quote",
+                "quote_adapter": "jupiter_v6",
                 "network": network,
                 "swap_mode": swap_mode,
                 "input_token": input_token,
@@ -1910,7 +1914,7 @@
                 },
                 "note": "Native SOL transfer. Execution uses safe default (pending confirmation)."
             })
-        } else if simulate.get("adapter").and_then(Value::as_str) == Some("jupiter_quote")
+        } else if simulate.get("adapter").and_then(Value::as_str) == Some("solana_quote")
             && simulate.get("status").and_then(Value::as_str) == Some("ok")
         {
             let quote = simulate.get("quote").cloned().unwrap_or(Value::Null);
@@ -1921,6 +1925,7 @@
                 "warnings": [],
                 "summary": {
                     "adapter": simulate.get("adapter"),
+                    "quote_adapter": simulate.get("quote_adapter"),
                     "swap_mode": simulate.get("swap_mode"),
                     "input_mint": simulate.get("input_mint"),
                     "output_mint": simulate.get("output_mint"),
