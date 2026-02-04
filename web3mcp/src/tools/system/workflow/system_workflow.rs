@@ -554,19 +554,18 @@
                 return Err(ErrorData { code: ErrorCode(-32602), message: Cow::from("to (recipient) is required"), data: None });
             }
 
-            // USDC mint (mainnet).
-            let mint = match asset.as_str() {
-                "usdc" => "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            // USDC/USDT mints (mainnet).
+            let (mint, decimals): (&str, u8) = match asset.as_str() {
+                "usdc" => ("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", 6),
+                "usdt" => ("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", 6),
                 _ => {
                     return Err(ErrorData {
                         code: ErrorCode(-32602),
-                        message: Cow::from("transfer_spl currently supports USDC only"),
+                        message: Cow::from("transfer_spl currently supports USDC/USDT only"),
                         data: Some(json!({"asset": asset})),
                     })
                 }
             };
-
-            let decimals: u8 = 6;
             let amount_base = parse_amount_to_base_units(amount_s, decimals as u32)?;
 
             let from_pk = solana_sdk::pubkey::Pubkey::from_str(from).map_err(|e| ErrorData {
@@ -1101,7 +1100,7 @@
             let asset = simulate.get("asset").and_then(Value::as_str).unwrap_or("spl");
             let mut warnings: Vec<Value> = vec![];
 
-            // Threshold: 1000 USDC default.
+            // Threshold: 1000 USDC/USDT default.
             if let Ok(v) = amount_ui.parse::<f64>() {
                 if v >= 1000.0 {
                     warnings.push(json!({

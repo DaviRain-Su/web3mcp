@@ -125,6 +125,7 @@
             let action = if asset.to_lowercase() == "sol" {
                 "transfer_native"
             } else {
+                // For now: USDC/USDT supported as SPL.
                 "transfer_spl"
             };
 
