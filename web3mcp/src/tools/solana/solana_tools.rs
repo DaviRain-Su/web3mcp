@@ -7035,7 +7035,6 @@
                 }
 
                 if !missing.is_empty() {
-                    // Allow admin override to bypass mismatches if they are whitelisted and fee_payer matches.
                     let admin_ok = approval_status == "blocked";
                     if !admin_ok {
                         return Self::guard_result(
@@ -7050,6 +7049,82 @@
                                 "tx_version": if vtx.is_some() { "versioned" } else { "legacy" }
                             })),
                         );
+                    }
+                }
+
+                // Program allow/deny enforcement at confirm-time (re-check, in case pending/summary was tampered).
+                let deny_programs_raw = std::env::var("W3RT_SOLANA_TX_DENY_PROGRAMS").unwrap_or_default();
+                let allow_programs_raw = std::env::var("W3RT_SOLANA_TX_ALLOWED_PROGRAMS").unwrap_or_default();
+
+                let deny_set: std::collections::HashSet<String> = deny_programs_raw
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .collect();
+                let allow_set: std::collections::HashSet<String> = allow_programs_raw
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .collect();
+
+                if !deny_set.is_empty() || !allow_set.is_empty() {
+                    let mut programs_used: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    for ix in &instructions {
+                        if let Some(pid) = account_keys.get(ix.program_id_index as usize) {
+                            programs_used.insert(pid.to_string());
+                        }
+                    }
+
+                    let denied: Vec<String> = programs_used
+                        .iter()
+                        .filter(|p| deny_set.contains(*p))
+                        .cloned()
+                        .collect();
+
+                    if !denied.is_empty() {
+                        // Denylist is hard-block, unless admin override path is used.
+                        if approval_status != "blocked" {
+                            return Self::guard_result(
+                                "solana_confirm_transaction",
+                                "PROGRAM_DENIED",
+                                "Transaction touches a denied program id",
+                                false,
+                                Some("This transaction was denied by policy. Adjust route/params or remove program from denylist."),
+                                None,
+                                Some(json!({
+                                    "denied_programs": denied,
+                                    "env": "W3RT_SOLANA_TX_DENY_PROGRAMS"
+                                })),
+                            );
+                        }
+                    }
+
+                    if !allow_set.is_empty() {
+                        let not_allowed: Vec<String> = programs_used
+                            .iter()
+                            .filter(|p| !allow_set.contains(*p))
+                            .cloned()
+                            .collect();
+
+                        if !not_allowed.is_empty() {
+                            // Allowlist mismatch is a hard-block at confirm-time (unless blocked admin override).
+                            if approval_status != "blocked" {
+                                return Self::guard_result(
+                                    "solana_confirm_transaction",
+                                    "PROGRAM_NOT_ALLOWED",
+                                    "Transaction touches a program id not in allowlist",
+                                    false,
+                                    Some("This transaction is not allowed by policy. Expand allowlist or adjust route."),
+                                    None,
+                                    Some(json!({
+                                        "not_allowed_programs": not_allowed,
+                                        "env": "W3RT_SOLANA_TX_ALLOWED_PROGRAMS"
+                                    })),
+                                );
+                            }
+                        }
                     }
                 }
             }
