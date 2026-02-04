@@ -2105,6 +2105,26 @@
                         }));
                     }
                 }
+
+                // ExactIn: min-out UI threshold (env-configurable). If too low, force review.
+                // Default is 0.0 (disabled) because different pairs have wildly different scales.
+                let min_out_ui_threshold: f64 = std::env::var("W3RT_SWAP_EXACT_IN_MIN_OUT_UI")
+                    .ok()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+
+                if min_out_ui_threshold > 0.0 {
+                    let min_out_ui_s = min_out_ui.clone().unwrap_or_else(|| "0".to_string());
+                    let min_out_ui_v = min_out_ui_s.parse::<f64>().unwrap_or(0.0);
+                    if min_out_ui_v > 0.0 && min_out_ui_v < min_out_ui_threshold {
+                        warnings.push(json!({
+                            "kind": "min_out_too_low",
+                            "min_out_ui": min_out_ui_s,
+                            "threshold_ui": min_out_ui_threshold,
+                            "note": "computed min_out is below threshold"
+                        }));
+                    }
+                }
             }
 
             // Route complexity guard.
@@ -2133,7 +2153,11 @@
                         "exact_out_max_in_ui": std::env::var("W3RT_SWAP_EXACT_OUT_MAX_IN_UI")
                             .ok()
                             .and_then(|s| s.parse::<f64>().ok())
-                            .unwrap_or(100.0)
+                            .unwrap_or(100.0),
+                        "exact_in_min_out_ui": std::env::var("W3RT_SWAP_EXACT_IN_MIN_OUT_UI")
+                            .ok()
+                            .and_then(|s| s.parse::<f64>().ok())
+                            .unwrap_or(0.0)
                     },
                     "swap_mode": swap_mode,
                     "in_amount_base": in_amount,
