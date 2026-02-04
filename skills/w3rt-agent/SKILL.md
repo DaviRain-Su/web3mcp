@@ -55,6 +55,31 @@ Example output:
 
 Then call `w3rt_run_workflow_v0` with that JSON.
 
+## Orchestrator output contract (what you should return to the user)
+
+After running the workflow, always return a compact summary with:
+- `run_id`
+- `analysis.intent` (normalized)
+- `simulate.status` + `simulate.adapter` + `simulate.swap.tx_base64` presence
+- `approval.status` + warnings count
+- `execute.status`
+- If `pending_confirmation_created`: include `pending_confirmation_id`, `tx_summary_hash`, `confirm_token` and the exact `solana_confirm_transaction` args to copy/paste.
+
+If mainnet: always stop before broadcast and ask for explicit confirmation.
+
+## Default sender (recommended)
+
+If the user does not provide a wallet address, use the **default local Solana keypair** (from env `SOLANA_KEYPAIR_PATH`).
+
+How to resolve it (run once per session):
+
+```bash
+# prints the pubkey for the configured keypair
+solana address -k "$SOLANA_KEYPAIR_PATH"
+```
+
+If `SOLANA_KEYPAIR_PATH` is not set, ask the user to provide a pubkey or set it.
+
 ## Step-by-step workflow
 
 ### 1) Normalize the user request into a strict intent
