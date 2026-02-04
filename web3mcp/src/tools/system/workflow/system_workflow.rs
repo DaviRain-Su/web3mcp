@@ -2642,6 +2642,102 @@
                 }));
             }
 
+            // Program allow/deny policy (env-configurable).
+            // - Deny list is always enforced if set.
+            // - Allow list is enforced only if set (non-empty). Because Jupiter routes can involve many DEX programs.
+            let deny_programs_raw = std::env::var("W3RT_SOLANA_TX_DENY_PROGRAMS").unwrap_or_default();
+            let allow_programs_raw = std::env::var("W3RT_SOLANA_TX_ALLOWED_PROGRAMS").unwrap_or_default();
+
+            let deny_set: std::collections::HashSet<String> = deny_programs_raw
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            let allow_set: std::collections::HashSet<String> = allow_programs_raw
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+
+            if !deny_set.is_empty() || !allow_set.is_empty() {
+                let tx_b64 = simulate
+                    .get("swap")
+                    .and_then(|s| s.get("tx_base64"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+
+                if !tx_b64.is_empty() {
+                    let raw = Self::decode_base64("swap.tx_base64", tx_b64)?;
+                    let vtx: Option<solana_transaction::versioned::VersionedTransaction> =
+                        bincode::deserialize(&raw).ok();
+                    let tx: Option<solana_sdk::transaction::Transaction> = if vtx.is_none() {
+                        bincode::deserialize(&raw).ok()
+                    } else {
+                        None
+                    };
+
+                    let mut account_keys: Vec<solana_sdk::pubkey::Pubkey> = Vec::new();
+                    let mut ins: Vec<solana_message::compiled_instruction::CompiledInstruction> =
+                        Vec::new();
+
+                    if let Some(t) = tx.as_ref() {
+                        account_keys = t.message.account_keys.clone();
+                        ins = t.message.instructions.clone();
+                    }
+                    if let Some(v) = vtx.as_ref() {
+                        match &v.message {
+                            solana_message::VersionedMessage::Legacy(msg) => {
+                                account_keys = msg.account_keys.clone();
+                                ins = msg.instructions.clone();
+                            }
+                            solana_message::VersionedMessage::V0(msg) => {
+                                account_keys = msg.account_keys.clone();
+                                ins = msg.instructions.clone();
+                            }
+                        }
+                    }
+
+                    let mut programs_used: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    for ix in &ins {
+                        if let Some(pid) = account_keys.get(ix.program_id_index as usize) {
+                            programs_used.insert(pid.to_string());
+                        }
+                    }
+
+                    // Deny always wins.
+                    let denied: Vec<String> = programs_used
+                        .iter()
+                        .filter(|p| deny_set.contains(*p))
+                        .cloned()
+                        .collect();
+                    if !denied.is_empty() {
+                        warnings.push(json!({
+                            "kind": "program_denied",
+                            "programs": denied,
+                            "note": "transaction touches a denied program id"
+                        }));
+                    }
+
+                    // Allowlist: if set, any unknown program triggers review.
+                    if !allow_set.is_empty() {
+                        let not_allowed: Vec<String> = programs_used
+                            .iter()
+                            .filter(|p| !allow_set.contains(*p))
+                            .cloned()
+                            .collect();
+                        if !not_allowed.is_empty() {
+                            warnings.push(json!({
+                                "kind": "program_not_allowed",
+                                "programs": not_allowed,
+                                "note": "transaction touches a program id not in allowlist"
+                            }));
+                        }
+                    }
+                }
+            }
+
             json!({
                 "stage": "approval",
                 "status": if warnings.is_empty() { "ok" } else { "needs_review" },
@@ -2657,7 +2753,9 @@
                         "exact_in_min_out_ui": std::env::var("W3RT_SWAP_EXACT_IN_MIN_OUT_UI")
                             .ok()
                             .and_then(|s| s.parse::<f64>().ok())
-                            .unwrap_or(0.0)
+                            .unwrap_or(0.0),
+                        "tx_deny_programs": std::env::var("W3RT_SOLANA_TX_DENY_PROGRAMS").ok(),
+                        "tx_allow_programs": std::env::var("W3RT_SOLANA_TX_ALLOWED_PROGRAMS").ok()
                     },
                     "swap_mode": swap_mode,
                     "in_amount_base": in_amount,
