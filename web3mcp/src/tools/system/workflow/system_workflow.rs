@@ -1952,6 +1952,73 @@
                     }));
                 } else if program_kind == "spl_token" || program_kind == "spl_token_2022" {
                     decoded = decode_spl_token_ix(&ix.data);
+                    if let Some(d) = decoded.as_mut() {
+                        // Attach best-effort account roles for common SPL token instructions.
+                        let kind = d.get("kind").and_then(Value::as_str).unwrap_or("");
+                        let roles: Option<Value> = match kind {
+                            "token_transfer" => Some(json!({
+                                "source": accounts.get(0),
+                                "destination": accounts.get(1),
+                                "authority": accounts.get(2)
+                            })),
+                            "token_transfer_checked" => Some(json!({
+                                "source": accounts.get(0),
+                                "mint": accounts.get(1),
+                                "destination": accounts.get(2),
+                                "authority": accounts.get(3)
+                            })),
+                            "token_approve" => Some(json!({
+                                "source": accounts.get(0),
+                                "delegate": accounts.get(1),
+                                "owner": accounts.get(2)
+                            })),
+                            "token_approve_checked" => Some(json!({
+                                "source": accounts.get(0),
+                                "mint": accounts.get(1),
+                                "delegate": accounts.get(2),
+                                "owner": accounts.get(3)
+                            })),
+                            "token_revoke" => Some(json!({
+                                "source": accounts.get(0),
+                                "owner": accounts.get(1)
+                            })),
+                            "token_mint_to" => Some(json!({
+                                "mint": accounts.get(0),
+                                "destination": accounts.get(1),
+                                "authority": accounts.get(2)
+                            })),
+                            "token_mint_to_checked" => Some(json!({
+                                "mint": accounts.get(0),
+                                "destination": accounts.get(1),
+                                "authority": accounts.get(2)
+                            })),
+                            "token_burn" => Some(json!({
+                                "source": accounts.get(0),
+                                "mint": accounts.get(1),
+                                "authority": accounts.get(2)
+                            })),
+                            "token_burn_checked" => Some(json!({
+                                "source": accounts.get(0),
+                                "mint": accounts.get(1),
+                                "authority": accounts.get(2)
+                            })),
+                            "token_close_account" => Some(json!({
+                                "account": accounts.get(0),
+                                "destination": accounts.get(1),
+                                "owner": accounts.get(2)
+                            })),
+                            "token_sync_native" => Some(json!({
+                                "account": accounts.get(0)
+                            })),
+                            _ => None,
+                        };
+
+                        if let Some(r) = roles {
+                            if let Value::Object(obj) = d {
+                                obj.insert("roles".to_string(), r);
+                            }
+                        }
+                    }
                 } else if program_kind == "compute_budget" {
                     decoded = decode_compute_budget_ix(&ix.data);
                 }
