@@ -148,6 +148,15 @@
         // Allow either a validated intent object OR intent_text (NL) to be provided.
         let mut intent_value = request.intent.clone().unwrap_or(Value::Null);
 
+        // Back-compat: some clients send intent as a JSON string. Parse it.
+        if intent_value.is_string() {
+            if let Some(s) = intent_value.as_str() {
+                if let Ok(v) = serde_json::from_str::<Value>(s) {
+                    intent_value = v;
+                }
+            }
+        }
+
         if intent_value.is_null() {
             if let Some(text) = request.intent_text.clone() {
                 let sender = request
@@ -161,6 +170,102 @@
                 intent_value = parsed;
             }
         }
+
+        // Normalize common aliases so NL / external clients reliably hit the implemented code paths.
+        fn normalize_intent(intent: &mut Value) {
+            if !intent.is_object() {
+                return;
+            }
+
+            // Ensure chain is present for Solana actions.
+            if intent.get("chain").is_none() {
+                // Heuristic: any swap/quote/transfer action is currently Solana-first.
+                if let Some(a) = intent.get("action").and_then(Value::as_str) {
+                    if a.starts_with("swap")
+                        || a.contains("quote")
+                        || a.starts_with("transfer")
+                        || a.contains("jupiter")
+                    {
+                        intent["chain"] = Value::String("solana".to_string());
+                    }
+                }
+            }
+
+            // Token aliases.
+            if intent.get("input_token").is_none() {
+                if let Some(v) = intent.get("from_token").cloned() {
+                    intent["input_token"] = v;
+                }
+            }
+            if intent.get("output_token").is_none() {
+                if let Some(v) = intent.get("to_token").cloned() {
+                    intent["output_token"] = v;
+                }
+            }
+
+            // Amount aliases.
+            let action = intent
+                .get("action")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if action == "swap_exact_in" && intent.get("amount_in").is_none() {
+                if let Some(v) = intent.get("amount").cloned() {
+                    intent["amount_in"] = v;
+                }
+            }
+            if action == "swap_exact_out" && intent.get("amount_out").is_none() {
+                if let Some(v) = intent.get("amount").cloned() {
+                    intent["amount_out"] = v;
+                }
+            }
+
+            // Network normalization.
+            // Accept network strings like "solana-mainnet" and normalize to resolved_network.network_name.
+            let mut net: Option<String> = None;
+            if let Some(s) = intent.get("network").and_then(Value::as_str) {
+                net = Some(s.to_string());
+            } else if let Some(s) = intent
+                .get("resolved_network")
+                .and_then(|v| v.get("network_name"))
+                .and_then(Value::as_str)
+            {
+                net = Some(s.to_string());
+            }
+
+            if let Some(n) = net {
+                let lower = n.to_lowercase();
+                let canonical = if lower.contains("devnet") {
+                    "devnet"
+                } else if lower.contains("testnet") {
+                    "testnet"
+                } else if lower.contains("main") {
+                    "mainnet"
+                } else {
+                    n.as_str()
+                };
+
+                if intent.get("resolved_network").is_none() {
+                    intent["resolved_network"] = json!({
+                        "family": "solana",
+                        "network_name": canonical
+                    });
+                } else if intent
+                    .get("resolved_network")
+                    .and_then(|v| v.get("network_name"))
+                    .is_none()
+                {
+                    intent["resolved_network"]["network_name"] = Value::String(canonical.to_string());
+                    if intent["resolved_network"]["family"].is_null() {
+                        intent["resolved_network"]["family"] = Value::String("solana".to_string());
+                    }
+                } else {
+                    intent["resolved_network"]["network_name"] = Value::String(canonical.to_string());
+                }
+            }
+        }
+
+        normalize_intent(&mut intent_value);
 
         let analysis = json!({
             "stage": "analysis",
