@@ -1480,7 +1480,24 @@
                     "tool": "w3rt_run_workflow_v0",
                     "run_id": run_id,
                     "adapter": simulate.get("adapter"),
-                    "approval": approval
+                    "approval": approval,
+                    "intent": {
+                        "chain": intent_value.get("chain"),
+                        "action": intent_value.get("action"),
+                        "asset": intent_value.get("asset"),
+                        "amount": intent_value.get("amount"),
+                        "from": intent_value.get("from"),
+                        "to": intent_value.get("to")
+                    },
+                    "transfer": {
+                        "kind": "native",
+                        "from": simulate.get("from"),
+                        "to": simulate.get("to"),
+                        "amount_ui": simulate.get("amount_ui"),
+                        "lamports": simulate.get("lamports"),
+                        "network": simulate.get("network"),
+                        "simulation_units": simulate.get("simulation").and_then(|v| v.get("units_consumed"))
+                    }
                 }));
 
                 let parsed = Self::solana_create_pending_confirmation(
@@ -1575,7 +1592,33 @@
                     "tool": "w3rt_run_workflow_v0",
                     "run_id": run_id,
                     "adapter": simulate.get("adapter"),
-                    "approval": approval
+                    "approval": approval,
+                    "intent": {
+                        "chain": intent_value.get("chain"),
+                        "action": intent_value.get("action"),
+                        "asset": intent_value.get("asset"),
+                        "amount": intent_value.get("amount"),
+                        "from": intent_value.get("from"),
+                        "to": intent_value.get("to")
+                    },
+                    "transfer": {
+                        "kind": "spl",
+                        "asset": simulate.get("asset"),
+                        "mint": simulate.get("mint"),
+                        "decimals": simulate.get("decimals"),
+                        "token_program": simulate.get("token_program"),
+                        "token_info": simulate.get("token_info"),
+                        "from": simulate.get("from"),
+                        "to": simulate.get("to"),
+                        "from_ata": simulate.get("from_ata"),
+                        "to_ata": simulate.get("to_ata"),
+                        "to_ata_exists": simulate.get("to_ata_exists"),
+                        "will_create_ata": simulate.get("will_create_ata"),
+                        "amount_ui": simulate.get("amount_ui"),
+                        "amount_base": simulate.get("amount_base"),
+                        "network": simulate.get("network"),
+                        "simulation_units": simulate.get("simulation").and_then(|v| v.get("units_consumed"))
+                    }
                 }));
 
                 let parsed = Self::solana_create_pending_confirmation(
