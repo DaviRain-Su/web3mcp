@@ -1498,6 +1498,11 @@ pub struct SolanaConfirmTransactionRequest {
         description = "Second-step confirmation token required on mainnet (returned by solana_send_transaction when pending)"
     )]
     pub confirm_token: Option<String>,
+
+    #[schemars(
+        description = "Admin override key (optional). Required only when the stored approval status is blocked, and only accepted if it appears in env W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_WHITELIST (comma-separated)."
+    )]
+    pub admin_override_key: Option<String>,
     #[schemars(
         description = "Network override: mainnet|devnet|testnet (optional; default from stored request context if available; otherwise mainnet)"
     )]

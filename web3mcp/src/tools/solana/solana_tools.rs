@@ -6706,8 +6706,52 @@
         let network = request
             .network
             .clone()
-            .or_else(|| pending.summary.as_ref().and_then(|v| v.get("network").and_then(|x| x.as_str()).map(|s| s.to_string())))
+            .or_else(|| {
+                pending
+                    .summary
+                    .as_ref()
+                    .and_then(|v| v.get("network").and_then(|x| x.as_str()).map(|s| s.to_string()))
+            })
             .unwrap_or("mainnet".to_string());
+
+        // Hard guard: if approval says blocked, require an admin override key that is whitelisted.
+        // Whitelist is env-configured because this is a last-resort escape hatch.
+        let approval_status = pending
+            .summary
+            .as_ref()
+            .and_then(|s| s.get("approval"))
+            .and_then(|a| a.get("status"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        if approval_status == "blocked" {
+            let wl_raw = std::env::var("W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_WHITELIST")
+                .unwrap_or_default();
+            let wl: std::collections::HashSet<String> = wl_raw
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+
+            let provided = request.admin_override_key.as_deref().unwrap_or("").trim();
+
+            if wl.is_empty() || provided.is_empty() || !wl.contains(provided) {
+                return Self::guard_result(
+                    "solana_confirm_transaction",
+                    "APPROVAL_BLOCKED",
+                    "Confirmation is blocked by approval policy",
+                    false,
+                    Some("This pending transaction was marked blocked. Only whitelisted admins may override."),
+                    None,
+                    Some(json!({
+                        "approval_status": approval_status,
+                        "whitelist_env": "W3RT_SOLANA_BLOCKED_CONFIRM_ADMIN_WHITELIST",
+                        "provided_admin_override_key": if provided.is_empty() { Value::Null } else { json!("<redacted>") }
+                    })),
+                );
+            }
+        }
 
         // Mainnet safety: require a confirm_token.
         if Self::solana_is_mainnet_network(Some(&network)) {
