@@ -290,7 +290,11 @@
 
             if let Ok(meta) = std::fs::metadata(&cache_path) {
                 if let Ok(mtime) = meta.modified() {
-                    if mtime.elapsed().unwrap_or(ttl + std::time::Duration::from_secs(1)) <= ttl {
+                    if mtime
+                        .elapsed()
+                        .unwrap_or(ttl + std::time::Duration::from_secs(1))
+                        <= ttl
+                    {
                         if let Ok(text) = std::fs::read_to_string(&cache_path) {
                             if let Ok(v) = serde_json::from_str::<Value>(&text) {
                                 return Ok(v);
@@ -310,6 +314,49 @@
             }
 
             Ok(v)
+        }
+
+        async fn solana_jupiter_token_map() -> Result<std::collections::HashMap<String, Value>, ErrorData> {
+            use std::sync::{Mutex, OnceLock};
+
+            fn now_ms() -> u128 {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            }
+
+            // In-memory cache to avoid reparsing the token list on every portfolio call.
+            // TTL matches on-disk token list TTL (10 minutes).
+            static CACHE: OnceLock<Mutex<(u128, std::collections::HashMap<String, Value>)>> = OnceLock::new();
+            let ttl_ms: u128 = 600_000;
+
+            let cache = CACHE.get_or_init(|| Mutex::new((0, std::collections::HashMap::new())));
+            {
+                let guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+                let (ts, map) = (&guard.0, &guard.1);
+                if *ts > 0 && now_ms().saturating_sub(*ts) <= ttl_ms && !map.is_empty() {
+                    return Ok(map.clone());
+                }
+            }
+
+            let token_list = solana_jupiter_tokens_verified().await?;
+            let mut map: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+            if let Some(arr) = token_list.as_array() {
+                for t in arr {
+                    if let Some(addr) = t.get("address").and_then(Value::as_str) {
+                        map.insert(addr.to_string(), t.clone());
+                    }
+                }
+            }
+
+            {
+                let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = (now_ms(), map.clone());
+            }
+
+            Ok(map)
         }
 
         async fn solana_resolve_symbol_via_jupiter_tokens(symbol: &str) -> Result<Option<Value>, ErrorData> {
@@ -1385,6 +1432,10 @@
                 .get("owner")
                 .and_then(Value::as_str)
                 .unwrap_or("<owner>");
+
+            // Optional filter: symbol or mint.
+            let filter_symbol = intent_value.get("symbol").and_then(Value::as_str).map(|s| s.to_string());
+            let filter_mint = intent_value.get("mint").and_then(Value::as_str).map(|s| s.to_string());
             if owner.starts_with('<') {
                 return Err(ErrorData {
                     code: ErrorCode(-32602),
@@ -1410,6 +1461,18 @@
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
             ];
+
+            let token_by_mint = solana_jupiter_token_map().await.unwrap_or_default();
+            let resolved_filter_mint: Option<String> = if let Some(m) = filter_mint.clone() {
+                Some(m)
+            } else if let Some(sym) = filter_symbol.clone() {
+                // Best-effort symbol->mint via Jupiter list (verified) with ambiguity protection.
+                let found = solana_resolve_symbol_via_jupiter_tokens(&sym).await?;
+                found
+                    .and_then(|v| v.get("address").and_then(Value::as_str).map(|s| s.to_string()))
+            } else {
+                None
+            };
 
             let mut per_mint: std::collections::HashMap<String, (u128, u8)> =
                 std::collections::HashMap::new();
@@ -1450,6 +1513,12 @@
                     let ui_amount = ta.get("uiAmountString").and_then(Value::as_str).unwrap_or("0");
 
                     if !mint.is_empty() && amount_raw > 0 {
+                        if let Some(fm) = resolved_filter_mint.as_ref() {
+                            if fm != &mint {
+                                continue;
+                            }
+                        }
+
                         per_mint
                             .entry(mint.clone())
                             .and_modify(|(a, _d)| *a += amount_raw)
@@ -1463,17 +1532,6 @@
                             "ui_amount": ui_amount,
                             "program_id": pid
                         }));
-                    }
-                }
-            }
-
-            // Enrich holdings with best-effort token metadata via Jupiter verified list.
-            let token_list = solana_jupiter_tokens_verified().await.unwrap_or(Value::Null);
-            let mut token_by_mint: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
-            if let Some(arr) = token_list.as_array() {
-                for t in arr {
-                    if let Some(addr) = t.get("address").and_then(Value::as_str) {
-                        token_by_mint.insert(addr.to_string(), t.clone());
                     }
                 }
             }

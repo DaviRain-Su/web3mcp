@@ -133,12 +133,32 @@
         }
 
         // Read-only requests.
-        let is_balance = lower.contains("balance") || lower.contains("holdings") || lower.contains("portfolio") || lower.contains("持仓") || lower.contains("余额");
+        let is_balance = lower.contains("balance")
+            || lower.contains("holdings")
+            || lower.contains("portfolio")
+            || lower.contains("持仓")
+            || lower.contains("余额");
         if is_balance {
+            // Try parse token symbol: e.g. "balance usdc" / "usdc balance".
+            let cleaned = lower.replace([',', '/'], " ");
+            let words: Vec<&str> = cleaned.split_whitespace().collect();
+            let mut symbol: Option<String> = None;
+            for w in &words {
+                if *w == "balance" || *w == "holdings" || *w == "portfolio" {
+                    continue;
+                }
+                // crude: symbols are short-ish alphabetic strings
+                if w.len() <= 10 && w.chars().all(|c| c.is_ascii_alphabetic()) {
+                    symbol = Some(w.to_string());
+                    break;
+                }
+            }
+
             let intent_value = json!({
                 "chain": "solana",
                 "action": "get_portfolio",
                 "owner": sender,
+                "symbol": symbol,
                 "resolved_network": {
                     "family": "solana",
                     "network_name": net
